@@ -343,6 +343,54 @@ async def _set_gang_role(guild, store, user_id: int, role_id: int, action: str, 
     return {"ok": True, "action": action, "role": role.name}
 
 
+async def _add_kos(guild, store, user_id: int, note: str | None = None, actor=None) -> dict:
+    """Add a member to the KOS list from the website — mirrors `/kos add`:
+    resolve the member, dedupe, give them the KOS role, log it, save."""
+    member = guild.get_member(user_id)
+    if member is None:
+        try:
+            member = await guild.fetch_member(user_id)
+        except discord.HTTPException:
+            member = None
+    if member is None:
+        return {"ok": False, "error": "That user isn't in this server — double-check the Discord ID."}
+    if any(k.get("id") == member.id for k in store.get("kos", [])):
+        return {"ok": False, "error": f"{member.display_name} is already on the KOS list."}
+    rid = store.get("kos_role_id")
+    role = guild.get_role(rid) if rid else None
+    role_added = False
+    if role is not None:
+        try:
+            await member.add_roles(role, reason="Web: add to KOS")
+            role_added = True
+        except discord.HTTPException:
+            pass
+    store.setdefault("kos", []).append({
+        "id": member.id,
+        "name": member.display_name,
+        "note": note or None,
+        "added_by": str(actor) if actor is not None else "website",
+        "at": now_stamp(),
+    })
+    save_data(DATA)
+    name = member.mention
+    await send_log(
+        guild, store, f"🌐 {name} added to KOS via the website.",
+        category="web", actor=actor,
+        fields=[
+            ("Member", name, True),
+            ("Reason", note or "—", True),
+            ("KOS role given", "Yes" if role_added else ("No role set" if role is None else "No"), True),
+            ("KOS size", str(len(store.get("kos", []))), True),
+        ],
+    )
+    return {
+        "ok": True, "name": member.display_name, "mention": name,
+        "role_added": role_added, "role_missing": role is None,
+        "members": _kos_members(guild, store),
+    }
+
+
 async def _remove_kos(guild, store, user_id: int, actor=None) -> dict:
     before = len(store.get("kos", []))
     store["kos"] = [k for k in store.get("kos", []) if k.get("id") != user_id]
@@ -1806,6 +1854,27 @@ async def _h_role(request):
         return _aioweb.json_response({"error": "Bad user_id or role_id."}, status=400)
     store = guild_store(DATA, guild.id)
     result = await _set_gang_role(guild, store, uid, rid, action, actor=_web_actor(request, guild))
+    return _aioweb.json_response(result, status=200 if result.get("ok") else 400)
+
+
+async def _h_kos_add(request):
+    try:
+        body = await request.json()
+    except Exception:
+        return _aioweb.json_response({"error": "Bad JSON body."}, status=400)
+    guild = _guild_from(str(body.get("guild") or ""))
+    if guild is None:
+        return _aioweb.json_response({"error": "Guild not found."}, status=404)
+    ok, code, msg = await _gate(request, guild)
+    if not ok:
+        return _aioweb.json_response({"error": msg}, status=code)
+    try:
+        uid = int(str(body.get("user_id") or "").strip())
+    except (TypeError, ValueError):
+        return _aioweb.json_response({"error": "Enter a valid Discord user ID."}, status=400)
+    note = (str(body.get("reason") or body.get("note") or "")).strip()[:300] or None
+    store = guild_store(DATA, guild.id)
+    result = await _add_kos(guild, store, uid, note, actor=_web_actor(request, guild))
     return _aioweb.json_response(result, status=200 if result.get("ok") else 400)
 
 
@@ -4641,6 +4710,7 @@ async def start_web_server() -> None:
             _aioweb.get("/api/kos", _h_kos),
             _aioweb.post("/api/role", _h_role),
             _aioweb.post("/api/remove", _h_remove),
+            _aioweb.post("/api/kos_add", _h_kos_add),
             _aioweb.post("/api/kos_remove", _h_kos_remove),
             _aioweb.get("/api/stash", _h_stash),
             _aioweb.post("/api/stash", _h_stash_set),
@@ -5492,8 +5562,13 @@ function renderKos(){
   const q=$("search").value.toLowerCase();
   const ks=STATE.kos.filter(k=>k.name.toLowerCase().includes(q));
   $("count").textContent=STATE.kos.length+" on KOS";
-  if(!ks.length){$("kosView").innerHTML='<div class="empty">Nobody on the KOS list. 🕊️</div>';return;}
-  $("kosView").innerHTML=`<ul class="members">${ks.map(k=>{
+  const add='<div class="card"><h4 style="margin:0 0 10px">💀 Add to KOS</h4>'
+    +'<div class="addbar"><input id="kosId" class="i" placeholder="Discord user ID (right-click user → Copy ID)" inputmode="numeric">'
+    +'<input id="kosReason" class="i" placeholder="Reason (optional)">'
+    +'<button onclick="addKos()">➕ Add to KOS</button></div>'
+    +'<div class="muted" style="font-size:12px;margin-top:6px">Paste the member\'s Discord ID — they get the KOS role automatically if one is set in Settings.</div></div>';
+  if(!ks.length){$("kosView").innerHTML=add+'<div class="empty">Nobody on the KOS list yet. 🕊️</div>';return;}
+  $("kosView").innerHTML=add+`<ul class="members">${ks.map(k=>{
     const meta=[k.added_by?"added by "+h(k.added_by):"",k.at?h(k.at):""].filter(Boolean).join(" · ");
     return `<li class="member" data-id="${h(k.id)}">
     ${k.avatar?`<div class="av"><img src="${h(k.avatar)}" alt="" loading="lazy"></div>`:'<div class="av skull">💀</div>'}
@@ -5547,6 +5622,15 @@ async function removeMember(uid,name){
     const f=(r.failed_roles||[]).length?" · couldn't remove: "+r.failed_roles.join(", "):"";
     toast("Removed "+name+(r.removed_roles?.length?" ("+r.removed_roles.join(", ")+")":"")+f,f?"err":"ok");await reload();}
   catch(e){if(e.status===401||e.status===403)return boot();toast(e.message||"Failed","err");}
+}
+async function addKos(){
+  const id=(($("kosId")||{}).value||"").trim();
+  if(!/^[0-9]{5,25}$/.test(id))return toast("Enter a valid Discord user ID","err");
+  const reason=(($("kosReason")||{}).value||"").trim();
+  try{const r=await post("/api/kos_add",{guild:STATE.guild,user_id:id,reason:reason});
+    STATE.kos=r.members;renderKos();
+    toast((r.name||"Member")+" added to KOS"+(r.role_missing?" (no KOS role set in Settings)":""),"ok");}
+  catch(e){if(e.status===401||e.status===403)return boot();toast(e.message||"Couldn't add to KOS","err");}
 }
 async function removeKos(uid,name){
   if(!await confirmBox({icon:"🎯",title:"Remove from KOS?",message:"Take "+name+" off the KOS list and remove the KOS role?",confirmText:"Remove",danger:true}))return;
