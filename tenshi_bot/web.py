@@ -4119,6 +4119,9 @@ button.on{border-color:var(--ok);color:#86efac;background:rgba(34,197,94,.1)}
 .badge.pur{background:rgba(167,139,250,.15);color:#cdbcff;border:1px solid rgba(167,139,250,.4)}
 .badge.red{background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.4)}
 .badge.off{background:rgba(255,255,255,.05);color:var(--mute);border:1px solid var(--line)}
+.botin{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;display:inline-flex;align-items:center;gap:4px}
+.botin.yes{background:rgba(34,197,94,.12);color:#86efac}
+.botin.no{background:rgba(239,68,68,.14);color:#fca5a5;border:1px solid rgba(239,68,68,.35)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px 22px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
 .kv{display:flex;flex-direction:column;gap:2px;min-width:0}
 .kv .k{font-size:10.5px;color:var(--mute);text-transform:uppercase;letter-spacing:.6px}
@@ -4267,13 +4270,14 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
   function setStats(c){c=c||{};var map={statServers:c.servers||0,statActive:c.active||0,statLife:c.lifetime||0,statMembers:c.members||0,statBans:c.bans||0,statStaff:c.staff||0};for(var k in map){var el=document.getElementById(k);if(!el)continue;if(firstStats)animateNum(el,map[k]);else el.textContent=nf(map[k])}firstStats=false}
   function bucket(s){if(s.lifetime)return 'lifetime';if(s.active)return 'active';if(s.status==='expired')return 'expired';return 'none'}
   function badge(s){var b=bucket(s);if(b==='lifetime')return '<span class="badge pur">Lifetime</span>';if(b==='active')return '<span class="badge live">Active</span>';if(b==='expired')return '<span class="badge red">Expired</span>';return '<span class="badge off">Inactive</span>'}
+  function botChip(s){return s.bot_in?'<span class="botin yes">✓ Bot in server</span>':'<span class="botin no">⚠ Bot not in server</span>'}
   function expiry(s){if(s.lifetime)return 'Never (lifetime)';if(s.active&&s.days_left!=null)return s.days_left+' days left'+(s.expires_at?' · '+fmtIso(s.expires_at):'');if(s.expires_at)return fmtIso(s.expires_at);return '—'}
   function kv(k,v){return '<div class=kv><span class=k>'+k+'</span><span class=v>'+v+'</span></div>'}
   function loadSubs(){var box=$('#subsList');if(!SERVERS.length)box.innerHTML='<div class=sk></div><div class=sk></div>';api('/api/admin/overview').then(function(d){if(!d.ok){box.innerHTML='<div class=pad>Could not load.</div>';return}setStats(d.counts);SERVERS=d.servers||[];renderHealth();renderFilters();renderSubs()})}
   function renderHealth(){var c={active:0,lifetime:0,expired:0,none:0};SERVERS.forEach(function(s){c[bucket(s)]++});var tot=SERVERS.length||1;function pc(n){return (n/tot*100).toFixed(1)+'%'}var el=$('#subHealth');if(!SERVERS.length){el.style.display='none';return}el.style.display='';el.innerHTML='<div class=bdbar><i class=sa style=width:'+pc(c.active)+'></i><i class=sl style=width:'+pc(c.lifetime)+'></i><i class=se style=width:'+pc(c.expired)+'></i><i class=sn style=width:'+pc(c.none)+'></i></div><div class=bdleg><span><i class="dot" style=background:var(--ok)></i>Active <b>'+c.active+'</b></span><span><i class="dot" style=background:var(--purple)></i>Lifetime <b>'+c.lifetime+'</b></span><span><i class="dot" style=background:var(--bad)></i>Expired <b>'+c.expired+'</b></span><span><i class="dot" style=background:rgba(255,255,255,.3)></i>Inactive <b>'+c.none+'</b></span></div>'}
   function renderFilters(){var counts={all:SERVERS.length,active:0,lifetime:0,expired:0,none:0};SERVERS.forEach(function(s){counts[bucket(s)]++});var defs=[['all','All'],['active','Active'],['lifetime','Lifetime'],['expired','Expired'],['none','Inactive']];$('#subFilters').innerHTML=defs.map(function(d){return '<div class="fchip'+(SUBFILTER===d[0]?' on':'')+'" data-f="'+d[0]+'">'+d[1]+' <span class=cnt>'+counts[d[0]]+'</span></div>'}).join('');$('#subFilters').querySelectorAll('.fchip').forEach(function(c){c.onclick=function(){SUBFILTER=c.getAttribute('data-f');renderFilters();renderSubs()}})}
   function filteredServers(){var q=SUBQ.toLowerCase();var list=SERVERS.filter(function(s){if(SUBFILTER!=='all'&&bucket(s)!==SUBFILTER)return false;if(q&&!((s.name||'').toLowerCase().indexOf(q)>=0||String(s.id).indexOf(q)>=0))return false;return true});list.sort(function(a,b){if(SUBSORT==='members')return (b.members||0)-(a.members||0);if(SUBSORT==='name')return (a.name||'').localeCompare(b.name||'');if(SUBSORT==='created')return (b.created_at||0)-(a.created_at||0);var da=a.lifetime?1e9:(a.days_left==null?-1:a.days_left),db=b.lifetime?1e9:(b.days_left==null?-1:b.days_left);return da-db});return list}
-  function renderSubs(){var box=$('#subsList'),list=filteredServers();if(!list.length){box.innerHTML='<div class=pad>No servers match.</div>';return}box.innerHTML=list.map(function(s){var ic=s.icon?'<img src="'+esc(s.icon)+'" alt="">':'';return '<div class=card><div class=srvhead><div class=srvname>'+ic+esc(s.name)+' '+badge(s)+'</div><div class=acts><button class=sm data-g="'+s.id+'" data-a=add data-d=7>+7d</button><button class=sm data-g="'+s.id+'" data-a=add data-d=30>+30d</button><button class="sm pur" data-g="'+s.id+'" data-a=life>♾ Lifetime</button><button class="sm danger" data-g="'+s.id+'" data-a=rev>Revoke</button>'+(STATE.owner?'<button class="sm danger" data-g="'+s.id+'" data-a=leave>🚪 Remove bot</button>':'')+'</div></div><div class=grid>'+kv('Members',nf(s.members))+kv('Plan',esc(s.plan||'—'))+kv('Expires',esc(expiry(s)))+kv('Server owner',idv(s.owner_name,s.owner_id))+kv('Purchased by',idv(s.purchaser_name,s.purchaser_id))+kv('Server ID',copyspan(s.id,'id'))+kv('Stripe customer',copyspan(s.customer_id,'id'))+kv('Stripe sub',copyspan(s.sub_id,'id'))+kv('Server created',fmtTs(s.created_at))+kv('Sub updated',fmtIso(s.updated_at))+'</div></div>'}).join('');box.querySelectorAll('button[data-a]').forEach(function(b){b.onclick=function(){subAction(b)}})}
+  function renderSubs(){var box=$('#subsList'),list=filteredServers();if(!list.length){box.innerHTML='<div class=pad>No servers match.</div>';return}box.innerHTML=list.map(function(s){var ic=s.icon?'<img src="'+esc(s.icon)+'" alt="">':'';return '<div class=card><div class=srvhead><div class=srvname>'+ic+esc(s.name||('Server '+s.id))+' '+badge(s)+botChip(s)+'</div><div class=acts><button class=sm data-g="'+s.id+'" data-a=add data-d=7>+7d</button><button class=sm data-g="'+s.id+'" data-a=add data-d=30>+30d</button><button class="sm pur" data-g="'+s.id+'" data-a=life>♾ Lifetime</button><button class="sm danger" data-g="'+s.id+'" data-a=rev>Revoke</button>'+(STATE.owner&&s.bot_in?'<button class="sm danger" data-g="'+s.id+'" data-a=leave>🚪 Remove bot</button>':'')+'</div></div><div class=grid>'+kv('Members',nf(s.members))+kv('Plan',esc(s.plan||'—'))+kv('Expires',esc(expiry(s)))+kv('Server owner',idv(s.owner_name,s.owner_id))+kv('Purchased by',idv(s.purchaser_name,s.purchaser_id))+kv('Server ID',copyspan(s.id,'id'))+kv('Stripe customer',copyspan(s.customer_id,'id'))+kv('Stripe sub',copyspan(s.sub_id,'id'))+kv('Server created',fmtTs(s.created_at))+kv('Sub updated',fmtIso(s.updated_at))+'</div></div>'}).join('');box.querySelectorAll('button[data-a]').forEach(function(b){b.onclick=function(){subAction(b)}})}
   async function subAction(b){var g=b.getAttribute('data-g'),a=b.getAttribute('data-a'),body,label;if(a==='add'){var d=parseInt(b.getAttribute('data-d'),10);body={guild_id:g,action:'add_days',days:d};label='Added '+d+' days';}else if(a==='life'){body={guild_id:g,action:'lifetime'};label='Lifetime granted';}else if(a==='leave'){if(!(await confirmBox({icon:'🚪',title:'Remove the bot from this server?',message:'Gang Manager will leave this Discord server. The subscription stays as-is — you can re-add the bot any time.',confirmText:'Remove bot',danger:true})))return;b.disabled=true;api('/api/admin/leave','POST',{guild_id:g}).then(function(r){b.disabled=false;if(r.ok){toast('Bot removed from '+(r.name||'server'));loadSubs()}else toast(r.error||'Failed',true)});return;}else{if(!(await confirmBox({icon:'🚫',title:'Revoke subscription?',message:'This server loses access immediately until it re-subscribes.',confirmText:'Revoke',danger:true})))return;body={guild_id:g,action:'revoke'};label='Revoked';}b.disabled=true;api('/api/admin/sub','POST',body).then(function(r){b.disabled=false;if(r.ok){toast(label);loadSubs()}else toast(r.error||'Failed',true)})}
   function customDays(){var g=$('#cdGuild').value.trim(),d=parseInt($('#cdDays').value,10);if(!g){toast('Enter a server ID',true);return}if(!d){toast('Enter days',true);return}api('/api/admin/sub','POST',{guild_id:g,action:'add_days',days:d}).then(function(r){if(r.ok){toast('Done');$('#cdDays').value='';loadSubs()}else toast(r.error||'Failed',true)})}
   function loadBans(){var box=$('#bansList');box.innerHTML='<div class=sk style=height:52px></div>';api('/api/admin/bans').then(function(d){if(!d.ok){box.innerHTML='<div class=pad>Could not load.</div>';return}BANS=d.bans||[];renderBans()})}
@@ -4362,22 +4366,18 @@ async def _h_admin_overview(request):
     if uid is None:
         return _admin_json({"ok": False, "error": "forbidden"}, 403)
     servers = []
-    active = lifetime = total_members = 0
+    seen = set()
     for g in sorted(bot.guilds, key=lambda x: (x.member_count or 0), reverse=True):
+        seen.add(str(g.id))
         st = effective_state(g.id)
         sub = guild_store(DATA, g.id).get("subscription") or {}
-        if st.get("active"):
-            active += 1
-        if st.get("lifetime"):
-            lifetime += 1
-        total_members += g.member_count or 0
         owner_id = getattr(g, "owner_id", None)
         owner_m = g.get_member(owner_id) if owner_id else None
         owner_name = (str(owner_m) if owner_m else _user_label(owner_id)) if owner_id else ""
         pid = sub.get("purchaser_id") or ""
         servers.append({
             "id": str(g.id), "name": g.name, "members": g.member_count or 0,
-            "icon": (g.icon.url if g.icon else None),
+            "icon": (g.icon.url if g.icon else None), "bot_in": True,
             "mode": st.get("mode"), "active": bool(st.get("active")),
             "status": st.get("status"), "lifetime": bool(st.get("lifetime")),
             "days_left": st.get("days_left"), "expires_at": st.get("expires_at"),
@@ -4389,9 +4389,36 @@ async def _h_admin_overview(request):
             "updated_at": sub.get("updated_at"),
             "created_at": int(g.created_at.timestamp()) if getattr(g, "created_at", None) else None,
         })
+    # Paid servers the bot is NOT in (removed/kicked) — still worth seeing so the
+    # owner notices a customer who's missing the bot. Only surface active/lifetime
+    # ones; long-dead test servers stay out.
+    for gid_str, store in list((DATA.get("guilds") or {}).items()):
+        if gid_str in seen or not str(gid_str).isdigit():
+            continue
+        sub = (store or {}).get("subscription") or {}
+        st = effective_state(int(gid_str))
+        if not st.get("active"):
+            continue
+        pid = sub.get("purchaser_id") or ""
+        servers.append({
+            "id": str(gid_str), "name": "", "members": 0, "icon": None, "bot_in": False,
+            "mode": st.get("mode"), "active": bool(st.get("active")),
+            "status": st.get("status"), "lifetime": bool(st.get("lifetime")),
+            "days_left": st.get("days_left"), "expires_at": st.get("expires_at"),
+            "plan": st.get("plan") or sub.get("plan") or "",
+            "customer_id": st.get("customer_id") or "", "sub_id": st.get("sub_id") or "",
+            "owner_id": "", "owner_name": "", "owner_av": None,
+            "purchaser_id": str(pid), "purchaser_name": (_user_label(pid) if pid else ""),
+            "updated_at": sub.get("updated_at"), "created_at": None,
+        })
+    active = sum(1 for s in servers if s["active"])
+    lifetime = sum(1 for s in servers if s["lifetime"])
+    total_members = sum(s.get("members") or 0 for s in servers)
+    no_bot = sum(1 for s in servers if not s["bot_in"])
     return _admin_json({"ok": True, "owner": owner, "servers": servers,
                         "counts": {"servers": len(servers), "active": active,
                                    "lifetime": lifetime, "members": total_members,
+                                   "no_bot": no_bot,
                                    "bans": len(list_bans()), "staff": len(list_admin_staff())}})
 
 
