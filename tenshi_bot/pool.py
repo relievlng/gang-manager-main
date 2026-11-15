@@ -39,9 +39,24 @@ LAUNCH_GAP = 1.5      # seconds between pool-bot logins at startup
 
 _ICON = pathlib.Path(__file__).with_name("gm-icon.png")
 _DESCRIPTION = (
-    "Gang Manager — roster, KOS, wars, tickets and recruitment for your FiveM gang, "
-    "with a full web control panel."
+    "Run your gang like a machine — roster, KOS, wars, strikes, tickets and "
+    "recruitment, with a full web control panel. Add it & subscribe at https://gangmanager.site"
 )
+# Bios we set in an earlier version — safe to refresh to the current one. A bio
+# that isn't blank and isn't one of these is treated as custom and left alone.
+_OLD_DESCRIPTIONS = frozenset({
+    "Gang Manager — roster, KOS, wars, tickets and recruitment for your FiveM gang, "
+    "with a full web control panel.",
+})
+
+
+def _desc_for(current) -> "str | None":
+    """The bio to write for a pool bot, or None to leave it unchanged. Fills a
+    blank bio and refreshes one we set before; never overwrites a custom bio."""
+    cur = (current or "").strip()
+    if cur == _DESCRIPTION or (cur != "" and cur not in _OLD_DESCRIPTIONS):
+        return None
+    return _DESCRIPTION
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_\-]{18,}\.[A-Za-z0-9_\-]{4,}\.[A-Za-z0-9_\-]{20,}$")
 
 # Discord application flag bits. Apps in fewer than 100 servers may switch the
@@ -307,8 +322,9 @@ async def _inspect(token: str) -> dict:
             changes: dict = {}
             if icon and getattr(app, "icon", None) is None:
                 changes["icon"] = icon
-            if not (getattr(app, "description", "") or "").strip():
-                changes["description"] = _DESCRIPTION
+            _nd = _desc_for(getattr(app, "description", ""))
+            if _nd is not None:
+                changes["description"] = _nd
             flags_val = int(getattr(getattr(app, "flags", None), "value", 0) or 0)
             has_members = bool(flags_val & (_FLAG_MEMBERS | _FLAG_MEMBERS_LIMITED))
             info["members_intent"] = has_members
@@ -473,6 +489,9 @@ def _wire(w) -> None:
                 if rec is not None:
                     rec["public"] = bool(getattr(app, "bot_public", True))
                     rec["code_grant"] = bool(getattr(app, "bot_require_code_grant", False))
+                _nd = _desc_for(getattr(app, "description", ""))
+                if _nd is not None:  # keep the store link in the bio (never a custom one)
+                    await app.edit(description=_nd)
             except Exception:  # noqa: BLE001
                 pass
         try:
