@@ -1399,78 +1399,117 @@ _SITE_DESC = ("Roster, KOS, strikes, wars, tickets and recruitment — one Disco
               "with a full web control panel for your FiveM gang.")
 
 
-_LEGAL_TMPL = r"""<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>__TITLE__ · Gang Manager</title>__HEAD__<link rel=preconnect href='https://fonts.googleapis.com'><link rel=preconnect href='https://fonts.gstatic.com' crossorigin><link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap' rel=stylesheet><style>
-:root{--bg:#07070b;--ink:#ececf3;--mut:#a7a7b5;--dim:#78788a;--line:rgba(255,255,255,.08);--card:rgba(255,255,255,.025);--acc:#8b5cf6;--acc2:#6366f1}
-*{box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.6}
-.glow{position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(900px 420px at 50% -120px,rgba(139,92,246,.18),transparent 70%)}
-.bar{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 22px;background:rgba(9,9,13,.72);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
-.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink)}
-.brand img{height:26px;width:auto;display:block}
-.brand span{font-weight:700;letter-spacing:.3px;font-size:15px}
-.tabs{display:flex;align-items:center;gap:4px}
-.lt{color:var(--mut);text-decoration:none;font-size:13.5px;font-weight:500;padding:7px 12px;border-radius:9px;border:1px solid transparent;transition:.15s}
-.lt:hover{color:var(--ink);background:rgba(255,255,255,.04)}
-.lt.on{color:var(--ink);background:rgba(139,92,246,.14);border-color:rgba(139,92,246,.35)}
-.lt.ext::after{content:' \2197';color:var(--dim)}
-.wrap{position:relative;z-index:1;max-width:980px;margin:0 auto;padding:0 22px 90px}
-.hero{padding:56px 0 26px}
-.kicker{display:inline-flex;align-items:center;gap:7px;color:var(--acc);font-size:12px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase}
-.hero h1{font-size:clamp(30px,6vw,42px);line-height:1.08;margin:14px 0 10px;letter-spacing:-.5px;background:linear-gradient(180deg,#fff,#c9c6e4);-webkit-background-clip:text;background-clip:text;color:transparent}
-.sub{color:var(--mut);font-size:16px;max-width:580px;margin:0}
-.grid{display:grid;grid-template-columns:210px 1fr;gap:44px;align-items:start}
-.toc{position:sticky;top:86px}
-.toclab{font-size:11.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);margin:0 0 10px;padding-left:12px}
-#toc{display:flex;flex-direction:column;gap:1px}
-#toc a{display:block;color:var(--mut);text-decoration:none;font-size:13px;line-height:1.35;padding:7px 12px;border-left:2px solid transparent;border-radius:0 7px 7px 0;transition:.15s}
-#toc a:hover{color:var(--ink);background:rgba(255,255,255,.03)}
-#toc a.on{color:var(--ink);border-left-color:var(--acc);background:rgba(139,92,246,.09)}
-.doc{min-width:0}
-.doc .upd{display:inline-block;font-size:12.5px;font-weight:600;color:var(--acc);background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.26);padding:5px 13px;border-radius:999px;margin:0 0 22px}
-.doc h2{font-size:18px;color:var(--ink);margin:36px 0 10px;padding-left:15px;position:relative;letter-spacing:.2px;scroll-margin-top:92px}
-.doc h2::before{content:'';position:absolute;left:0;top:3px;bottom:3px;width:3px;border-radius:2px;background:linear-gradient(180deg,var(--acc),var(--acc2))}
-.doc p,.doc li{color:var(--mut);font-size:15px;line-height:1.72}
-.doc ul{padding-left:20px;margin:8px 0}
-.doc li{margin:7px 0}
-.doc li::marker{color:var(--acc)}
-.doc a{color:#fff;text-decoration:underline;text-underline-offset:2px;text-decoration-color:rgba(255,255,255,.32)}
-.doc a:hover{text-decoration-color:#fff}
-.doc b{color:#dcdce6;font-weight:600}
-.foot{margin-top:66px;padding-top:24px;border-top:1px solid var(--line)}
-.fcols{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:12px}
-.fcols a{color:var(--mut);text-decoration:none;font-size:14px}
-.fcols a:hover{color:var(--ink)}
-.foot p{color:var(--dim);font-size:13px;line-height:1.6;margin:6px 0;max-width:620px}
-.totop{position:fixed;right:20px;bottom:20px;z-index:20;width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(20,20,26,.82);backdrop-filter:blur(8px);color:var(--ink);font-size:18px;cursor:pointer;opacity:0;transform:translateY(10px);transition:.2s;pointer-events:none}
+_LEGAL_TMPL = r"""<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>__TITLE__ · Gang Manager</title>__HEAD__<link rel=preconnect href='https://fonts.googleapis.com'><link rel=preconnect href='https://fonts.gstatic.com' crossorigin><link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@700&display=swap' rel=stylesheet><style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#07070a;--card:rgba(20,20,26,.72);--cardsolid:#15151b;--line:rgba(255,255,255,.07);--text:#f2f2f6;--mute:#9a9aa8;--brand:#9a9aa8;--brand2:#c9c9d2;--ok:#22c55e;--bad:#ef4444;--r:18px}
+html{scroll-behavior:smooth;scroll-padding-top:26px}
+body{background:var(--bg);color:var(--text);min-height:100vh;font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.6}
+body::before{content:"";position:fixed;inset:-20%;z-index:-1;pointer-events:none;background:radial-gradient(900px 520px at 12% -8%,rgba(255,255,255,.18),transparent 60%),radial-gradient(760px 520px at 102% 2%,rgba(130,20,70,.18),transparent 55%),radial-gradient(640px 640px at 50% 118%,rgba(60,10,36,.26),transparent 62%);animation:drift 20s ease-in-out infinite alternate}
+@keyframes drift{to{transform:translate3d(0,-14px,0) scale(1.04)}}
+a{color:inherit;text-decoration:none}
+.shell{max-width:1120px;margin:26px auto;border:1px solid rgba(255,255,255,.14);border-radius:18px;background:linear-gradient(180deg,rgba(22,22,28,.95),rgba(10,10,14,.95));box-shadow:0 50px 120px rgba(0,0,0,.6),0 0 80px rgba(255,255,255,.04)}
+.bar{display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.03);border-radius:18px 18px 0 0}
+.bar i{width:11px;height:11px;border-radius:50%;background:#3a3a44}
+.bar i:nth-child(1){background:#ff5f57}.bar i:nth-child(2){background:#febc2e}.bar i:nth-child(3){background:#28c840}
+.bar span{margin-left:10px;font-size:12.5px;color:#8a8a94;padding:4px 14px;border-radius:8px;background:rgba(255,255,255,.05)}
+.appbody{display:grid;grid-template-columns:234px 1fr}
+.side{padding:18px 14px}
+.sidei{position:sticky;top:20px;display:flex;flex-direction:column;gap:3px}
+.sbrand{display:flex;align-items:center;gap:11px;padding:4px 8px 16px}
+.sbrand .logo{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;overflow:hidden;background:#0d0d12;border:1px solid rgba(255,255,255,.4);box-shadow:0 0 22px rgba(255,255,255,.28);flex:none}
+.sbrand .logo img{width:100%;height:100%;object-fit:contain;padding:5px}
+.sbrand b{font-family:"Space Grotesk",sans-serif;font-size:15.5px;font-weight:700;letter-spacing:.4px;background:linear-gradient(90deg,#fff,#e8e8ee);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1.1}
+.sbrand small{display:block;font-size:11px;color:var(--mute);font-weight:500;margin-top:2px}
+.slabel{font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#6f6f7a;padding:6px 10px 5px}
+#toc{display:flex;flex-direction:column;gap:2px}
+#toc a{display:flex;align-items:center;gap:10px;color:#8d8d97;font-size:13px;font-weight:600;padding:8px 11px;border-radius:9px;line-height:1.3;transition:.15s}
+#toc a::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.45;flex:none}
+#toc a:hover{color:#fff;background:rgba(255,255,255,.04)}
+#toc a.on{color:#fff;background:rgba(255,255,255,.09)}
+#toc a.on::before{opacity:1;background:var(--brand2)}
+.sdiv{height:1px;background:var(--line);margin:14px 6px}
+.slink{display:flex;align-items:center;gap:10px;color:#8d8d97;font-size:13px;font-weight:600;padding:8px 11px;border-radius:9px;transition:.15s}
+.slink:hover{color:#fff;background:rgba(255,255,255,.04)}
+.slink.on{color:#fff;background:rgba(255,255,255,.07)}
+.sbtn{display:flex;align-items:center;justify-content:center;gap:8px;margin:12px 6px 0;padding:11px;border-radius:12px;font-weight:700;font-size:13.5px;background:linear-gradient(135deg,var(--brand),#3a3a42);color:#fff;box-shadow:0 8px 24px rgba(255,255,255,.16);transition:.16s}
+.sbtn:hover{filter:brightness(1.1);transform:translateY(-1px)}
+.main{min-width:0;border-left:1px solid var(--line);padding:24px 28px 34px}
+.phead{font-family:"Space Grotesk",sans-serif;font-size:clamp(24px,3.4vw,32px);font-weight:700;letter-spacing:.3px;background:linear-gradient(90deg,#fff,#e8e8ee);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:8px}
+.plead{color:var(--mute);font-size:14.5px;margin-bottom:22px;max-width:640px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:0 0 24px}
+.stat{position:relative;overflow:hidden;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;backdrop-filter:blur(10px);transition:.2s}
+.stat:hover{transform:translateY(-3px);border-color:rgba(255,255,255,.3)}
+.stat .n{font-size:23px;font-weight:800;line-height:1.05}
+.stat .l{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.7px;margin-top:6px;font-weight:600}
+.stat::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--brand);opacity:.85}
+.stat.ok .n{color:#86efac}.stat.ok::after{background:var(--ok)}
+.stat.brand .n{color:#e2e2e8}.stat.brand::after{background:var(--brand2)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:6px 26px 24px;backdrop-filter:blur(10px)}
+.card .upd{display:inline-block;font-size:12px;font-weight:700;color:#09090c;background:linear-gradient(90deg,var(--brand2),#fff);padding:4px 12px;border-radius:999px;margin:18px 0 18px;letter-spacing:.3px}
+.card h2{display:flex;align-items:center;gap:11px;font-family:"Space Grotesk",sans-serif;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#eaeaef;margin:28px 0 12px;scroll-margin-top:26px}
+.card h2::before{content:"";width:3px;height:16px;border-radius:3px;background:linear-gradient(var(--brand2),#3a3a42);flex:none}
+.card>p:first-of-type{margin-top:4px}
+.card p,.card li{color:#c4c4cf;font-size:14.5px;line-height:1.72}
+.card ul{padding-left:20px;margin:8px 0}
+.card li{margin:7px 0}
+.card li::marker{color:var(--brand2)}
+.card a{color:#fff;text-decoration:underline;text-underline-offset:2px;text-decoration-color:rgba(255,255,255,.3)}
+.card a:hover{text-decoration-color:#fff}
+.card b{color:#e9e9ef;font-weight:700}
+.foot{text-align:center;padding:26px 22px 8px;color:#6f6f78;font-size:12.5px;line-height:1.6}
+.foot .fl{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-bottom:9px}
+.foot a{color:var(--brand2)}
+.foot p{max-width:620px;margin:0 auto}
+.totop{position:fixed;right:20px;bottom:20px;z-index:40;width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(20,20,26,.85);backdrop-filter:blur(8px);color:#fff;font-size:18px;cursor:pointer;opacity:0;transform:translateY(10px);transition:.2s;pointer-events:none}
 .totop.show{opacity:1;transform:translateY(0);pointer-events:auto}
-.totop:hover{border-color:var(--acc);color:#fff}
-@media(max-width:900px){.grid{grid-template-columns:1fr;gap:18px}.toc{position:static;border:1px solid var(--line);background:var(--card);border-radius:14px;padding:14px 12px}.toclab{padding-left:4px}#toc{flex-direction:row;flex-wrap:wrap;gap:6px}#toc a{border-left:none;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px}#toc a.on{border-color:rgba(139,92,246,.4)}}
-@media(max-width:620px){.hero{padding:40px 0 20px}.bar{padding:10px 16px}.wrap{padding:0 16px 80px}.lt{padding:6px 9px;font-size:13px}}
+.totop:hover{border-color:var(--brand2)}
+@media(max-width:860px){.shell{margin:12px;border-radius:16px}.appbody{grid-template-columns:1fr}.side{border-bottom:1px solid var(--line);padding:16px}.sidei{position:static}.sbtn{display:none}.slabel{display:none}#toc{flex-direction:row;flex-wrap:wrap;gap:6px}#toc a{border:1px solid var(--line);border-radius:999px;padding:6px 11px}#toc a::before{display:none}.sdiv{display:none}.slink{border:1px solid var(--line);border-radius:999px}.main{border-left:none;padding:20px 18px 28px}}
+@media(prefers-reduced-motion:reduce){body::before{animation:none}}
 </style></head><body>
-<div class=glow></div>
-<header class=bar><a class=brand href='/'><img src='/gm-logo.png' alt='GM'><span>Gang Manager</span></a><nav class=tabs>__NAV__</nav></header>
-<main class=wrap>
-<div class=hero><span class=kicker>__ICON__ Legal</span><h1>__TITLE__</h1><p class=sub>__SUB__</p></div>
-<div class=grid>
-<aside id=tocwrap class=toc><div class=toclab>On this page</div><nav id=toc></nav></aside>
-<article class=doc>__BODY__</article>
+<div class=shell>
+<div class=bar><i></i><i></i><i></i><span>gang manager · __BARLABEL__</span></div>
+<div class=appbody>
+<aside class=side><div class=sidei>
+<a class=sbrand href="/"><span class=logo><img src="/gm-logo.png" alt="GM"></span><span><b>Gang Manager</b><small>Legal</small></span></a>
+<div class=slabel>On this page</div>
+<div id=toc></div>
+<div class=sdiv></div>
+<a href="/privacy" class="slink __PON__">Privacy Policy</a>
+<a href="/terms" class="slink __TON__">Terms of Service</a>
+<a href="/" class=slink>Back to site</a>
+<a href="/login" class=sbtn>Open panel</a>
+</div></aside>
+<main class=main>
+<h1 class=phead>__TITLE__</h1>
+<p class=plead>__SUB__</p>
+<div class=stats>__TILES__</div>
+<article class=card>__BODY__</article>
+<div class=foot>
+<div class=fl><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a><a href="/">Home</a></div>
+<p>Gang Manager is a community tool for FiveM roleplay Discord servers, operated independently and not affiliated with or endorsed by Discord Inc. or Rockstar Games. Questions or a data request? Contact the bot operator in your Discord server.</p>
 </div>
-<footer class=foot><div class=fcols><a href='/privacy'>Privacy Policy</a><a href='/terms'>Terms of Service</a><a href='/'>Panel</a></div>
-<p>Gang Manager is a community tool for FiveM roleplay Discord servers, operated independently and not affiliated with or endorsed by Discord Inc. or Rockstar Games. Questions or a data request? Contact the bot operator in your Discord server.</p></footer>
 </main>
+</div>
+</div>
 <button id=toTop class=totop aria-label='Back to top'>&uarr;</button>
 <script>
 (function(){try{
-var doc=document.querySelector('.doc'),toc=document.getElementById('toc');
-if(doc&&toc){var hs=doc.querySelectorAll('h2'),items=[];
+var content=document.querySelector('.card'),toc=document.getElementById('toc');
+if(content&&toc){var hs=content.querySelectorAll('h2'),items=[];
 hs.forEach(function(h,i){var id=h.id||('s'+(i+1));h.id=id;var a=document.createElement('a');a.href='#'+id;a.textContent=h.textContent;toc.appendChild(a);items.push({a:a,h:h});});
-if(!items.length){var w=document.getElementById('tocwrap');if(w)w.style.display='none';}
-else{var spy=function(){var y=window.scrollY+130,cur=items[0];items.forEach(function(it){if(it.h.offsetTop<=y)cur=it;});items.forEach(function(it){it.a.classList.toggle('on',it===cur);});};window.addEventListener('scroll',spy,{passive:true});spy();}}
+if(!items.length){var l=document.querySelector('.slabel');if(l)l.style.display='none';}
+else{var spy=function(){var y=window.scrollY+100,cur=items[0];items.forEach(function(it){if(it.h.getBoundingClientRect().top+window.scrollY<=y)cur=it;});items.forEach(function(it){it.a.classList.toggle('on',it===cur);});};window.addEventListener('scroll',spy,{passive:true});spy();}}
 var top=document.getElementById('toTop');if(top){window.addEventListener('scroll',function(){top.classList.toggle('show',window.scrollY>600);},{passive:true});top.addEventListener('click',function(){window.scrollTo({top:0,behavior:'smooth'});});}
 }catch(e){}})();
 </script>
 </body></html>"""
+
+_PRIV_TILES = ("<div class='stat ok'><div class=n>None</div><div class=l>Data sold</div></div>"
+               "<div class='stat ok'><div class=n>None</div><div class=l>Card details stored</div></div>"
+               "<div class='stat brand'><div class=n>On request</div><div class=l>Data deletion</div></div>")
+_TERM_TILES = ("<div class='stat brand'><div class=n>$7.99</div><div class=l>Per month</div></div>"
+               "<div class='stat brand'><div class=n>1 server</div><div class=l>Per subscription</div></div>"
+               "<div class='stat ok'><div class=n>Anytime</div><div class=l>Cancel</div></div>")
 
 
 def _legal_page(title: str, body: str) -> str:
@@ -1478,23 +1517,14 @@ def _legal_page(title: str, body: str) -> str:
     sub = ("What Gang Manager stores, why it needs it, and how to get your data removed."
            if is_privacy else
            "The agreement for adding and running Gang Manager in your Discord server.")
-    icon = ("<svg viewBox='0 0 24 24' width=13 height=13 fill=none stroke=currentColor stroke-width=2 "
-            "stroke-linecap=round stroke-linejoin=round><path d='M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z'/></svg>"
-            if is_privacy else
-            "<svg viewBox='0 0 24 24' width=13 height=13 fill=none stroke=currentColor stroke-width=2 "
-            "stroke-linecap=round stroke-linejoin=round><path d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 "
-            "2-2V8z'/><path d='M14 3v5h5'/></svg>")
-    nav = (
-        "<a class='lt{p}' href='/privacy'>Privacy</a>"
-        "<a class='lt{t}' href='/terms'>Terms</a>"
-        "<a class='lt ext' href='/'>Panel</a>"
-    ).format(p=" on" if is_privacy else "", t="" if is_privacy else " on")
     head = _head_meta(web_base_url(), f"{title} · Gang Manager", _SITE_DESC)
     return (
         _LEGAL_TMPL
         .replace("__HEAD__", head)
-        .replace("__NAV__", nav)
-        .replace("__ICON__", icon)
+        .replace("__BARLABEL__", title.lower())
+        .replace("__TILES__", _PRIV_TILES if is_privacy else _TERM_TILES)
+        .replace("__PON__", "on" if is_privacy else "")
+        .replace("__TON__", "" if is_privacy else "on")
         .replace("__SUB__", sub)
         .replace("__TITLE__", title)
         .replace("__BODY__", body)
