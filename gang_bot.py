@@ -11,6 +11,9 @@ Run with `python gang_bot.py`. Features live in the tenshi_bot package:
   tenshi_bot/gang.py — /gang dashboard & profile, /strike, /war (live scoreboards).
 """
 
+import os
+import sys
+
 from tenshi_bot.core import *  # noqa: F401,F403
 from tenshi_bot.roster import *  # noqa: F401,F403
 from tenshi_bot.kos import *  # noqa: F401,F403
@@ -299,12 +302,20 @@ def main() -> None:
     try:
         bot.run(TOKEN, log_handler=None)
     except discord.PrivilegedIntentsRequired:
+        # The members intent is requested by default (welcome + join/leave logs),
+        # but the "Server Members Intent" toggle is off in the Developer Portal.
+        # Don't crash a live bot — restart once WITHOUT the intent so it keeps
+        # running. Welcome/join logs stay off until the portal toggle is enabled.
+        if os.getenv("MEMBERS_INTENT", "true").lower() in ("0", "false", "no", "off"):
+            raise  # already running without it — avoid a restart loop
         log.error(
-            "Server Members Intent is NOT enabled. Turn it on in the Discord "
-            "Developer Portal → your app → Bot → Privileged Gateway Intents → "
-            "Server Members Intent, then redeploy."
+            "Server Members Intent is OFF in the Developer Portal, so welcome "
+            "messages and join/leave logs are disabled. Enable it at Developer "
+            "Portal -> your app -> Bot -> Privileged Gateway Intents -> Server "
+            "Members Intent, then restart. Running without it for now."
         )
-        raise
+        os.environ["MEMBERS_INTENT"] = "false"
+        os.execv(sys.executable, [sys.executable, *sys.argv])
 
 
 if __name__ == "__main__":
