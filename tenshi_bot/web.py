@@ -2934,7 +2934,17 @@ h1 .g{background-size:200% 100%;animation:sheen 6s ease-in-out infinite}
 .mpchip em{font-style:normal;font-size:10px;font-weight:800;color:#c9c9d2;padding:2px 7px;border-radius:6px;background:rgba(255,255,255,.08);text-transform:uppercase;letter-spacing:.4px}
 /* body */
 .mpbody{padding:16px 18px 20px;text-align:left}
-.mpstats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.mpsrv{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.mpsrv .l{font-size:13px;color:#8a8a94;font-weight:600}
+.mpsel{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:10px;border:1px solid var(--line);background:rgba(0,0,0,.28);font-size:13px;font-weight:600;color:#e8e8ee}
+.mpsel i{font-style:normal;color:#8a8a94}
+.mpstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:10px;margin-bottom:14px}
+.mpstat .n.rf{font-size:17px}
+.mptoolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.mpsearch{flex:1;padding:9px 13px;border-radius:11px;border:1px solid var(--line);background:rgba(0,0,0,.28);color:#7a7a84;font-size:13px}
+.mprefresh{padding:9px 13px;border-radius:11px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:#cfcfd6;font-size:13px;font-weight:600;white-space:nowrap}
+.mpcount{color:#8a8a94;font-size:12.5px;font-weight:600;white-space:nowrap}
+.mpfoot{margin-top:16px;padding-top:13px;border-top:1px solid rgba(255,255,255,.06);font-size:11.5px;color:#7a7a84;text-align:center}
 .mpstat{position:relative;overflow:hidden;padding:13px 14px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.14);
  background:linear-gradient(180deg,rgba(28,17,23,.72),rgba(14,14,19,.72));box-shadow:0 10px 30px rgba(0,0,0,.4)}
 .mpstat::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--silver);opacity:.85}
@@ -2987,7 +2997,7 @@ h1 .g{background-size:200% 100%;animation:sheen 6s ease-in-out infinite}
 .mpitem .num{font-weight:800;font-variant-numeric:tabular-nums;color:#e8e8ee;font-size:14px}
 @keyframes ping{0%{box-shadow:0 0 0 0 rgba(34,197,94,.6)}80%,100%{box-shadow:0 0 0 9px rgba(34,197,94,0)}}
 @keyframes sheen{to{background-position:200% center}}
-@media(max-width:760px){.mpstats{grid-template-columns:repeat(2,1fr)}.mock,.mock.up{transform:none}.mphead{padding:12px 14px}.mpbody{padding:14px}.mpchip em{display:none}}
+@media(max-width:760px){.mpstats{grid-template-columns:repeat(2,1fr)}.mock,.mock.up{transform:none}.mphead{padding:12px 14px}.mpbody{padding:14px}.mpchip em{display:none}.mpcount{display:none}}
 /* ---- Discord showcase (mirrors the bot's real Components-V2 cards) ---- */
 .dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;align-items:start}
 .dmsg{display:flex;gap:12px;padding:16px;border-radius:16px;background:#2b2d31;border:1px solid rgba(255,255,255,.06);
@@ -3070,11 +3080,15 @@ h1 .g{background-size:200% 100%;animation:sheen 6s ease-in-out infinite}
       <div class=mpchip><span class=pa>S</span>Shadow<em>Owner</em></div>
     </div>
     <div class=mpbody>
+      <div class=mpsrv><span class=l>Server</span><span class=mpsel>Los Santos Mafia<i>▾</i></span></div>
       <div class=mpstats>
-        <div class=mpstat><span class=ic>👥</span><div class=n data-n="48">0</div><div class=l>Ranked</div></div>
+        <div class=mpstat><span class=ic>🎯</span><div class=n data-n="48">0</div><div class=l>Ranked</div></div>
         <div class="mpstat bad"><span class=ic>💀</span><div class=n data-n="7">0</div><div class=l>On KOS</div></div>
-        <div class="mpstat blue"><span class=ic>🎫</span><div class=n data-n="12">0</div><div class=l>Open orders</div></div>
-        <div class="mpstat purple"><span class=ic>📨</span><div class=n data-n="3">0</div><div class=l>Pending EOIs</div></div>
+        <div class="mpstat warn"><span class=ic>📨</span><div class=n data-n="3">0</div><div class=l>Pending EOIs</div></div>
+        <div class="mpstat warn"><span class=ic>⚠️</span><div class=n data-n="2">0</div><div class=l>Strikes 30d</div></div>
+        <div class="mpstat blue"><span class=ic>⚔️</span><div class=n data-n="1">0</div><div class=l>Wars</div></div>
+        <div class="mpstat ok"><span class=ic>👥</span><div class=n data-n="52">0</div><div class=l>In server</div></div>
+        <div class="mpstat purple"><span class=ic>📻</span><div class="n rf">112.5</div><div class=l>Radio</div></div>
       </div>
       <div class=mptabs role=tablist>
         <button type=button class="mptab on" data-v=roster>👥 Roster</button>
@@ -3088,6 +3102,7 @@ h1 .g{background-size:200% 100%;animation:sheen 6s ease-in-out infinite}
       </div>
       <div class="mpview on" data-v=roster>
         <div class=mpcap>Built from your rank roles — grouped, ranked and always current.</div>
+        <div class=mptoolbar><span class=mpsearch>Search members…</span><span class=mprefresh>↻ Refresh</span><span class=mpcount>48 members</span></div>
         <div class=mprank>Boss<span class=pill>1</span></div>
         <ul class=mpmembers><li class=mpmem><span class=mpav style="background:#d9d9e3">S</span><b>Shadow</b><em class=r1>Boss</em></li></ul>
         <div class=mprank>Underboss<span class=pill>1</span></div>
@@ -3144,6 +3159,7 @@ h1 .g{background-size:200% 100%;animation:sheen 6s ease-in-out infinite}
         <div class=mpset><span class=sk>Log channel</span><span class=mpdrop>#gang-logs</span></div>
         <div class=mpset><span class=sk>KOS channel</span><span class=mpdrop>#kos-board</span></div>
       </div>
+      <div class=mpfoot>Only the owner &amp; members they add can open this · changes apply to Discord live</div>
     </div>
   </div>
 </div>
