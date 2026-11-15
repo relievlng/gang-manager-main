@@ -230,29 +230,20 @@ async def on_member_join(member: discord.Member) -> None:
     wid = store.get("welcome_channel_id")
     wchannel = guild.get_channel(wid) if wid else None
     if wchannel is not None:
-        submit = discord.utils.get(guild.text_channels, name="submit-eois")
-        where = submit.mention if submit is not None else "#submit-eois"
-        embed = discord.Embed(
-            title=f"👋  Welcome to {guild.name}!",
-            description=(
-                f"Hey {member.mention}, glad to have you.\n"
-                f"Grab your roles, read the rules, and when you want to join up head to "
-                f"{where} to submit your application."
-            ),
-            color=EMBED_COLOR,
-            timestamp=datetime.datetime.now(datetime.timezone.utc),
-        )
-        embed.set_thumbnail(url=member.display_avatar.url)
-        embed.set_footer(text=f"Member #{guild.member_count}")
         try:
             await _send_card(
                 wchannel,
-                [embed],
+                [welcome_embed(guild, member)],
                 header=member.mention,
                 allowed_mentions=discord.AllowedMentions(users=True),
             )
-        except discord.HTTPException:
-            pass
+        except discord.Forbidden:
+            log.warning(
+                "Welcome: no permission to post in #%s (guild %s)",
+                getattr(wchannel, "name", wchannel), guild.id,
+            )
+        except discord.HTTPException as exc:
+            log.warning("Welcome: send failed in guild %s: %s", guild.id, exc)
 
     # join log
     created = int(member.created_at.timestamp())

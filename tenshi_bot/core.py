@@ -415,6 +415,26 @@ def guild_active(guild_id) -> bool:
     return True if _ACTIVE is None else bool(_ACTIVE(guild_id))
 
 
+def welcome_embed(guild: "discord.Guild", member) -> "discord.Embed":
+    """The join welcome card — shared by on_member_join and the panel's
+    'Test welcome' button so both render identically."""
+    submit = discord.utils.get(guild.text_channels, name="submit-eois")
+    where = submit.mention if submit is not None else "#submit-eois"
+    embed = discord.Embed(
+        title=f"👋  Welcome to {guild.name}!",
+        description=(
+            f"Hey {member.mention}, glad to have you.\n"
+            f"Grab your roles, read the rules, and when you want to join up head to "
+            f"{where} to submit your application."
+        ),
+        color=EMBED_COLOR,
+        timestamp=datetime.datetime.now(datetime.timezone.utc),
+    )
+    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.set_footer(text=f"Member #{guild.member_count}")
+    return embed
+
+
 class GatedView(discord.ui.View):
     """Base for every paid feature's buttons and menus: in a server without an
     active subscription, a click gets a short 'not active' notice instead of

@@ -4050,6 +4050,42 @@ async def _h_setting_set(request):
     return _aioweb.json_response({"ok": True, "settings": _settings_list(guild, store)})
 
 
+async def _h_welcome_test(request):
+    """Post the welcome card to the configured welcome channel right now, so the
+    user can verify it works without waiting for a real join (and without the
+    members intent). Surfaces the real error if the send fails."""
+    guild = await _req_guild(request)
+    if guild is None:
+        return _aioweb.json_response({"error": "Guild not found."}, status=404)
+    ok, code, msg = await _setup_gate(request, guild)
+    if not ok:
+        return _aioweb.json_response({"error": msg}, status=code)
+    store = guild_store(DATA, guild.id)
+    wid = store.get("welcome_channel_id")
+    if not wid:
+        return _aioweb.json_response({"error": "No welcome channel is set yet — pick one above first."}, status=400)
+    ch = guild.get_channel(wid)
+    if ch is None:
+        return _aioweb.json_response({"error": "That welcome channel was deleted — pick a new one."}, status=400)
+    member = _web_actor(request, guild) or guild.me
+    if member is None:
+        return _aioweb.json_response({"error": "Couldn't resolve a member to preview with."}, status=400)
+    try:
+        await _send_card(
+            ch, [welcome_embed(guild, member)],
+            header=member.mention,
+            allowed_mentions=discord.AllowedMentions(users=False),
+        )
+    except discord.Forbidden:
+        return _aioweb.json_response(
+            {"error": f"I can't post in #{ch.name} — give me Send Messages + Embed Links there."}, status=400)
+    except discord.HTTPException:
+        return _aioweb.json_response({"error": "Discord rejected the message — try again."}, status=502)
+    await send_log(guild, store, f"🌐 Test welcome posted to {ch.mention} from the website.",
+                   category="web", actor=member if member is not guild.me else None)
+    return _aioweb.json_response({"ok": True, "channel": ch.name})
+
+
 _web_started = False
 
 
@@ -4733,6 +4769,7 @@ async def start_web_server() -> None:
             _aioweb.post("/api/eoi_accept", _h_eoi_accept),
             _aioweb.get("/api/settings", _h_settings),
             _aioweb.post("/api/setting_set", _h_setting_set),
+            _aioweb.post("/api/welcome_test", _h_welcome_test),
             _aioweb.post("/api/web_toggle", _h_web_toggle),
             _aioweb.post("/api/web_member_add", _h_web_member_add),
             _aioweb.post("/api/web_member_remove", _h_web_member_remove),
@@ -5866,7 +5903,10 @@ async function renderSettings(){
         +'<button onclick="addWebMember()">➕ Add</button></div>'
       +(( (wa.candidates||[]).length===0 )?'<div class="muted" style="font-size:12px;margin-top:6px">No members to list yet — enable the Server Members Intent to populate this, or add by selecting once they appear.</div>':'')+'</div>'
     +'<div class="card"><h4>👑 Roles</h4>'+roles.map(row).join("")+'</div>'
-    +'<div class="card"><h4>📁 Channels</h4>'+mainc.map(row).join("")+'</div>'
+    +'<div class="card"><div class="setuptop"><h4 style="margin:0">📁 Channels</h4>'
+      +'<button class="ghost" onclick="testWelcome(this)">✉️ Test welcome</button></div>'
+      +'<div class="muted" style="font-size:12px;margin:4px 0 8px">Posts the welcome card to your Welcome channel right now so you can check it — no need to wait for someone to join.</div>'
+      +mainc.map(row).join("")+'</div>'
     +'<div class="card"><div class="setuptop"><h4 style="margin:0">📝 Log channels</h4>'
       +'<button class="ghost" onclick="logsSetup()">⚡ Auto-create all</button></div>'
       +'<div class="muted" style="font-size:12px;margin:6px 0">Creates a private <b>📋 Gang Manager Logs</b> category with a channel for every log type and wires them up. (Bot needs Manage Channels.)</div>'
@@ -5875,6 +5915,12 @@ async function renderSettings(){
 async function setSetting(key,value){
   try{const r=await post("/api/setting_set",{guild:STATE.guild,key,value});STATE.settings=r.settings;toast("Saved","ok");renderSettings();}
   catch(e){if(e.status===401||e.status===403)return boot();toast(e.message||"Failed","err");STATE.settings=null;renderSettings();}
+}
+async function testWelcome(btn){
+  if(btn)btn.disabled=true;
+  try{const r=await post("/api/welcome_test",{guild:STATE.guild});toast("Welcome posted to #"+(r.channel||"welcome")+" ✓","ok");}
+  catch(e){if(e.status===401||e.status===403)return boot();toast(e.message||"Couldn't send test welcome","err");}
+  finally{if(btn)btn.disabled=false;}
 }
 async function toggleWeb(on){
   try{const r=await post("/api/web_toggle",{guild:STATE.guild,enabled:on});toast("Website panel "+(r.enabled?"on":"off"),"ok");STATE.settings=null;renderSettings();}
