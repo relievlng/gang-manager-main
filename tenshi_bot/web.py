@@ -1399,30 +1399,105 @@ _SITE_DESC = ("Roster, KOS, strikes, wars, tickets and recruitment — one Disco
               "with a full web control panel for your FiveM gang.")
 
 
+_LEGAL_TMPL = r"""<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>__TITLE__ · Gang Manager</title>__HEAD__<link rel=preconnect href='https://fonts.googleapis.com'><link rel=preconnect href='https://fonts.gstatic.com' crossorigin><link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap' rel=stylesheet><style>
+:root{--bg:#07070b;--ink:#ececf3;--mut:#a7a7b5;--dim:#78788a;--line:rgba(255,255,255,.08);--card:rgba(255,255,255,.025);--acc:#8b5cf6;--acc2:#6366f1}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.6}
+.glow{position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(900px 420px at 50% -120px,rgba(139,92,246,.18),transparent 70%)}
+.bar{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 22px;background:rgba(9,9,13,.72);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink)}
+.brand img{height:26px;width:auto;display:block}
+.brand span{font-weight:700;letter-spacing:.3px;font-size:15px}
+.tabs{display:flex;align-items:center;gap:4px}
+.lt{color:var(--mut);text-decoration:none;font-size:13.5px;font-weight:500;padding:7px 12px;border-radius:9px;border:1px solid transparent;transition:.15s}
+.lt:hover{color:var(--ink);background:rgba(255,255,255,.04)}
+.lt.on{color:var(--ink);background:rgba(139,92,246,.14);border-color:rgba(139,92,246,.35)}
+.lt.ext::after{content:' \2197';color:var(--dim)}
+.wrap{position:relative;z-index:1;max-width:980px;margin:0 auto;padding:0 22px 90px}
+.hero{padding:56px 0 26px}
+.kicker{display:inline-flex;align-items:center;gap:7px;color:var(--acc);font-size:12px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase}
+.hero h1{font-size:clamp(30px,6vw,42px);line-height:1.08;margin:14px 0 10px;letter-spacing:-.5px;background:linear-gradient(180deg,#fff,#c9c6e4);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--mut);font-size:16px;max-width:580px;margin:0}
+.grid{display:grid;grid-template-columns:210px 1fr;gap:44px;align-items:start}
+.toc{position:sticky;top:86px}
+.toclab{font-size:11.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);margin:0 0 10px;padding-left:12px}
+#toc{display:flex;flex-direction:column;gap:1px}
+#toc a{display:block;color:var(--mut);text-decoration:none;font-size:13px;line-height:1.35;padding:7px 12px;border-left:2px solid transparent;border-radius:0 7px 7px 0;transition:.15s}
+#toc a:hover{color:var(--ink);background:rgba(255,255,255,.03)}
+#toc a.on{color:var(--ink);border-left-color:var(--acc);background:rgba(139,92,246,.09)}
+.doc{min-width:0}
+.doc .upd{display:inline-block;font-size:12.5px;font-weight:600;color:var(--acc);background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.26);padding:5px 13px;border-radius:999px;margin:0 0 22px}
+.doc h2{font-size:18px;color:var(--ink);margin:36px 0 10px;padding-left:15px;position:relative;letter-spacing:.2px;scroll-margin-top:92px}
+.doc h2::before{content:'';position:absolute;left:0;top:3px;bottom:3px;width:3px;border-radius:2px;background:linear-gradient(180deg,var(--acc),var(--acc2))}
+.doc p,.doc li{color:var(--mut);font-size:15px;line-height:1.72}
+.doc ul{padding-left:20px;margin:8px 0}
+.doc li{margin:7px 0}
+.doc li::marker{color:var(--acc)}
+.doc a{color:#fff;text-decoration:underline;text-underline-offset:2px;text-decoration-color:rgba(255,255,255,.32)}
+.doc a:hover{text-decoration-color:#fff}
+.doc b{color:#dcdce6;font-weight:600}
+.foot{margin-top:66px;padding-top:24px;border-top:1px solid var(--line)}
+.fcols{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:12px}
+.fcols a{color:var(--mut);text-decoration:none;font-size:14px}
+.fcols a:hover{color:var(--ink)}
+.foot p{color:var(--dim);font-size:13px;line-height:1.6;margin:6px 0;max-width:620px}
+.totop{position:fixed;right:20px;bottom:20px;z-index:20;width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(20,20,26,.82);backdrop-filter:blur(8px);color:var(--ink);font-size:18px;cursor:pointer;opacity:0;transform:translateY(10px);transition:.2s;pointer-events:none}
+.totop.show{opacity:1;transform:translateY(0);pointer-events:auto}
+.totop:hover{border-color:var(--acc);color:#fff}
+@media(max-width:900px){.grid{grid-template-columns:1fr;gap:18px}.toc{position:static;border:1px solid var(--line);background:var(--card);border-radius:14px;padding:14px 12px}.toclab{padding-left:4px}#toc{flex-direction:row;flex-wrap:wrap;gap:6px}#toc a{border-left:none;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px}#toc a.on{border-color:rgba(139,92,246,.4)}}
+@media(max-width:620px){.hero{padding:40px 0 20px}.bar{padding:10px 16px}.wrap{padding:0 16px 80px}.lt{padding:6px 9px;font-size:13px}}
+</style></head><body>
+<div class=glow></div>
+<header class=bar><a class=brand href='/'><img src='/gm-logo.png' alt='GM'><span>Gang Manager</span></a><nav class=tabs>__NAV__</nav></header>
+<main class=wrap>
+<div class=hero><span class=kicker>__ICON__ Legal</span><h1>__TITLE__</h1><p class=sub>__SUB__</p></div>
+<div class=grid>
+<aside id=tocwrap class=toc><div class=toclab>On this page</div><nav id=toc></nav></aside>
+<article class=doc>__BODY__</article>
+</div>
+<footer class=foot><div class=fcols><a href='/privacy'>Privacy Policy</a><a href='/terms'>Terms of Service</a><a href='/'>Panel</a></div>
+<p>Gang Manager is a community tool for FiveM roleplay Discord servers, operated independently and not affiliated with or endorsed by Discord Inc. or Rockstar Games. Questions or a data request? Contact the bot operator in your Discord server.</p></footer>
+</main>
+<button id=toTop class=totop aria-label='Back to top'>&uarr;</button>
+<script>
+(function(){try{
+var doc=document.querySelector('.doc'),toc=document.getElementById('toc');
+if(doc&&toc){var hs=doc.querySelectorAll('h2'),items=[];
+hs.forEach(function(h,i){var id=h.id||('s'+(i+1));h.id=id;var a=document.createElement('a');a.href='#'+id;a.textContent=h.textContent;toc.appendChild(a);items.push({a:a,h:h});});
+if(!items.length){var w=document.getElementById('tocwrap');if(w)w.style.display='none';}
+else{var spy=function(){var y=window.scrollY+130,cur=items[0];items.forEach(function(it){if(it.h.offsetTop<=y)cur=it;});items.forEach(function(it){it.a.classList.toggle('on',it===cur);});};window.addEventListener('scroll',spy,{passive:true});spy();}}
+var top=document.getElementById('toTop');if(top){window.addEventListener('scroll',function(){top.classList.toggle('show',window.scrollY>600);},{passive:true});top.addEventListener('click',function(){window.scrollTo({top:0,behavior:'smooth'});});}
+}catch(e){}})();
+</script>
+</body></html>"""
+
+
 def _legal_page(title: str, body: str) -> str:
+    is_privacy = "privacy" in title.lower()
+    sub = ("What Gang Manager stores, why it needs it, and how to get your data removed."
+           if is_privacy else
+           "The agreement for adding and running Gang Manager in your Discord server.")
+    icon = ("<svg viewBox='0 0 24 24' width=13 height=13 fill=none stroke=currentColor stroke-width=2 "
+            "stroke-linecap=round stroke-linejoin=round><path d='M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z'/></svg>"
+            if is_privacy else
+            "<svg viewBox='0 0 24 24' width=13 height=13 fill=none stroke=currentColor stroke-width=2 "
+            "stroke-linecap=round stroke-linejoin=round><path d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 "
+            "2-2V8z'/><path d='M14 3v5h5'/></svg>")
+    nav = (
+        "<a class='lt{p}' href='/privacy'>Privacy</a>"
+        "<a class='lt{t}' href='/terms'>Terms</a>"
+        "<a class='lt ext' href='/'>Panel</a>"
+    ).format(p=" on" if is_privacy else "", t="" if is_privacy else " on")
+    head = _head_meta(web_base_url(), f"{title} · Gang Manager", _SITE_DESC)
     return (
-        "<!doctype html><html lang=en><head><meta charset=utf-8>"
-        "<meta name=viewport content='width=device-width,initial-scale=1'>"
-        f"<title>{title} · Gang Manager</title>"
-        + _head_meta(web_base_url(), f"{title} · Gang Manager", _SITE_DESC)
-        + "<style>"
-        "body{margin:0;background:#07070a;color:#e9e9ef;"
-        "font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.65}"
-        ".wrap{max-width:760px;margin:0 auto;padding:48px 22px 80px}"
-        "header{display:flex;align-items:center;gap:14px;margin-bottom:8px}"
-        "header img{height:40px;width:auto}"
-        "header b{font-size:20px;letter-spacing:.3px}"
-        "h1{font-size:28px;margin:26px 0 4px}"
-        "h2{font-size:17px;margin:28px 0 6px;color:#c9c9d2}"
-        ".upd{color:#8a8a92;font-size:13px;margin:0 0 8px}"
-        "p,li{color:#c9c9d2;font-size:15px}a{color:#fff}"
-        ".note{margin-top:40px;padding-top:16px;border-top:1px solid rgba(255,255,255,.08);color:#8a8a92;font-size:13px}"
-        "</style></head><body><div class=wrap>"
-        "<header><img src='/gm-logo.png' alt='GM'><b>Gang Manager</b></header>"
-        f"<h1>{title}</h1>{body}"
-        "<div class=note>Gang Manager is a community tool for FiveM roleplay Discord servers. "
-        "Questions? Contact your server's staff or the bot operator in your Discord server.</div>"
-        "</div></body></html>"
+        _LEGAL_TMPL
+        .replace("__HEAD__", head)
+        .replace("__NAV__", nav)
+        .replace("__ICON__", icon)
+        .replace("__SUB__", sub)
+        .replace("__TITLE__", title)
+        .replace("__BODY__", body)
     )
 
 
