@@ -61,6 +61,7 @@ from .pool import (
     remove_bot,
     restart_bot,
     set_pool_enabled,
+    set_admin_guild,
 )
 
 try:  # aiohttp ships with discord.py; guard so the package still imports without it
@@ -4373,6 +4374,17 @@ button.on{border-color:var(--ok);color:#86efac;background:rgba(34,197,94,.1)}
 .bserve{margin-left:auto}
 .bwarn{margin-top:10px;font-size:12.5px;color:#fcd34d;display:grid;gap:3px}
 .bacts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.botcap{font-size:11px;font-weight:800;padding:1px 8px;border-radius:999px;background:rgba(255,255,255,.07);color:#cfcfd8;border:1px solid var(--line);vertical-align:middle;margin-left:4px}
+.botcap.full{background:rgba(239,68,68,.16);color:#fca5a5;border-color:rgba(239,68,68,.4)}
+.bservers{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.botx{border:none;background:transparent;color:inherit;opacity:.6;cursor:pointer;font-size:13px;line-height:1;padding:0 2px;font-weight:800}
+.botx:hover{opacity:1;color:#fff;transform:none;background:transparent}
+.botlink{color:#fcd34d;text-decoration:underline;font-weight:700}
+.bstrain{display:flex;align-items:center;gap:10px;margin-top:10px}
+.sbar{flex:1;height:7px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden;min-width:80px}
+.sbar i{display:block;height:100%;border-radius:5px;background:#22c55e;transition:width .4s}
+.slab{font-size:11.5px;color:var(--mute);white-space:nowrap}
+.bstrain.idle .sbar i{background:#6b7280}.bstrain.light .sbar i{background:#22c55e}.bstrain.mod .sbar i{background:#f59e0b}.bstrain.heavy .sbar i{background:#f97316}.bstrain.full .sbar i{background:#ef4444}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px 22px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
 .kv{display:flex;flex-direction:column;gap:2px;min-width:0}
 .kv .k{font-size:10.5px;color:var(--mute);text-transform:uppercase;letter-spacing:.6px}
@@ -4517,6 +4529,18 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
       </ol></details>
     </div>
     <div class=card>
+      <div class=poolhead>
+        <div><h3 style=margin:0>Admin / hub server</h3><p class=hint style="margin:4px 0 0">Keep every bot in one server so you can watch the whole fleet. Bots sit here on top of the server they serve — they won’t leave it.</p></div>
+      </div>
+      <div class=frm style="margin-top:10px;align-items:center;flex-wrap:wrap">
+        <input id=poolHub placeholder="Hub server ID" autocomplete=off inputmode=numeric style="min-width:200px">
+        <button class=ghost id=poolHubSave>Save</button>
+        <button class=brand-btn id=poolHubAdd style=display:none>🏠 Add all bots here</button>
+      </div>
+      <p class=hint id=poolHubMsg style="margin:8px 0 0"></p>
+      <p class=hint style="margin:6px 0 0;opacity:.7">To get the ID: Discord → Settings → Advanced → turn on Developer Mode, then right-click your server → Copy Server ID.</p>
+    </div>
+    <div class=card>
       <div class=toolbar style=margin-bottom:8px><input id=poolSearch placeholder="Search bots or servers…" autocomplete=off><button class="ghost sm" id=poolRefresh>↻ Refresh</button></div>
       <div id=poolList></div>
     </div>
@@ -4586,27 +4610,41 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
   var POOL=null,POOLQ='';
   function loadBots(){var box=$('#poolList');if(!POOL)box.innerHTML='<div class=sk style=height:68px></div><div class=sk style=height:68px></div>';api('/api/admin/pool').then(function(d){if(!d||!d.ok){box.innerHTML='<div class=pad>'+esc((d&&d.error)||'Could not load.')+'</div>';return}POOL=d;renderPool()})}
   function renderPool(){var d=POOL;if(!d)return;var sw=$('#poolSwitch');sw.classList.toggle('on',!!d.enabled);$('#poolSwitchTxt').textContent=d.enabled?'Hand-outs on':'Hand-outs off';
-    var c=d.counts||{};$('#poolStats').innerHTML=[['🤖',c.total,'Pool bots'],['🟢',c.online,'Online'],['🏴',c.serving,'Serving'],['⏳',c.reserved,'Reserved'],['✨',c.free,'Free']].map(function(x){return '<div class=pst><span>'+x[0]+'</span><b>'+nf(x[1]||0)+'</b><small>'+x[2]+'</small></div>'}).join('');
+    var c=d.counts||{};$('#poolStats').innerHTML=[['🤖',c.total,'Pool bots'],['🟢',c.online,'Online'],['🏴',c.serving,'Servers'],['⏳',c.reserved,'Reserved'],['🎟️',c.slots,'Open slots']].map(function(x){return '<div class=pst><span>'+x[0]+'</span><b>'+nf(x[1]||0)+'</b><small>'+x[2]+'</small></div>'}).join('');
+    var hb=$('#poolHub');if(hb&&document.activeElement!==hb)hb.value=d.admin_guild||'';var hba=$('#poolHubAdd');if(hba)hba.style.display=(d.admin_guild&&(d.bots||[]).length)?'':'none';
     var cr=d.crypto||{},cw=$('#poolCrypto');if(cr.ok){cw.style.display='none'}else{cw.style.display='';cw.textContent='⚠ '+(cr.why||'Token storage is unavailable.')}
     var all=d.bots||[],q=POOLQ.toLowerCase(),box=$('#poolList');
     if(!all.length){box.innerHTML='<div class=pad>No pool bots yet — add tokens above. Until hand-outs are on, every customer keeps getting your main bot.</div>';return}
-    var list=all.filter(function(b){return !q||(b.name||'').toLowerCase().indexOf(q)>=0||String(b.id).indexOf(q)>=0||(b.assigned_name||'').toLowerCase().indexOf(q)>=0||String(b.assigned_guild||'').indexOf(q)>=0});
+    var list=all.filter(function(b){return !q||(b.name||'').toLowerCase().indexOf(q)>=0||String(b.id).indexOf(q)>=0||(b.servers||[]).some(function(s){return (s.name||'').toLowerCase().indexOf(q)>=0||String(s.id).indexOf(q)>=0})});
     if(!list.length){box.innerHTML='<div class=pad>Nothing matches.</div>';return}
     var LBL={online:'Online',starting:'Starting…',offline:'Offline',error:'Crashed — retrying',bad_token:'Token rejected',locked:'Locked — re-add token',stopped:'Stopped'};
     box.innerHTML=list.map(function(b){var n=all.indexOf(b)+1,dot=b.online?'on':(b.status==='starting'?'wait':'off');
-      var serve=b.assigned_guild?(b.in_guild?'<span class="botin pool">🏴 '+esc(b.assigned_name||b.assigned_guild)+'</span>':'<span class="botin wait">⏳ Reserved'+(b.assigned_name?' · '+esc(b.assigned_name):'')+'</span>'):(b.online?'<span class="botin yes">✨ Free</span>':'<span class="botin off">Not available</span>');
+      var srv=b.servers||[],cap=b.cap||10;
+      var chips=srv.map(function(s){var nm=esc(s.name||s.id);return s.in_guild
+          ?'<span class="botin pool">🏴 '+nm+' <button class=botx title="Remove this bot from this server" data-pa=free data-b="'+esc(b.id)+'" data-g="'+esc(s.id)+'">×</button></span>'
+          :'<span class="botin wait">⏳ '+nm+(s.invite?' <a class=botlink href="'+esc(s.invite)+'" target=_blank rel=noopener>add</a>':'')+' <button class=botx title="Cancel this reservation" data-pa=free data-b="'+esc(b.id)+'" data-g="'+esc(s.id)+'">×</button></span>'}).join('');
+      var capb='<span class="botcap'+(b.count>=cap?' full':'')+'" title="Servers this bot serves, of its limit">'+(b.count||0)+'/'+cap+'</span>';
+      var serveRow=srv.length?chips:(b.online?'<span class="botin yes">✨ Free · room for '+cap+'</span>':'<span class="botin off">Not available</span>');
+      var pct=Math.round((b.load||0)*100),lvl=(b.count>=cap?'full':(pct>=70?'heavy':(pct>=40?'mod':(b.count?'light':'idle'))));
+      var slab={idle:'Idle',light:'Light',mod:'Moderate',heavy:'Heavy',full:'Full'}[lvl];
+      var lat=(b.latency_ms!=null)?(' · '+b.latency_ms+'ms ping'):'';
+      var strain=b.online?'<div class="bstrain '+lvl+'"><div class=sbar><i style="width:'+(b.count?Math.max(pct,7):0)+'%"></i></div><span class=slab>'+slab+' strain · '+(b.count||0)+'/'+cap+' servers'+lat+'</span></div>':'';
+      var hub=b.hub_invite?'<a class="sm ghost" href="'+esc(b.hub_invite)+'" target=_blank rel=noopener>🏠 Add to hub</a>':'';
       var w=[];if(!b.public)w.push('Public Bot is off — customers can’t add it. Turn it on in its Developer Portal → Bot page, then Restart.');if(b.code_grant)w.push('“Requires OAuth2 Code Grant” is on — turn it off or invites fail.');if(b.online&&!b.members_intent)w.push('Server Members Intent is off — no welcome messages or full member lists. Turn it on in its Developer Portal → Bot page, then Restart.');if(b.status==='bad_token')w.push('Discord rejected its token — reset the token and paste the new one above.');if(b.status==='locked')w.push('Its saved token can’t be decrypted (the encryption key changed) — paste the token again above.');
-      return '<div class=bcard><div class=bhead><div class=bav>'+(b.avatar?'<img src="'+esc(b.avatar)+'" alt="">':'🤖')+'<span class="bdot '+dot+'"></span></div><div class=bmain><div class=bname>'+esc(b.name)+' <span class=bnum>#'+n+'</span></div><div class=mt>'+copyspan(b.id,'mono')+' · '+esc(LBL[b.status]||b.status||'')+(b.added_at?' · added '+fmtIso(b.added_at):'')+'</div></div><div class=bserve>'+serve+'</div></div>'
+      return '<div class=bcard><div class=bhead><div class=bav>'+(b.avatar?'<img src="'+esc(b.avatar)+'" alt="">':'🤖')+'<span class="bdot '+dot+'"></span></div><div class=bmain><div class=bname>'+esc(b.name)+' <span class=bnum>#'+n+'</span> '+capb+'</div><div class=mt>'+copyspan(b.id,'mono')+' · '+esc(LBL[b.status]||b.status||'')+(b.added_at?' · added '+fmtIso(b.added_at):'')+'</div></div></div>'
+        +'<div class=bservers>'+serveRow+'</div>'+strain
         +(w.length?'<div class=bwarn>'+w.map(function(x){return '<div>⚠ '+esc(x)+'</div>'}).join('')+'</div>':'')
-        +'<div class=bacts>'+(b.invite?'<button class="sm ghost" data-pa=copy data-v="'+esc(b.invite)+'">🔗 Copy invite</button>':'')+(b.assigned_guild?'<button class="sm ghost" data-pa=free data-b="'+esc(b.id)+'">↩ Free</button>':'')+'<button class="sm ghost" data-pa=restart data-b="'+esc(b.id)+'">⟳ Restart</button><button class="sm danger" data-pa=remove data-b="'+esc(b.id)+'" data-g="'+esc(b.assigned_guild||'')+'">🗑 Remove</button></div></div>'}).join('');
+        +'<div class=bacts>'+hub+'<button class="sm ghost" data-pa=restart data-b="'+esc(b.id)+'">⟳ Restart</button><button class="sm danger" data-pa=remove data-b="'+esc(b.id)+'" data-g="'+(b.count?'1':'')+'">🗑 Remove</button></div></div>'}).join('');
     box.querySelectorAll('[data-pa]').forEach(function(x){x.onclick=function(){poolAct(x)}})}
   function poolAct(x){var a=x.getAttribute('data-pa'),b=x.getAttribute('data-b');
     if(a==='copy'){var v=x.getAttribute('data-v');try{navigator.clipboard.writeText(v);toast('Invite link copied')}catch(e){toast('Copy failed',true)}return}
     if(a==='restart'){x.disabled=true;api('/api/admin/pool/action','POST',{action:'restart',bot_id:b}).then(function(r){x.disabled=false;if(r.ok){toast('Restarting…');setTimeout(loadBots,3000)}else toast(r.error||'Failed',true)});return}
-    if(a==='free'){confirmBox({icon:'↩️',title:'Free this bot?',message:'It leaves the server it’s serving and goes back into the pool. That server’s subscription isn’t touched — they can add a bot again from the panel.',confirmText:'Free bot',danger:true}).then(function(ok){if(!ok)return;x.disabled=true;api('/api/admin/pool/action','POST',{action:'free',bot_id:b}).then(function(r){x.disabled=false;if(r.ok){toast('Bot freed');loadBots();loadSubs()}else toast(r.error||'Failed',true)})});return}
+    if(a==='free'){var g=x.getAttribute('data-g');confirmBox({icon:'↩️',title:'Remove from this server?',message:'The bot leaves this server and that slot frees up. The server can add a bot again from the panel — its subscription isn’t touched.',confirmText:'Remove bot',danger:true}).then(function(ok){if(!ok)return;x.disabled=true;api('/api/admin/pool/action','POST',{action:'free',bot_id:b,guild:g}).then(function(r){x.disabled=false;if(r.ok){toast('Removed from the server');loadBots();loadSubs()}else toast(r.error||'Failed',true)})});return}
     if(a==='remove'){var g=x.getAttribute('data-g');confirmBox({icon:'🗑️',title:'Remove from the pool?',message:g?'This bot is serving a server — removing it makes it leave that server and forgets its token.':'Its token is forgotten. You can add it back any time.',confirmText:'Remove',danger:true}).then(function(ok){if(!ok)return;x.disabled=true;api('/api/admin/pool/action','POST',{action:'remove',bot_id:b,force:!!g}).then(function(r){x.disabled=false;if(r.ok){toast('Removed');loadBots();loadSubs()}else toast(r.error||'Failed',true)})})}}
   function togglePool(){if(!POOL)return;var on=!POOL.enabled;function go(){api('/api/admin/pool/action','POST',{action:'toggle',enabled:on}).then(function(r){if(r.ok){POOL.enabled=r.enabled;renderPool();toast(r.enabled?'Hand-outs on — new servers get their own bot':'Hand-outs off — new servers get the main bot')}else toast(r.error||'Failed',true)})}
     if(on&&!((POOL.counts||{}).free>0)){confirmBox({icon:'🤖',title:'Turn hand-outs on?',message:'No pool bot is online and free right now, so new servers will keep getting the main bot until one is.',confirmText:'Turn on'}).then(function(ok){if(ok)go()})}else go()}
+  function saveHub(){var v=(($('#poolHub').value)||'').replace(/[^0-9]/g,'');api('/api/admin/pool/action','POST',{action:'hub',guild:v}).then(function(r){if(r.ok){if(POOL){POOL.admin_guild=r.admin_guild;POOL.main_hub_invite=r.main_hub_invite}$('#poolHubMsg').textContent=r.admin_guild?'Hub saved. Add the bots with the button, or the 🏠 link on each bot.':'Hub server cleared.';loadBots()}else toast(r.error||'Failed',true)})}
+  function addAllToHub(){if(!POOL||!POOL.admin_guild){toast('Save a hub server first',true);return}var links=[];if(POOL.main_hub_invite)links.push(POOL.main_hub_invite);(POOL.bots||[]).forEach(function(b){if(b.hub_invite)links.push(b.hub_invite)});if(!links.length){toast('No bots to add yet',true);return}links.forEach(function(u,i){setTimeout(function(){window.open(u,'_blank','noopener')},i*700)});$('#poolHubMsg').textContent='Opening '+links.length+' invite'+(links.length===1?'':'s')+' — click Authorize on each. If pop-ups are blocked, use the 🏠 Add to hub button on each bot below.';}
   function addBots(){var ta=$('#poolTokens'),raw=ta.value.trim();if(!raw){toast('Paste at least one token',true);return}var btn=$('#poolAddBtn');btn.disabled=true;$('#poolAddMsg').textContent='Checking each token with Discord…';
     api('/api/admin/pool/add','POST',{tokens:raw},180000).then(function(r){btn.disabled=false;$('#poolAddMsg').textContent='';var res=(r&&r.results)||[];
       if(!res.length){toast((r&&r.error)||'Failed',true);return}
@@ -4621,7 +4659,7 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
   function cmdkBuild(q){q=(q||'').toLowerCase();var items=[];var nav=[['subs','📂','Subscriptions'],['bans','⛔','Bans'],['shop','🧾','Shop log'],['staff','🛡️','Staff access']];if(STATE.owner)nav.push(['bots','🤖','Bots']);nav.forEach(function(n){if(!q||n[2].toLowerCase().indexOf(q)>=0)items.push({t:'tab',id:n[0],ic:n[1],label:n[2],sub:'Section'})});SERVERS.forEach(function(s){if(!q||(s.name||'').toLowerCase().indexOf(q)>=0||String(s.id).indexOf(q)>=0)items.push({t:'srv',id:s.id,ic:'🌐',label:s.name,sub:bucket(s)})});cmdkItems=items.slice(0,40);cmdkSel=0;cmdkRender()}
   function cmdkRender(){$('#cmdkList').innerHTML=cmdkItems.length?cmdkItems.map(function(it,i){return '<div class="ci'+(i===cmdkSel?' sel':'')+'" data-i="'+i+'"><span class=cig>'+it.ic+'</span><span>'+esc(it.label)+'</span><span class=cis>'+esc(it.sub)+'</span></div>'}).join(''):'<div class=pad>No matches</div>';$('#cmdkList').querySelectorAll('.ci').forEach(function(el){el.onclick=function(){cmdkSel=parseInt(el.getAttribute('data-i'),10);cmdkGo()}})}
   function cmdkGo(){var it=cmdkItems[cmdkSel];if(!it){return}closeCmdk();if(it.t==='tab'){selectTab(it.id)}else{selectTab('subs');SUBFILTER='all';SUBQ='';$('#subSearch').value=String(it.id);SUBQ=String(it.id);renderFilters();renderSubs();toast('Jumped to '+it.label)}}
-  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-bots')selectTab('bots');if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
+  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-bots')selectTab('bots');if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
   document.addEventListener('input',function(e){var t=e.target;if(t.id==='subSearch'){SUBQ=t.value;renderSubs()}if(t.id==='shopSearch'){SHOPQ=t.value;renderShop()}if(t.id==='banSearch'){BANQ=t.value;renderBans()}if(t.id==='poolSearch'){POOLQ=t.value;renderPool()}if(t.id==='cmdkInput'){cmdkBuild(t.value)}});
   document.addEventListener('change',function(e){if(e.target.id==='subSort'){SUBSORT=e.target.value;renderSubs()}});
   document.addEventListener('keydown',function(e){
@@ -4842,9 +4880,12 @@ async def _h_admin_pool(request):
     if err is not None:
         return err
     data = pool_overview()
+    hub = str(data.get("admin_guild") or "")
     for b in data["bots"]:
-        g = b.get("assigned_guild")
-        b["invite"] = _invite_url(g, client_id=b["id"]) if g else ""
+        b["hub_invite"] = _invite_url(hub, client_id=b["id"]) if hub else ""
+        for s in b.get("servers", []):
+            s["invite"] = _invite_url(s["id"], client_id=b["id"])
+    data["main_hub_invite"] = _invite_url(hub) if hub else ""
     data["ok"] = True
     return _admin_json(data)
 
@@ -4875,12 +4916,17 @@ async def _h_admin_pool_action(request):
         on = set_pool_enabled(bool(body.get("enabled")))
         log.info("admin pool toggle=%s by=%s", on, uid)
         return _admin_json({"ok": True, "enabled": on})
+    if action == "hub":
+        g = set_admin_guild(body.get("guild"))
+        log.info("admin pool hub=%s by=%s", g or "(cleared)", uid)
+        return _admin_json({"ok": True, "admin_guild": g,
+                            "main_hub_invite": _invite_url(g) if g else ""})
     bid = str(body.get("bot_id") or "")
     if not bid.isdigit():
         return _admin_json({"ok": False, "error": "bad bot id"}, 400)
     try:
         if action == "free":
-            res = await free_bot(bid)
+            res = await free_bot(bid, body.get("guild") or None)
         elif action == "remove":
             res = await remove_bot(bid, force=bool(body.get("force")))
         elif action == "restart":

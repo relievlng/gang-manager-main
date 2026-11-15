@@ -236,11 +236,16 @@ WORKERS: list = []
 
 
 def _pool_assignments() -> dict:
-    """guild id -> pool bot id, from the saved pool registry."""
+    """guild id -> pool bot id, from the saved pool registry (a pool bot may
+    serve several servers; each maps back to that one bot)."""
     out: dict = {}
     for bid, rec in ((DATA.get("pool") or {}).get("bots") or {}).items():
-        g = (rec or {}).get("assigned_guild")
-        if g:
+        rec = rec or {}
+        a = rec.get("assigned")
+        keys = list(a.keys()) if isinstance(a, dict) else ([rec.get("assigned_guild")] if rec.get("assigned_guild") else [])
+        for g in keys:
+            if not g:
+                continue
             try:
                 out[int(g)] = int(bid)
             except (TypeError, ValueError):

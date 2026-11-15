@@ -34,6 +34,7 @@ except Exception:  # noqa: BLE001 — without it the pool just refuses to store 
 
 
 MAX_POOL = 100        # hard cap on pool bots in one process
+PER_BOT = 10          # how many servers one pool bot may serve at once
 RESERVE_HOURS = 24    # an "Add bot" hand-out that never joins is reclaimed after this
 LAUNCH_GAP = 1.5      # seconds between pool-bot logins at startup
 
@@ -112,6 +113,22 @@ def set_pool_enabled(on: bool) -> bool:
     return bool(on)
 
 
+def admin_guild() -> str:
+    """The owner's hub/admin server id, or "". Every pool bot is allowed to stay
+    in this one extra server (for watching the whole fleet in one place); it's
+    the only server besides its own hand-out that a bot won't auto-leave."""
+    return str(pool_state().get("admin_guild") or "")
+
+
+def set_admin_guild(gid) -> str:
+    """Set (or clear, with a falsy value) the hub server all bots may sit in."""
+    g = "".join(ch for ch in str(gid or "") if ch.isdigit())
+    pool_state()["admin_guild"] = g
+    save_data(DATA)
+    log.info("Bot pool hub server set to %s.", g or "(none)")
+    return g
+
+
 def _rec(bot_id):
     return pool_state()["bots"].get(str(bot_id))
 
@@ -174,37 +191,81 @@ def _decrypt(blob):
 # Handing pool bots out
 # --------------------------------------------------------------------------- #
 
-def _free_ids(gid: str) -> list:
+def _assigns(rec: dict) -> dict:
+    """The servers this bot serves, as {guild_id: {"at","joined_at","name"}}.
+    Migrates the old single-server fields the first time a record is touched."""
+    a = rec.get("assigned")
+    if not isinstance(a, dict):
+        a = {}
+        old = rec.get("assigned_guild")
+        if old:
+            a[str(old)] = {"at": rec.get("assigned_at"),
+                           "joined_at": rec.get("joined_at"),
+                           "name": rec.get("guild_name") or ""}
+        rec["assigned"] = a
+        if rec.get("last_guild") and not isinstance(rec.get("last_guilds"), dict):
+            rec["last_guilds"] = {str(rec["last_guild"]): _iso_now()}
+        for k in ("assigned_guild", "assigned_at", "joined_at", "guild_name", "last_guild"):
+            rec.pop(k, None)
+    return a
+
+
+def _remember_last(rec: dict, gid) -> None:
+    """Note a server this bot used to serve, so it's offered back if it returns."""
+    last = rec.get("last_guilds")
+    if not isinstance(last, dict):
+        last = {}
+    last[str(gid)] = _iso_now()
+    if len(last) > 30:  # keep the 30 most recent
+        for k in sorted(last, key=lambda k: last[k] or "")[:-30]:
+            last.pop(k, None)
+    rec["last_guilds"] = last
+
+
+def _slots(rec: dict) -> int:
+    """How many more servers this bot can take."""
+    return max(0, PER_BOT - len(_assigns(rec)))
+
+
+def _pick_bot(gid: str):
+    """A pool bot id with room for this server, or None. Prefers a bot that
+    served it before, then fills bots toward PER_BOT before starting a new one."""
     bots = pool_state()["bots"]
-    out = [
+    cand = [
         b for b, r in bots.items()
-        if not r.get("assigned_guild")
+        if _slots(r) > 0
         and r.get("status") not in ("bad_token", "locked")
         and r.get("public", True) is not False
         and _is_online(b)
     ]
-    # prefer the bot this server had last time, then the oldest
-    out.sort(key=lambda b: (bots[b].get("last_guild") != gid, bots[b].get("added_at") or ""))
-    return out
+
+    def rank(b):
+        r = bots[b]
+        served_before = gid not in (r.get("last_guilds") or {})
+        return (served_before, -len(_assigns(r)), r.get("added_at") or "")
+
+    cand.sort(key=rank)
+    return cand[0] if cand else None
 
 
 def reclaim_stale() -> int:
-    """Free hand-outs whose bot never joined within RESERVE_HOURS. Only bots
-    that are online (so they can confirm they're not in the server) qualify."""
+    """Drop reservations a bot never actually joined within RESERVE_HOURS. Only
+    online bots qualify (so they can confirm they aren't in the server)."""
     now = datetime.datetime.now(datetime.timezone.utc)
     n = 0
     for b, r in pool_state()["bots"].items():
-        g = r.get("assigned_guild")
-        if not g or not _is_online(b):
+        if not _is_online(b):
             continue
-        if _client(b).get_guild(int(g)) is not None:
-            continue
-        at = _parse_iso(r.get("assigned_at"))
-        if at is not None and (now - at).total_seconds() < RESERVE_HOURS * 3600:
-            continue
-        r["last_guild"], r["assigned_guild"], r["assigned_at"] = g, None, None
-        r.pop("joined_at", None)
-        n += 1
+        w = _client(b)
+        for g, meta in list(_assigns(r).items()):
+            if w.get_guild(int(g)) is not None or meta.get("joined_at"):
+                continue
+            at = _parse_iso(meta.get("at"))
+            if at is not None and (now - at).total_seconds() < RESERVE_HOURS * 3600:
+                continue
+            _assigns(r).pop(g, None)
+            _remember_last(r, g)
+            n += 1
     if n:
         save_data(DATA)
         log.info("Bot pool: reclaimed %d unused hand-out(s).", n)
@@ -212,37 +273,35 @@ def reclaim_stale() -> int:
 
 
 def assign_bot_for_guild(guild_id):
-    """The pool bot to add to this server: the one it already has, else a free
-    online one. None means "hand out the main bot" (pool off / none free)."""
+    """The pool bot to add to this server: the one already serving it, else a bot
+    with room. None means "hand out the main bot" (pool off / every bot full)."""
     try:
         gid = str(int(guild_id))
     except (TypeError, ValueError):
         return None
     bots = pool_state()["bots"]
     for b, r in bots.items():
-        if str(r.get("assigned_guild") or "") != gid:
+        if gid not in _assigns(r):
             continue
         healthy = r.get("status") not in ("bad_token", "locked")
-        if healthy and (_is_online(b) or r.get("joined_at")):
+        joined = bool(_assigns(r)[gid].get("joined_at"))
+        if healthy and (_is_online(b) or joined):
             return int(b)
-        # broken/offline reservation that never joined — hand out another one
-        r["assigned_guild"] = r["assigned_at"] = None
+        # a broken/offline reservation that never joined — hand out another bot
+        _assigns(r).pop(gid, None)
         save_data(DATA)
         break
     if not pool_enabled():
         return None
-    free = _free_ids(gid)
-    if not free and reclaim_stale():
-        free = _free_ids(gid)
-    if not free:
-        log.warning("Bot pool: no free pool bots for server %s — handing out the main bot.", gid)
+    b = _pick_bot(gid)
+    if b is None and reclaim_stale():
+        b = _pick_bot(gid)
+    if b is None:
+        log.warning("Bot pool: no pool bot with room for server %s — handing out the main bot.", gid)
         return None
-    b = free[0]
-    bots[b]["assigned_guild"] = gid
-    bots[b]["assigned_at"] = _iso_now()
-    bots[b].pop("joined_at", None)
+    _assigns(bots[b])[gid] = {"at": _iso_now(), "joined_at": None, "name": ""}
     save_data(DATA)
-    log.info("Bot pool: reserved pool bot %s for server %s.", b, gid)
+    log.info("Bot pool: reserved pool bot %s for server %s (%d/%d).", b, gid, len(_assigns(bots[b])), PER_BOT)
     return int(b)
 
 
@@ -411,7 +470,7 @@ async def add_tokens(raw: str) -> dict:
             if not existed and len(pool_state()["bots"]) >= MAX_POOL:
                 results[i] = {"ok": False, "n": n, "error": f"The pool is full ({MAX_POOL} bots)."}
                 return
-            rec = pool_state()["bots"].setdefault(str(bid), {"added_at": _iso_now(), "assigned_guild": None})
+            rec = pool_state()["bots"].setdefault(str(bid), {"added_at": _iso_now(), "assigned": {}})
             rec.update({
                 "token": _encrypt(tok),
                 "name": info["name"],
@@ -498,27 +557,35 @@ def _wire(w) -> None:
             await w.change_presence(status=discord.Status.online, activity=discord.CustomActivity(name="🥷 /help"))
         except Exception:  # noqa: BLE001
             pass
-        # A pool bot only ever lives in the one server it was handed out for.
-        assigned = str((rec or {}).get("assigned_guild") or "")
+        # A pool bot stays in the servers it was handed out for, plus the hub.
+        amap = _assigns(rec) if rec is not None else {}
+        hub = admin_guild()
         for g in list(w.guilds):
-            if str(g.id) != assigned:
-                log.info("Pool bot %s leaving %s (%s): not its assigned server", bid, g.name, g.id)
+            if hub and str(g.id) == hub:
+                continue  # the admin/hub server — every bot may stay here
+            meta = amap.get(str(g.id))
+            if meta is None:
+                log.info("Pool bot %s leaving %s (%s): not one of its servers", bid, g.name, g.id)
                 try:
                     await g.leave()
                 except discord.HTTPException:
                     pass
-            elif rec is not None:
-                rec.setdefault("joined_at", _iso_now())
-                rec["guild_name"] = g.name
+            else:
+                meta.setdefault("joined_at", _iso_now())
+                meta["name"] = g.name
         save_data(DATA)
-        log.info("Pool bot %s (%s) online — serving %s", bid, w.user.name, assigned or "nobody yet")
+        log.info("Pool bot %s (%s) online — serving %d server(s)", bid, w.user.name, len(amap))
 
     async def on_guild_join(guild) -> None:
         if w.user is None:
             return
         bid = w.user.id
         rec = _rec(bid)
-        if rec is None or str(rec.get("assigned_guild") or "") != str(guild.id):
+        if admin_guild() and str(guild.id) == admin_guild():
+            log.info("Pool bot %s joined the hub server %s (%s) — staying", bid, guild.name, guild.id)
+            return  # the owner's admin/hub server — stay online, don't serve it
+        meta = _assigns(rec).get(str(guild.id)) if rec is not None else None
+        if meta is None:
             log.info("Pool bot %s added to %s (%s) without a hand-out — leaving", bid, guild.name, guild.id)
             await _post_note(
                 guild,
@@ -531,8 +598,8 @@ def _wire(w) -> None:
             except discord.HTTPException:
                 pass
             return
-        rec["joined_at"] = _iso_now()
-        rec["guild_name"] = guild.name
+        meta["joined_at"] = _iso_now()
+        meta["name"] = guild.name
         save_data(DATA)
         log.info("Pool bot %s joined its server %s (%s)", bid, guild.name, guild.id)
         if _SETUP["guild_join"] is not None:
@@ -542,12 +609,11 @@ def _wire(w) -> None:
         if w.user is None:
             return
         rec = _rec(w.user.id)
-        if rec is not None and str(rec.get("assigned_guild") or "") == str(guild.id):
-            rec["last_guild"] = str(guild.id)
-            rec["assigned_guild"] = rec["assigned_at"] = None
-            rec.pop("joined_at", None)
+        if rec is not None and str(guild.id) in _assigns(rec):
+            _assigns(rec).pop(str(guild.id), None)
+            _remember_last(rec, guild.id)
             save_data(DATA)
-            log.info("Pool bot %s is free again (removed from %s)", w.user.id, guild.id)
+            log.info("Pool bot %s left %s — %d server(s) left", w.user.id, guild.id, len(_assigns(rec)))
 
     w.add_listener(on_ready, "on_ready")
     w.add_listener(on_guild_join, "on_guild_join")
@@ -702,29 +768,35 @@ async def start_pool(*, views=None, handlers=(), guild_join=None) -> None:
 # Admin actions
 # --------------------------------------------------------------------------- #
 
-async def free_bot(bid) -> dict:
-    """Take a pool bot off its server (it leaves) and make it free again."""
+async def free_bot(bid, guild_id=None) -> dict:
+    """Take a pool bot off a server it serves (it leaves). With no guild id, it
+    leaves every server it's in and goes fully free."""
     rec = _rec(bid)
     if rec is None:
         raise KeyError(bid)
-    g = rec.get("assigned_guild")
-    rec["assigned_guild"] = rec["assigned_at"] = None
-    rec["last_guild"] = None
-    rec.pop("joined_at", None)
-    rec.pop("guild_name", None)
-    save_data(DATA)
-    left = False
-    if g:
-        w = _client(bid)
+    amap = _assigns(rec)
+    if guild_id is not None:
+        try:
+            targets = [str(int(guild_id))]
+        except (TypeError, ValueError):
+            targets = []
+    else:
+        targets = list(amap.keys())
+    w = _client(bid)
+    left = []
+    for g in targets:
+        amap.pop(g, None)
+        _remember_last(rec, g)
         guild = w.get_guild(int(g)) if w is not None else None
         if guild is not None:
             try:
                 await guild.leave()
-                left = True
+                left.append(g)
             except discord.HTTPException:
                 pass
-    log.info("Bot pool: pool bot %s freed from %s (left=%s)", bid, g, left)
-    return {"ok": True, "left": left, "guild": g}
+    save_data(DATA)
+    log.info("Bot pool: pool bot %s freed from %s (left %d)", bid, targets or "nothing", len(left))
+    return {"ok": True, "left": bool(left), "guilds": targets}
 
 
 async def remove_bot(bid, force: bool = False) -> dict:
@@ -732,9 +804,9 @@ async def remove_bot(bid, force: bool = False) -> dict:
     rec = _rec(bid)
     if rec is None:
         raise KeyError(bid)
-    if rec.get("assigned_guild") and not force:
+    if _assigns(rec) and not force:
         raise ValueError("This bot is serving a server — free it first, or remove it anyway.")
-    if rec.get("assigned_guild"):
+    if _assigns(rec):
         await free_bot(bid)
     await stop_worker(bid)
     pool_state()["bots"].pop(str(bid), None)
@@ -763,14 +835,34 @@ def pool_overview() -> dict:
         w = _client(b)
         online = _is_online(b)
         st = _RUNNING.get(int(b)) or {}
-        g = r.get("assigned_guild")
-        guild = w.get_guild(int(g)) if (online and g) else None
+        amap = _assigns(r)
+        servers = []
+        in_count = 0
+        for g, meta in amap.items():
+            guild = w.get_guild(int(g)) if (online and g) else None
+            ing = guild is not None
+            if ing:
+                in_count += 1
+            servers.append({
+                "id": str(g),
+                "name": (guild.name if ing else meta.get("name") or ""),
+                "in_guild": ing,
+                "joined_at": meta.get("joined_at"),
+            })
+        servers.sort(key=lambda s: (not s["in_guild"], (s["name"] or s["id"]).lower()))
         avatar = r.get("avatar")
+        lat = None
         if online:
             try:
                 avatar = str(w.user.display_avatar.url)
             except Exception:  # noqa: BLE001
                 pass
+            try:
+                v = float(w.latency) * 1000.0
+                if v == v and 0 <= v < 600000:   # finite, sane (v==v rejects nan)
+                    lat = int(v)
+            except Exception:  # noqa: BLE001
+                lat = None
         rows.append({
             "id": str(b),
             "name": r.get("name") or str(b),
@@ -780,26 +872,30 @@ def pool_overview() -> dict:
             "members_intent": bool(st.get("members")) if online else (r.get("members_intent", True) is not False),
             "public": r.get("public", True) is not False,
             "code_grant": bool(r.get("code_grant")),
-            "assigned_guild": g or None,
-            "assigned_name": (guild.name if guild is not None else r.get("guild_name") or ""),
-            "in_guild": guild is not None,
-            "assigned_at": r.get("assigned_at"),
-            "joined_at": r.get("joined_at"),
+            "servers": servers,
+            "count": len(amap),
+            "in_count": in_count,
+            "cap": PER_BOT,
+            "load": round(len(amap) / PER_BOT, 3),
+            "latency_ms": lat,
             "added_at": r.get("added_at"),
         })
     rows.sort(key=lambda x: x["added_at"] or "")
     counts = {
         "total": len(rows),
         "online": sum(1 for x in rows if x["online"]),
-        "serving": sum(1 for x in rows if x["in_guild"]),
-        "reserved": sum(1 for x in rows if x["assigned_guild"] and not x["in_guild"]),
-        "free": sum(1 for x in rows if x["online"] and not x["assigned_guild"]),
+        "serving": sum(x["in_count"] for x in rows),
+        "reserved": sum(x["count"] - x["in_count"] for x in rows),
+        "free": sum(1 for x in rows if x["online"] and x["count"] < PER_BOT),
+        "slots": sum(max(0, PER_BOT - x["count"]) for x in rows if x["online"]),
     }
-    return {"enabled": pool_enabled(), "crypto": crypto_status(), "bots": rows, "counts": counts, "max": MAX_POOL}
+    return {"enabled": pool_enabled(), "crypto": crypto_status(), "bots": rows, "counts": counts,
+            "max": MAX_POOL, "admin_guild": admin_guild()}
 
 
 __all__ = [
     "MAX_POOL", "pool_state", "pool_enabled", "set_pool_enabled", "crypto_status",
+    "admin_guild", "set_admin_guild",
     "assign_bot_for_guild", "reclaim_stale", "add_tokens", "start_pool", "stop_worker",
     "free_bot", "remove_bot", "restart_bot", "pool_overview",
 ]
