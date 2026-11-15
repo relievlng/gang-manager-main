@@ -53,6 +53,15 @@ from .billing import (
     shop_log_list,
 )
 from .settings import CONFIG_SETTINGS, _SETTING_EMOJI, _LOG_KEYS, ensure_log_channels
+from .pool import (
+    assign_bot_for_guild,
+    pool_overview,
+    add_tokens,
+    free_bot,
+    remove_bot,
+    restart_bot,
+    set_pool_enabled,
+)
 
 try:  # aiohttp ships with discord.py; guard so the package still imports without it
     from aiohttp import web as _aioweb
@@ -1164,7 +1173,7 @@ def _cached_profile(uid: str) -> dict:
     entry = _USER_CACHE.get(str(uid))
     if entry:
         return entry["user"]
-    u = bot.get_user(int(uid)) if str(uid).isdigit() else None
+    u = get_user_any(int(uid)) if str(uid).isdigit() else None
     if u is not None:
         return {"id": str(uid), "name": getattr(u, "global_name", None) or u.name,
                 "avatar": str(u.display_avatar.url)}
@@ -1183,7 +1192,7 @@ def _server_picker(uid: str, accessible_ids: set) -> list | None:
         return None
     out = []
     for g in entry["guilds"]:
-        bot_in = bot.get_guild(int(g["id"])) is not None
+        bot_in = get_guild_any(int(g["id"])) is not None
         try:
             perms = int(g["permissions"])
         except (TypeError, ValueError):
@@ -1294,7 +1303,7 @@ async def _has_web_access(guild, uid, live: bool = False) -> bool:
 
 async def _accessible_guilds(uid) -> list:
     out = []
-    for g in bot.guilds:
+    for g in all_guilds():
         if await _has_web_access(g, uid):
             out.append(g)
     return out
@@ -1318,9 +1327,10 @@ async def _req_guild(request):
 
 def _guild_from(gid: str | None):
     if not gid:
-        return bot.guilds[0] if len(bot.guilds) == 1 else None
+        _ag = all_guilds()
+        return _ag[0] if len(_ag) == 1 else None
     try:
-        return bot.get_guild(int(gid))
+        return get_guild_any(int(gid))
     except (TypeError, ValueError):
         return None
 
@@ -1597,7 +1607,7 @@ async def _h_access(request):
     if guild is not None:
         return _aioweb.json_response({"ok": await _has_web_access(guild, uid, live=True)})
     # no specific guild — allowed if still in any accessible guild
-    for g in bot.guilds:
+    for g in all_guilds():
         if await _has_web_access(g, uid, live=True):
             return _aioweb.json_response({"ok": True})
     return _aioweb.json_response({"ok": False})
@@ -2490,12 +2500,14 @@ def _invite_perms() -> str:
     return raw if raw.isdigit() else str(_DEFAULT_INVITE_PERMS)
 
 
-def _invite_url(guild_id: str | None = None, redirect_uri: str | None = None) -> str:
+def _invite_url(guild_id: str | None = None, redirect_uri: str | None = None,
+                client_id: str | None = None) -> str:
     """Bot invite link. With a guild id, Discord pre-selects that server. With a
     redirect_uri (which must be listed under OAuth2 → Redirects — we reuse the
     login /callback), Discord sends the user back there with guild_id after they
-    add the bot, instead of its terminal 'you may close this tab' page."""
-    cid = _client_id()
+    add the bot, instead of its terminal 'you may close this tab' page.
+    client_id picks a pool bot instead of the main bot."""
+    cid = str(client_id) if client_id else _client_id()
     if not cid:
         return ""
     from urllib.parse import urlencode
@@ -2641,7 +2653,21 @@ async def _h_invite(request):
                 "added. Just paid? This unlocks by itself in a few seconds.",
                 _await_active_actions(gid, subscribe=True),
             )
-    url = _invite_url(gid if gid.isdigit() else None, redirect_uri=_redirect_uri(request))
+    # Bot pool: a server that already has a pool bot gets that same bot again; a
+    # server with none of our bots yet gets a free pool bot (when hand-outs are
+    # on). Pool bots' own apps don't list our /callback, so their invite has no
+    # redirect — the panel/success page waits for the bot to join instead.
+    pool_bid = None
+    if gid.isdigit():
+        pool_bid = _pool_assignments().get(int(gid))
+        if pool_bid is None and get_guild_any(gid) is None:
+            pool_bid = assign_bot_for_guild(gid)
+        elif pool_bid is not None:
+            pool_bid = assign_bot_for_guild(gid)  # revalidates (reissues if that bot broke)
+    if pool_bid:
+        url = _invite_url(gid, client_id=str(pool_bid))
+    else:
+        url = _invite_url(gid if gid.isdigit() else None, redirect_uri=_redirect_uri(request))
     if not url:
         return _simple_page(
             "⏳", "Almost ready", "The bot is still starting up — try again in a few seconds.",
@@ -3256,7 +3282,7 @@ async def _h_billing_checkout(request):
             _support_actions(), 503,
         )
     gid_q = (request.query.get("guild") or "").strip()
-    guild = bot.get_guild(int(gid_q)) if gid_q.isdigit() else None
+    guild = get_guild_any(int(gid_q)) if gid_q.isdigit() else None
     if guild is not None:
         # the bot is already there — only people with panel access can pay for it
         if not await _has_web_access(guild, uid):
@@ -3356,7 +3382,7 @@ async def _h_sub_check(request):
     gid = (request.query.get("guild") or "").strip()
     if not gid.isdigit():
         return _aioweb.json_response({"active": False})
-    return _aioweb.json_response({"active": peek_active(gid), "bot_in": bot.get_guild(int(gid)) is not None})
+    return _aioweb.json_response({"active": peek_active(gid), "bot_in": get_guild_any(int(gid)) is not None})
 
 
 async def _h_sub_move(request):
@@ -3376,7 +3402,7 @@ async def _h_sub_move(request):
 
     # The user must manage the destination (owner / panel access, or their own
     # server the bot hasn't joined yet).
-    dest = bot.get_guild(int(to_gid))
+    dest = get_guild_any(int(to_gid))
     if dest is not None:
         if not await _has_web_access(dest, uid):
             return _aioweb.json_response({"ok": False, "error": "You don't manage that server."}, status=403)
@@ -3686,7 +3712,7 @@ def _is_current_sub(gid: int, sub_id: str | None) -> bool:
 
 
 async def _notify(gid: int, text: str) -> None:
-    g = bot.get_guild(gid)
+    g = get_guild_any(gid)
     if g is not None:
         try:
             await send_log(g, guild_store(DATA, gid), text, category="web")
@@ -4092,7 +4118,7 @@ _web_started = False
 async def _h_stats(request):
     """Public aggregate stats (counts only) for the Guard status bot to poll.
     No auth on purpose: it exposes totals, never names, IDs or member data."""
-    active = [g for g in bot.guilds if guild_active(g.id)]
+    active = [g for g in all_guilds() if guild_active(g.id)]
     members = sum(g.member_count or 0 for g in active)
     tickets = 0
     wars = 0
@@ -4227,6 +4253,37 @@ button.on{border-color:var(--ok);color:#86efac;background:rgba(34,197,94,.1)}
 .botin{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;display:inline-flex;align-items:center;gap:4px}
 .botin.yes{background:rgba(34,197,94,.12);color:#86efac}
 .botin.no{background:rgba(239,68,68,.14);color:#fca5a5;border:1px solid rgba(239,68,68,.35)}
+.botin.pool{background:rgba(167,139,250,.15);color:#cdbcff;border:1px solid rgba(167,139,250,.35)}
+.botin.wait{background:rgba(245,158,11,.14);color:#fcd34d;border:1px solid rgba(245,158,11,.35)}
+.botin.off{background:rgba(255,255,255,.05);color:var(--mute)}
+.poolhead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}
+.poolsw{display:inline-flex;align-items:center;gap:10px;padding:7px 14px 7px 7px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
+.poolsw .knob{width:36px;height:20px;border-radius:999px;background:rgba(255,255,255,.14);position:relative;transition:.2s;pointer-events:none}
+.poolsw .knob:after{content:"";position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:#cfcfd6;transition:.2s}
+.poolsw span{pointer-events:none}
+.poolsw.on{border-color:rgba(34,197,94,.45);background:rgba(34,197,94,.10)}
+.poolsw.on .knob{background:linear-gradient(90deg,#22c55e,#4ade80)}
+.poolsw.on .knob:after{left:19px;background:#fff}
+.poolstats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:14px}
+.pst{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:12px;padding:10px 6px;text-align:center}
+.pst b{display:block;font-size:20px;margin-top:2px}.pst small{color:var(--mute);font-size:11px}
+@media(max-width:640px){.poolstats{grid-template-columns:repeat(3,1fr)}}
+.poolwarn{margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.35);color:#fca5a5;font-size:13px}
+#poolTokens{width:100%;box-sizing:border-box;background:rgba(0,0,0,.28);border:1px solid var(--line);border-radius:12px;color:var(--text);padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;resize:vertical;min-height:92px}
+.presults{margin-top:10px;display:grid;gap:6px}
+.pres{font-size:13px;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,.03);border:1px solid var(--line)}
+.pres.ok{border-color:rgba(34,197,94,.35)}.pres.bad{border-color:rgba(239,68,68,.35);color:#fca5a5}
+.howto{margin-top:14px;font-size:13px;color:var(--mute)}.howto summary{cursor:pointer;font-weight:700;color:var(--text)}.howto ol{margin:8px 0 0 18px;line-height:1.75}.howto b{color:var(--text)}
+.bcard{border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:10px;background:rgba(255,255,255,.025)}
+.bhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.bav{position:relative;width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.06);display:grid;place-items:center;flex:none;font-size:20px}
+.bav img{width:42px;height:42px;border-radius:12px;object-fit:cover}
+.bdot{position:absolute;right:-3px;bottom:-3px;width:13px;height:13px;border-radius:50%;border:2px solid #0d0d12;background:#6b7280}
+.bdot.on{background:#22c55e;box-shadow:0 0 8px rgba(34,197,94,.7)}.bdot.wait{background:#f59e0b}.bdot.off{background:#ef4444}
+.bmain{flex:1;min-width:170px}.bname{font-weight:700}.bnum{color:var(--mute);font-weight:600;font-size:12px}
+.bserve{margin-left:auto}
+.bwarn{margin-top:10px;font-size:12.5px;color:#fcd34d;display:grid;gap:3px}
+.bacts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px 22px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
 .kv{display:flex;flex-direction:column;gap:2px;min-width:0}
 .kv .k{font-size:10.5px;color:var(--mute);text-transform:uppercase;letter-spacing:.6px}
@@ -4311,6 +4368,7 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
     <div class=tab id=tab-bans>Bans</div>
     <div class=tab id=tab-shop>Shop log</div>
     <div class=tab id=tab-staff>Staff access</div>
+    <div class=tab id=tab-bots style=display:none>🤖 Bots</div>
   </div>
   <div id=pan-subs>
     <div class="card bd" id=subHealth style=display:none></div>
@@ -4346,6 +4404,34 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
     </div>
     <div class=card><div id=staffList></div></div>
   </div>
+  <div id=pan-bots style=display:none>
+    <div class=card>
+      <div class=poolhead>
+        <div><h3 style=margin:0>Bot pool</h3><p class=hint style="margin:4px 0 0">Give every customer their own Gang Manager bot. Pool bots run the same code as your main bot, share the same data and website, and are managed right here.</p></div>
+        <button class=poolsw id=poolSwitch title="When on, a newly subscribed server is given its own free pool bot instead of the main bot"><span class=knob></span><span id=poolSwitchTxt>Hand-outs off</span></button>
+      </div>
+      <div class=poolstats id=poolStats></div>
+      <div class=poolwarn id=poolCrypto style=display:none></div>
+    </div>
+    <div class=card>
+      <h3>Add bots</h3>
+      <p class=hint>Paste one or more bot tokens, one per line. Each is checked to be yours, given Gang Manager's avatar, icon and description, has its Server Members Intent switched on, and comes online straight away. Tokens are stored encrypted and never shown again.</p>
+      <textarea id=poolTokens rows=4 placeholder="Paste bot tokens here — one per line" spellcheck=false autocomplete=off></textarea>
+      <div class=frm style="margin-top:10px;align-items:center"><button class=brand-btn id=poolAddBtn>➕ Add bots</button><span class=hint id=poolAddMsg style=margin:0></span></div>
+      <div id=poolResults></div>
+      <details class=howto><summary>How to make a pool bot (about a minute each)</summary><ol>
+        <li>Open <b>discord.com/developers/applications</b> → <b>New Application</b> → name it <b>Gang Manager</b> → Create.</li>
+        <li>Go to the <b>Bot</b> tab → make sure <b>Public Bot</b> is on and <b>Requires OAuth2 Code Grant</b> is off.</li>
+        <li>Still on <b>Bot</b> → <b>Reset Token</b> → confirm → <b>Copy</b>.</li>
+        <li>Paste it in the box above. Everything else (avatar, icon, description, members intent) is set up for you.</li>
+        <li>Make them a few at a time — creating lots of apps at once can get a Discord account flagged.</li>
+      </ol></details>
+    </div>
+    <div class=card>
+      <div class=toolbar style=margin-bottom:8px><input id=poolSearch placeholder="Search bots or servers…" autocomplete=off><button class="ghost sm" id=poolRefresh>↻ Refresh</button></div>
+      <div id=poolList></div>
+    </div>
+  </div>
 </div>
 <div class=cmdk id=cmdk><div class=cmdkbox><input id=cmdkInput placeholder="Jump to a server or section…" autocomplete=off><div class=cmdkList id=cmdkList></div><div class=cmdkFoot><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span></div></div></div>
 <div class=confirm id=confirmModal><div class=confirmbox><div class=ci2 id=confirmIcon>⚠️</div><h4 id=confirmTitle>Are you sure?</h4><p id=confirmMsg></p><div class=confirmbtns><button class=ghost id=confirmCancel>Cancel</button><button class="brand-btn" id=confirmOk>Confirm</button></div></div></div>
@@ -4365,17 +4451,17 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
   function animateNum(el,to){var from=0,st=performance.now();function tick(t){var k=Math.min(1,(t-st)/650);el.textContent=Math.round(from+(to-from)*(1-Math.pow(1-k,3))).toLocaleString();if(k<1)requestAnimationFrame(tick)}requestAnimationFrame(tick)}
   var STATE={owner:false},SERVERS=[],SHOP=[],BANS=[],firstStats=true,LIVE=false,liveTimer=null,curTab='subs';
   var SUBFILTER='all',SUBSORT='members',SUBQ='',SHOPQ='',BANQ='';
-  function api(path,method,body){var ctrl=new AbortController(),to=setTimeout(function(){ctrl.abort()},12000);return fetch(path,{method:method||'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,credentials:'same-origin',signal:ctrl.signal}).then(function(r){return r.json().catch(function(){return {ok:false,error:'bad response'}})}).catch(function(){return {ok:false,error:'network'}}).then(function(j){clearTimeout(to);return j})}
+  function api(path,method,body,ms){var ctrl=new AbortController(),to=setTimeout(function(){ctrl.abort()},ms||12000);return fetch(path,{method:method||'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,credentials:'same-origin',signal:ctrl.signal}).then(function(r){return r.json().catch(function(){return {ok:false,error:'bad response'}})}).catch(function(){return {ok:false,error:'network'}}).then(function(j){clearTimeout(to);return j})}
   function toast(msg,bad){var t=$('#toast');t.innerHTML='<span>'+(bad?'⚠️':'✓')+'</span>'+esc(msg);t.className='toast show'+(bad?' bad':'');setTimeout(function(){t.className='toast'},2400)}
   function confirmBox(o){o=o||{};var m=$('#confirmModal');$('#confirmIcon').textContent=o.icon||'⚠️';$('#confirmTitle').textContent=o.title||'Are you sure?';$('#confirmMsg').textContent=o.message||'';var ok=$('#confirmOk');ok.textContent=o.confirmText||'Confirm';ok.className=o.danger?'brand-btn danger-solid':'brand-btn';m.classList.add('show');setTimeout(function(){ok.focus()},30);
     return new Promise(function(resolve){function done(v){m.classList.remove('show');ok.onclick=null;$('#confirmCancel').onclick=null;m.onclick=null;document.removeEventListener('keydown',key,true);resolve(v)}ok.onclick=function(){done(true)};$('#confirmCancel').onclick=function(){done(false)};m.onclick=function(e){if(e.target===m)done(false)};function key(e){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();done(false)}else if(e.key==='Enter'){e.preventDefault();e.stopPropagation();done(true)}}document.addEventListener('keydown',key,true)});}
-  function boot(){api('/api/admin/me').then(function(me){if(!me||!me.authed){showGate('login');return}if(!me.access){showGate('denied');return}STATE.owner=!!me.owner;var u=me.user||{};$('#uname').textContent=u.name||'Account';$('#uinitial').textContent=initial(u.name);var av=$('#uav');if(u.avatar){av.src=u.avatar;av.onerror=function(){av.style.display='none'}}else{av.style.display='none'}var role=$('#urole');role.textContent=STATE.owner?'Owner':'Staff';role.classList.toggle('owner',STATE.owner);$('#uchip').style.display='';$('#gate').style.display='none';$('#app').style.display='';selectTab('subs');loadSubs()}).catch(function(){showGate('error')})}
+  function boot(){api('/api/admin/me').then(function(me){if(!me||!me.authed){showGate('login');return}if(!me.access){showGate('denied');return}STATE.owner=!!me.owner;var tbb=$('#tab-bots');if(tbb)tbb.style.display=STATE.owner?'':'none';var u=me.user||{};$('#uname').textContent=u.name||'Account';$('#uinitial').textContent=initial(u.name);var av=$('#uav');if(u.avatar){av.src=u.avatar;av.onerror=function(){av.style.display='none'}}else{av.style.display='none'}var role=$('#urole');role.textContent=STATE.owner?'Owner':'Staff';role.classList.toggle('owner',STATE.owner);$('#uchip').style.display='';$('#gate').style.display='none';$('#app').style.display='';selectTab('subs');loadSubs()}).catch(function(){showGate('error')})}
   function showGate(kind){$('#app').style.display='none';var g=$('#gate');g.style.display='';if(kind==='login')g.innerHTML='<div class=card><div class=big>🔐</div><h2>Admin sign-in</h2><p class=mute>Log in with a Discord account that owns or is authorised for the bot.</p><a href="/login?next=/admin"><button class="brand-btn" style=margin-top:12px>Log in with Discord</button></a></div>';else if(kind==='denied')g.innerHTML='<div class=card><div class=big>⛔</div><h2>Not authorised</h2><p class=mute>This account isn\'t on the admin list. Ask the owner to authorise your Discord ID.</p><a href="/logout"><button class=ghost style=margin-top:12px>Switch account</button></a></div>';else g.innerHTML='<div class=card><div class=big>⚠️</div><h2>Couldn\'t load</h2><p class=mute>Something went wrong. Refresh to try again.</p><a href="/admin"><button class=ghost style=margin-top:12px>Refresh</button></a></div>'}
-  function selectTab(id){curTab=id;['subs','bans','shop','staff'].forEach(function(t){var on=t===id,tab=$('#tab-'+t),pan=$('#pan-'+t);if(tab)tab.classList.toggle('active',on);if(pan)pan.style.display=on?'':'none'});if(id==='subs')loadSubs();if(id==='bans')loadBans();if(id==='shop')loadShop();if(id==='staff')loadStaff()}
+  function selectTab(id){curTab=id;['subs','bans','shop','staff','bots'].forEach(function(t){var on=t===id,tab=$('#tab-'+t),pan=$('#pan-'+t);if(tab)tab.classList.toggle('active',on);if(pan)pan.style.display=on?'':'none'});if(id==='subs')loadSubs();if(id==='bans')loadBans();if(id==='shop')loadShop();if(id==='staff')loadStaff();if(id==='bots')loadBots()}
   function setStats(c){c=c||{};var map={statServers:c.servers||0,statActive:c.active||0,statLife:c.lifetime||0,statMembers:c.members||0,statBans:c.bans||0,statStaff:c.staff||0};for(var k in map){var el=document.getElementById(k);if(!el)continue;if(firstStats)animateNum(el,map[k]);else el.textContent=nf(map[k])}firstStats=false}
   function bucket(s){if(s.lifetime)return 'lifetime';if(s.active)return 'active';if(s.status==='expired')return 'expired';return 'none'}
   function badge(s){var b=bucket(s);if(b==='lifetime')return '<span class="badge pur">Lifetime</span>';if(b==='active')return '<span class="badge live">Active</span>';if(b==='expired')return '<span class="badge red">Expired</span>';return '<span class="badge off">Inactive</span>'}
-  function botChip(s){return s.bot_in?'<span class="botin yes">✓ Bot in server</span>':'<span class="botin no">⚠ Bot not in server</span>'}
+  function botChip(s){if(!s.bot_in)return '<span class="botin no">⚠ Bot not in server</span>';return s.pool_bot?'<span class="botin pool" title="Served by its own pool bot">🤖 '+esc(s.served_name||'Pool bot')+'</span>':'<span class="botin yes">✓ Bot in server</span>'}
   function expiry(s){if(s.lifetime)return 'Never (lifetime)';if(s.active&&s.days_left!=null)return s.days_left+' days left'+(s.expires_at?' · '+fmtIso(s.expires_at):'');if(s.expires_at)return fmtIso(s.expires_at);return '—'}
   function kv(k,v){return '<div class=kv><span class=k>'+k+'</span><span class=v>'+v+'</span></div>'}
   function loadSubs(){var box=$('#subsList');if(!SERVERS.length)box.innerHTML='<div class=sk></div><div class=sk></div>';api('/api/admin/overview').then(function(d){if(!d.ok){box.innerHTML='<div class=pad>Could not load.</div>';return}setStats(d.counts);SERVERS=d.servers||[];renderHealth();renderFilters();renderSubs()})}
@@ -4407,16 +4493,47 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
   function exportCsv(){var list=shopFiltered();if(!list.length){toast('Nothing to export',true);return}var head=['when','kind','email','ip','amount','currency','server','server_id'];var rows=list.map(function(e){return [fmtTs(e.ts),e.kind||'',e.email||'',e.ip||'',(e.amount?(e.amount/100).toFixed(2):''),e.currency||'',e.guild_name||'',e.guild_id||''].map(function(v){return '"'+String(v).replace(/"/g,'""')+'"'}).join(',')});var csv=head.join(',')+'\n'+rows.join('\n');var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='shop-log.csv';a.click();toast('CSV exported')}
   function loadStaff(){var box=$('#staffList');box.innerHTML='<div class=sk style=height:52px></div>';api('/api/admin/staff').then(function(d){if(!d.ok){box.innerHTML='<div class=pad>Could not load.</div>';return}var canEdit=!!d.owner;$('#staffForm').style.display=canEdit?'':'none';$('#staffOwnerNote').style.display=canEdit?'none':'';if(!d.staff.length){box.innerHTML='<div class=pad>No extra staff authorised — just you.</div>';return}box.innerHTML=d.staff.map(function(s){return '<div class=rowline><div class=rowmain><div class=nm>'+esc(s.name||('ID '+s.id))+'</div><div class=mt>'+copyspan(s.id,'mono')+' · added '+fmtTs(s.ts)+'</div></div>'+(canEdit?'<button class="sm danger" data-s="'+esc(s.id)+'">Remove</button>':'')+'</div>'}).join('');if(canEdit)box.querySelectorAll('button[data-s]').forEach(function(x){x.onclick=function(){confirmBox({icon:'🛡️',title:'Remove staff access?',message:'They will lose access to this admin site.',confirmText:'Remove',danger:true}).then(function(ok){if(!ok)return;api('/api/admin/staff_remove','POST',{user_id:x.getAttribute('data-s')}).then(function(r){if(r.ok){toast('Removed');loadStaff();loadSubs()}else toast(r.error||'Failed',true)})})}})})}
   function addStaff(){var id=$('#staffId').value.trim();if(!id){toast('Enter a Discord ID',true);return}api('/api/admin/staff_add','POST',{user_id:id}).then(function(r){if(r.ok){toast('Authorised');$('#staffId').value='';loadStaff();loadSubs()}else toast(r.error||'Failed',true)})}
-  function toggleLive(){LIVE=!LIVE;var b=$('#liveBtn');b.classList.toggle('on',LIVE);b.innerHTML=LIVE?'<span class=live-dot></span> Live':'⟳ Live';if(liveTimer){clearInterval(liveTimer);liveTimer=null}if(LIVE){liveTimer=setInterval(function(){if(document.hidden)return;if(curTab==='subs')loadSubs();else if(curTab==='bans')loadBans();else if(curTab==='shop')loadShop();else loadStaff()},20000);toast('Live refresh on')}}
+  // ---- Bots (bot pool) ----
+  var POOL=null,POOLQ='';
+  function loadBots(){var box=$('#poolList');if(!POOL)box.innerHTML='<div class=sk style=height:68px></div><div class=sk style=height:68px></div>';api('/api/admin/pool').then(function(d){if(!d||!d.ok){box.innerHTML='<div class=pad>'+esc((d&&d.error)||'Could not load.')+'</div>';return}POOL=d;renderPool()})}
+  function renderPool(){var d=POOL;if(!d)return;var sw=$('#poolSwitch');sw.classList.toggle('on',!!d.enabled);$('#poolSwitchTxt').textContent=d.enabled?'Hand-outs on':'Hand-outs off';
+    var c=d.counts||{};$('#poolStats').innerHTML=[['🤖',c.total,'Pool bots'],['🟢',c.online,'Online'],['🏴',c.serving,'Serving'],['⏳',c.reserved,'Reserved'],['✨',c.free,'Free']].map(function(x){return '<div class=pst><span>'+x[0]+'</span><b>'+nf(x[1]||0)+'</b><small>'+x[2]+'</small></div>'}).join('');
+    var cr=d.crypto||{},cw=$('#poolCrypto');if(cr.ok){cw.style.display='none'}else{cw.style.display='';cw.textContent='⚠ '+(cr.why||'Token storage is unavailable.')}
+    var all=d.bots||[],q=POOLQ.toLowerCase(),box=$('#poolList');
+    if(!all.length){box.innerHTML='<div class=pad>No pool bots yet — add tokens above. Until hand-outs are on, every customer keeps getting your main bot.</div>';return}
+    var list=all.filter(function(b){return !q||(b.name||'').toLowerCase().indexOf(q)>=0||String(b.id).indexOf(q)>=0||(b.assigned_name||'').toLowerCase().indexOf(q)>=0||String(b.assigned_guild||'').indexOf(q)>=0});
+    if(!list.length){box.innerHTML='<div class=pad>Nothing matches.</div>';return}
+    var LBL={online:'Online',starting:'Starting…',offline:'Offline',error:'Crashed — retrying',bad_token:'Token rejected',locked:'Locked — re-add token',stopped:'Stopped'};
+    box.innerHTML=list.map(function(b){var n=all.indexOf(b)+1,dot=b.online?'on':(b.status==='starting'?'wait':'off');
+      var serve=b.assigned_guild?(b.in_guild?'<span class="botin pool">🏴 '+esc(b.assigned_name||b.assigned_guild)+'</span>':'<span class="botin wait">⏳ Reserved'+(b.assigned_name?' · '+esc(b.assigned_name):'')+'</span>'):(b.online?'<span class="botin yes">✨ Free</span>':'<span class="botin off">Not available</span>');
+      var w=[];if(!b.public)w.push('Public Bot is off — customers can’t add it. Turn it on in its Developer Portal → Bot page, then Restart.');if(b.code_grant)w.push('“Requires OAuth2 Code Grant” is on — turn it off or invites fail.');if(b.online&&!b.members_intent)w.push('Server Members Intent is off — no welcome messages or full member lists. Turn it on in its Developer Portal → Bot page, then Restart.');if(b.status==='bad_token')w.push('Discord rejected its token — reset the token and paste the new one above.');if(b.status==='locked')w.push('Its saved token can’t be decrypted (the encryption key changed) — paste the token again above.');
+      return '<div class=bcard><div class=bhead><div class=bav>'+(b.avatar?'<img src="'+esc(b.avatar)+'" alt="">':'🤖')+'<span class="bdot '+dot+'"></span></div><div class=bmain><div class=bname>'+esc(b.name)+' <span class=bnum>#'+n+'</span></div><div class=mt>'+copyspan(b.id,'mono')+' · '+esc(LBL[b.status]||b.status||'')+(b.added_at?' · added '+fmtIso(b.added_at):'')+'</div></div><div class=bserve>'+serve+'</div></div>'
+        +(w.length?'<div class=bwarn>'+w.map(function(x){return '<div>⚠ '+esc(x)+'</div>'}).join('')+'</div>':'')
+        +'<div class=bacts>'+(b.invite?'<button class="sm ghost" data-pa=copy data-v="'+esc(b.invite)+'">🔗 Copy invite</button>':'')+(b.assigned_guild?'<button class="sm ghost" data-pa=free data-b="'+esc(b.id)+'">↩ Free</button>':'')+'<button class="sm ghost" data-pa=restart data-b="'+esc(b.id)+'">⟳ Restart</button><button class="sm danger" data-pa=remove data-b="'+esc(b.id)+'" data-g="'+esc(b.assigned_guild||'')+'">🗑 Remove</button></div></div>'}).join('');
+    box.querySelectorAll('[data-pa]').forEach(function(x){x.onclick=function(){poolAct(x)}})}
+  function poolAct(x){var a=x.getAttribute('data-pa'),b=x.getAttribute('data-b');
+    if(a==='copy'){var v=x.getAttribute('data-v');try{navigator.clipboard.writeText(v);toast('Invite link copied')}catch(e){toast('Copy failed',true)}return}
+    if(a==='restart'){x.disabled=true;api('/api/admin/pool/action','POST',{action:'restart',bot_id:b}).then(function(r){x.disabled=false;if(r.ok){toast('Restarting…');setTimeout(loadBots,3000)}else toast(r.error||'Failed',true)});return}
+    if(a==='free'){confirmBox({icon:'↩️',title:'Free this bot?',message:'It leaves the server it’s serving and goes back into the pool. That server’s subscription isn’t touched — they can add a bot again from the panel.',confirmText:'Free bot',danger:true}).then(function(ok){if(!ok)return;x.disabled=true;api('/api/admin/pool/action','POST',{action:'free',bot_id:b}).then(function(r){x.disabled=false;if(r.ok){toast('Bot freed');loadBots();loadSubs()}else toast(r.error||'Failed',true)})});return}
+    if(a==='remove'){var g=x.getAttribute('data-g');confirmBox({icon:'🗑️',title:'Remove from the pool?',message:g?'This bot is serving a server — removing it makes it leave that server and forgets its token.':'Its token is forgotten. You can add it back any time.',confirmText:'Remove',danger:true}).then(function(ok){if(!ok)return;x.disabled=true;api('/api/admin/pool/action','POST',{action:'remove',bot_id:b,force:!!g}).then(function(r){x.disabled=false;if(r.ok){toast('Removed');loadBots();loadSubs()}else toast(r.error||'Failed',true)})})}}
+  function togglePool(){if(!POOL)return;var on=!POOL.enabled;function go(){api('/api/admin/pool/action','POST',{action:'toggle',enabled:on}).then(function(r){if(r.ok){POOL.enabled=r.enabled;renderPool();toast(r.enabled?'Hand-outs on — new servers get their own bot':'Hand-outs off — new servers get the main bot')}else toast(r.error||'Failed',true)})}
+    if(on&&!((POOL.counts||{}).free>0)){confirmBox({icon:'🤖',title:'Turn hand-outs on?',message:'No pool bot is online and free right now, so new servers will keep getting the main bot until one is.',confirmText:'Turn on'}).then(function(ok){if(ok)go()})}else go()}
+  function addBots(){var ta=$('#poolTokens'),raw=ta.value.trim();if(!raw){toast('Paste at least one token',true);return}var btn=$('#poolAddBtn');btn.disabled=true;$('#poolAddMsg').textContent='Checking each token with Discord…';
+    api('/api/admin/pool/add','POST',{tokens:raw},180000).then(function(r){btn.disabled=false;$('#poolAddMsg').textContent='';var res=(r&&r.results)||[];
+      if(!res.length){toast((r&&r.error)||'Failed',true);return}
+      ta.value='';
+      $('#poolResults').innerHTML='<div class=presults>'+res.map(function(x){x=x||{};return '<div class="pres '+(x.ok?'ok':'bad')+'">'+(x.ok?'✓':'✗')+' Token '+(x.n||'?')+': '+(x.ok?('<b>'+esc(x.name)+'</b> '+(x.updated?'updated':'added')+(x.public===false?' — ⚠ Public Bot is off':'')+(x.members_intent===false?' — ⚠ couldn’t switch on Server Members Intent':'')):esc(x.error||'failed'))+'</div>'}).join('')+'</div>';
+      toast((r.added||0)+' bot'+((r.added||0)===1?'':'s')+' added',!(r.added>0));setTimeout(loadBots,2000)})}
+  function toggleLive(){LIVE=!LIVE;var b=$('#liveBtn');b.classList.toggle('on',LIVE);b.innerHTML=LIVE?'<span class=live-dot></span> Live':'⟳ Live';if(liveTimer){clearInterval(liveTimer);liveTimer=null}if(LIVE){liveTimer=setInterval(function(){if(document.hidden)return;if(curTab==='subs')loadSubs();else if(curTab==='bans')loadBans();else if(curTab==='shop')loadShop();else if(curTab==='bots')loadBots();else loadStaff()},20000);toast('Live refresh on')}}
   // command palette
   var cmdkItems=[],cmdkSel=0;
   function openCmdk(){var o=$('#cmdk');o.classList.add('show');$('#cmdkInput').value='';cmdkBuild('');setTimeout(function(){$('#cmdkInput').focus()},30)}
   function closeCmdk(){$('#cmdk').classList.remove('show')}
-  function cmdkBuild(q){q=(q||'').toLowerCase();var items=[];var nav=[['subs','📂','Subscriptions'],['bans','⛔','Bans'],['shop','🧾','Shop log'],['staff','🛡️','Staff access']];nav.forEach(function(n){if(!q||n[2].toLowerCase().indexOf(q)>=0)items.push({t:'tab',id:n[0],ic:n[1],label:n[2],sub:'Section'})});SERVERS.forEach(function(s){if(!q||(s.name||'').toLowerCase().indexOf(q)>=0||String(s.id).indexOf(q)>=0)items.push({t:'srv',id:s.id,ic:'🌐',label:s.name,sub:bucket(s)})});cmdkItems=items.slice(0,40);cmdkSel=0;cmdkRender()}
+  function cmdkBuild(q){q=(q||'').toLowerCase();var items=[];var nav=[['subs','📂','Subscriptions'],['bans','⛔','Bans'],['shop','🧾','Shop log'],['staff','🛡️','Staff access']];if(STATE.owner)nav.push(['bots','🤖','Bots']);nav.forEach(function(n){if(!q||n[2].toLowerCase().indexOf(q)>=0)items.push({t:'tab',id:n[0],ic:n[1],label:n[2],sub:'Section'})});SERVERS.forEach(function(s){if(!q||(s.name||'').toLowerCase().indexOf(q)>=0||String(s.id).indexOf(q)>=0)items.push({t:'srv',id:s.id,ic:'🌐',label:s.name,sub:bucket(s)})});cmdkItems=items.slice(0,40);cmdkSel=0;cmdkRender()}
   function cmdkRender(){$('#cmdkList').innerHTML=cmdkItems.length?cmdkItems.map(function(it,i){return '<div class="ci'+(i===cmdkSel?' sel':'')+'" data-i="'+i+'"><span class=cig>'+it.ic+'</span><span>'+esc(it.label)+'</span><span class=cis>'+esc(it.sub)+'</span></div>'}).join(''):'<div class=pad>No matches</div>';$('#cmdkList').querySelectorAll('.ci').forEach(function(el){el.onclick=function(){cmdkSel=parseInt(el.getAttribute('data-i'),10);cmdkGo()}})}
   function cmdkGo(){var it=cmdkItems[cmdkSel];if(!it){return}closeCmdk();if(it.t==='tab'){selectTab(it.id)}else{selectTab('subs');SUBFILTER='all';SUBQ='';$('#subSearch').value=String(it.id);SUBQ=String(it.id);renderFilters();renderSubs();toast('Jumped to '+it.label)}}
-  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
-  document.addEventListener('input',function(e){var t=e.target;if(t.id==='subSearch'){SUBQ=t.value;renderSubs()}if(t.id==='shopSearch'){SHOPQ=t.value;renderShop()}if(t.id==='banSearch'){BANQ=t.value;renderBans()}if(t.id==='cmdkInput'){cmdkBuild(t.value)}});
+  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-bots')selectTab('bots');if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
+  document.addEventListener('input',function(e){var t=e.target;if(t.id==='subSearch'){SUBQ=t.value;renderSubs()}if(t.id==='shopSearch'){SHOPQ=t.value;renderShop()}if(t.id==='banSearch'){BANQ=t.value;renderBans()}if(t.id==='poolSearch'){POOLQ=t.value;renderPool()}if(t.id==='cmdkInput'){cmdkBuild(t.value)}});
   document.addEventListener('change',function(e){if(e.target.id==='subSort'){SUBSORT=e.target.value;renderSubs()}});
   document.addEventListener('keydown',function(e){
     if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){e.preventDefault();openCmdk();return}
@@ -4443,7 +4560,7 @@ def _admin_ctx(request):
 
 def _user_label(uid) -> str:
     try:
-        u = bot.get_user(int(uid))
+        u = get_user_any(int(uid))
     except (TypeError, ValueError):
         return ""
     return str(u) if u else ""
@@ -4472,7 +4589,7 @@ async def _h_admin_overview(request):
         return _admin_json({"ok": False, "error": "forbidden"}, 403)
     servers = []
     seen = set()
-    for g in sorted(bot.guilds, key=lambda x: (x.member_count or 0), reverse=True):
+    for g in sorted(all_guilds(), key=lambda x: (x.member_count or 0), reverse=True):
         seen.add(str(g.id))
         st = effective_state(g.id)
         sub = guild_store(DATA, g.id).get("subscription") or {}
@@ -4480,9 +4597,14 @@ async def _h_admin_overview(request):
         owner_m = g.get_member(owner_id) if owner_id else None
         owner_name = (str(owner_m) if owner_m else _user_label(owner_id)) if owner_id else ""
         pid = sub.get("purchaser_id") or ""
+        me = getattr(g, "me", None)
+        main_uid = getattr(getattr(bot, "user", None), "id", None)
         servers.append({
             "id": str(g.id), "name": g.name, "members": g.member_count or 0,
             "icon": (g.icon.url if g.icon else None), "bot_in": True,
+            "served_by": str(me.id) if me is not None else "",
+            "served_name": (getattr(me, "name", "") or str(me)) if me is not None else "",
+            "pool_bot": bool(me is not None and main_uid is not None and me.id != main_uid),
             "mode": st.get("mode"), "active": bool(st.get("active")),
             "status": st.get("status"), "lifetime": bool(st.get("lifetime")),
             "days_left": st.get("days_left"), "expires_at": st.get("expires_at"),
@@ -4576,7 +4698,7 @@ async def _h_admin_leave(request):
         gid = int(body.get("guild_id"))
     except (TypeError, ValueError):
         return _admin_json({"ok": False, "error": "bad guild"}, 400)
-    g = bot.get_guild(gid)
+    g = get_guild_any(gid)
     if g is None:
         return _admin_json({"ok": False, "error": "The bot isn't in that server."}, 404)
     name = g.name
@@ -4589,6 +4711,101 @@ async def _h_admin_leave(request):
     return _admin_json({"ok": True, "name": name})
 
 
+# ---- Admin → Bots: the bot pool (owner only) --------------------------------- #
+
+def _origin_ok(request) -> bool:
+    """Reject cross-site browser posts — defence in depth on top of the
+    SameSite=Lax session cookie and JSON-only bodies."""
+    origin = request.headers.get("Origin") or ""
+    if not origin:
+        return True
+    from urllib.parse import urlparse
+    host = (urlparse(origin).netloc or "").lower()
+    allowed = {(request.host or "").lower(), (request.headers.get("X-Forwarded-Host") or "").lower()}
+    try:
+        allowed.add((urlparse(_canonical_base(request)).netloc or "").lower())
+    except Exception:  # noqa: BLE001
+        pass
+    allowed.discard("")
+    return host in allowed
+
+
+def _admin_owner_only(request):
+    """(uid, None) for the bot owner, else (None, error response)."""
+    uid, owner = _admin_ctx(request)
+    if uid is None:
+        return None, _admin_json({"ok": False, "error": "forbidden"}, 403)
+    if not owner:
+        return None, _admin_json({"ok": False, "error": "Only the bot owner can manage pool bots."}, 403)
+    return uid, None
+
+
+async def _admin_body(request) -> dict:
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
+async def _h_admin_pool(request):
+    uid, err = _admin_owner_only(request)
+    if err is not None:
+        return err
+    data = pool_overview()
+    for b in data["bots"]:
+        g = b.get("assigned_guild")
+        b["invite"] = _invite_url(g, client_id=b["id"]) if g else ""
+    data["ok"] = True
+    return _admin_json(data)
+
+
+async def _h_admin_pool_add(request):
+    uid, err = _admin_owner_only(request)
+    if err is not None:
+        return err
+    if not _origin_ok(request):
+        return _admin_json({"ok": False, "error": "Cross-site request blocked."}, 403)
+    raw = str((await _admin_body(request)).get("tokens") or "")
+    if len(raw) > 20000:
+        return _admin_json({"ok": False, "error": "That's too much at once — paste up to about 100 tokens."}, 400)
+    res = await add_tokens(raw)
+    log.info("admin pool add by=%s added=%s", uid, res.get("added"))
+    return _admin_json(res, 200 if res.get("ok") else 400)
+
+
+async def _h_admin_pool_action(request):
+    uid, err = _admin_owner_only(request)
+    if err is not None:
+        return err
+    if not _origin_ok(request):
+        return _admin_json({"ok": False, "error": "Cross-site request blocked."}, 403)
+    body = await _admin_body(request)
+    action = str(body.get("action") or "")
+    if action == "toggle":
+        on = set_pool_enabled(bool(body.get("enabled")))
+        log.info("admin pool toggle=%s by=%s", on, uid)
+        return _admin_json({"ok": True, "enabled": on})
+    bid = str(body.get("bot_id") or "")
+    if not bid.isdigit():
+        return _admin_json({"ok": False, "error": "bad bot id"}, 400)
+    try:
+        if action == "free":
+            res = await free_bot(bid)
+        elif action == "remove":
+            res = await remove_bot(bid, force=bool(body.get("force")))
+        elif action == "restart":
+            res = await restart_bot(bid)
+        else:
+            return _admin_json({"ok": False, "error": "unknown action"}, 400)
+    except KeyError:
+        return _admin_json({"ok": False, "error": "That bot isn't in the pool."}, 404)
+    except ValueError as exc:
+        return _admin_json({"ok": False, "error": str(exc)}, 400)
+    log.info("admin pool action=%s bot=%s by=%s", action, bid, uid)
+    return _admin_json(res if isinstance(res, dict) else {"ok": True})
+
+
 async def _h_admin_bans(request):
     uid, owner = _admin_ctx(request)
     if uid is None:
@@ -4598,7 +4815,7 @@ async def _h_admin_bans(request):
         name = b.get("name") or ""
         avatar = None
         try:
-            u = bot.get_user(int(b.get("id")))
+            u = get_user_any(int(b.get("id")))
             if u:
                 name = name or str(u)
                 avatar = u.display_avatar.url
@@ -4691,7 +4908,7 @@ async def _h_admin_shop_log(request):
     for e in shop_log_list(300):
         gname = ""
         try:
-            g = bot.get_guild(int(e.get("guild_id")))
+            g = get_guild_any(int(e.get("guild_id")))
             gname = g.name if g else ""
         except (TypeError, ValueError):
             pass
@@ -4780,6 +4997,9 @@ async def start_web_server() -> None:
             _aioweb.get("/api/admin/overview", _h_admin_overview),
             _aioweb.post("/api/admin/sub", _h_admin_sub),
             _aioweb.post("/api/admin/leave", _h_admin_leave),
+            _aioweb.get("/api/admin/pool", _h_admin_pool),
+            _aioweb.post("/api/admin/pool/add", _h_admin_pool_add),
+            _aioweb.post("/api/admin/pool/action", _h_admin_pool_action),
             _aioweb.get("/api/admin/bans", _h_admin_bans),
             _aioweb.post("/api/admin/ban", _h_admin_ban),
             _aioweb.post("/api/admin/unban", _h_admin_unban),
@@ -5397,7 +5617,7 @@ function showPicker(me,fromApp){
     var status="",action="";
     if(s.bot_in&&s.access){status=s.subscribed?`<span class="srvtag">Active here</span>You manage Gang Manager in this server.`:`<span class="srvtag off">Not subscribed</span>The bot's still here, but this server's subscription has lapsed — open to renew.`;action=`<button class="addbtn" onclick="openGuild('${h(s.id)}')">Open</button>`;}
     else if(s.bot_in){status=`<span class="srvtag">Uses Gang Manager</span>Ask the server owner to add you in Settings → Website access.`;}
-    else if(s.can_invite){status=`<span class="srvtag">Subscribed</span>Ready — add the bot to switch everything on.`;action=`<a href="/invite?guild=${h(s.id)}" target="_blank" rel="noopener"><button class="addbtn">➕ Add bot</button></a>`;}
+    else if(s.can_invite){status=`<span class="srvtag">Subscribed</span>Ready — add the bot to switch everything on.`;action=`<a href="/invite?guild=${h(s.id)}" target="_blank" rel="noopener" onclick="waitForBot('${h(s.id)}')"><button class="addbtn">➕ Add bot</button></a>`;}
     else if(s.can_add){
       if(STATE.moveFrom&&STATE.moveFrom.id!==s.id){status=`Move your sub from <b>${h(STATE.moveFrom.name)}</b>, or start a new one`;action=`<button class="addbtn" onclick="moveSub('${h(s.id)}')">🔄 Move sub here</button><a href="/billing/checkout?guild=${h(s.id)}"><button class="addbtn alt">💳 New sub</button></a>`;}
       else{status=`Step 1: subscribe (${h(price)}) · Step 2: add the bot`;action=`<a href="/billing/checkout?guild=${h(s.id)}"><button class="addbtn">💳 Subscribe</button></a>`;}
@@ -5418,6 +5638,29 @@ function openPicker(){
   else location.href="/login";  // server list expired — log in again to load it
 }
 function openGuild(id){STATE.prefGuild=id;boot();}
+// After "Add bot" opens Discord in a new tab, watch for the bot to join and then
+// open that server here. (Pool bots can't redirect back the way the main bot does.)
+function waitForBot(gid){
+  if(STATE.waitingFor===gid)return;STATE.waitingFor=gid;
+  toast("Finish adding the bot in the new tab — this page opens your server once it joins.","ok");
+  var tries=0;
+  (function poll(){
+    if(STATE.waitingFor!==gid)return;
+    tries++;
+    api("/api/sub_check?guild="+encodeURIComponent(gid)).then(function(d){
+      if(STATE.waitingFor!==gid)return;
+      if(d&&d.bot_in){STATE.waitingFor=null;toast("Bot added ✓","ok");openGuild(gid);return;}
+      if(tries<144)setTimeout(poll,2500);else STATE.waitingFor=null;
+    }).catch(function(){if(tries<144)setTimeout(poll,4000);else STATE.waitingFor=null;});
+  })();
+}
+function inviteAndWait(gid){
+  var url="/invite?guild="+encodeURIComponent(gid);
+  var w=null;try{w=window.open(url,"_blank");}catch(e){}
+  if(!w){location.href=url;return;}
+  try{w.opener=null;}catch(e){}
+  waitForBot(gid);
+}
 async function moveSub(gid){
   var mf=STATE.moveFrom; if(!mf||mf.id===gid) return;
   if(!await confirmBox({icon:"🔄",title:"Move subscription?",message:mf.name+" will stop using Gang Manager and this server takes over — you can move it back any time.",confirmText:"Move it here"}))return;
@@ -5425,7 +5668,7 @@ async function moveSub(gid){
     var r=await post("/api/sub_move",{guild:gid});
     toast(r.moved_from?("Moved from "+r.moved_from+" ✓"):"Subscription moved ✓","ok");
     STATE.moveFrom=null;
-    if(r.bot_in){openGuild(gid);} else {location.href="/invite?guild="+encodeURIComponent(gid);}
+    if(r.bot_in){openGuild(gid);} else {inviteAndWait(gid);}
   }catch(e){ if(e.status===401) return boot(); toast(e.message||"Couldn't move the subscription.","err"); }
 }
 function showSubGate(gid){

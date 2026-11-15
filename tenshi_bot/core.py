@@ -224,6 +224,114 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 DATA = load_data()
 
 
+# --------------------------------------------------------------------------- #
+# Bot pool lookups (see pool.py). WORKERS holds any extra pool bots running in
+# this process; it's empty unless pool bots have been added in Admin → Bots, in
+# which case every helper below falls straight through to the main bot — so
+# behaviour is identical to a single-bot setup. pool.py mutates WORKERS in
+# place (never rebinds it).
+# --------------------------------------------------------------------------- #
+
+WORKERS: list = []
+
+
+def _pool_assignments() -> dict:
+    """guild id -> pool bot id, from the saved pool registry."""
+    out: dict = {}
+    for bid, rec in ((DATA.get("pool") or {}).get("bots") or {}).items():
+        g = (rec or {}).get("assigned_guild")
+        if g:
+            try:
+                out[int(g)] = int(bid)
+            except (TypeError, ValueError):
+                pass
+    return out
+
+
+def designated_client(guild_id):
+    """The bot that should act for a server: its assigned pool bot when that
+    bot is online and in the server, otherwise the main bot."""
+    if not WORKERS:
+        return bot
+    try:
+        gid = int(guild_id)
+    except (TypeError, ValueError):
+        return bot
+    bid = _pool_assignments().get(gid)
+    if bid is not None:
+        for w in WORKERS:
+            u = getattr(w, "user", None)
+            if u is not None and u.id == bid and w.get_guild(gid) is not None:
+                return w
+    return bot
+
+
+def get_guild_any(guild_id):
+    """A server object from whichever of our bots is in it (preferring the one
+    that serves it), or None."""
+    try:
+        gid = int(guild_id)
+    except (TypeError, ValueError):
+        return None
+    g = designated_client(gid).get_guild(gid)
+    if g is not None or not WORKERS:
+        return g
+    for c in (bot, *WORKERS):
+        g = c.get_guild(gid)
+        if g is not None:
+            return g
+    return None
+
+
+def get_user_any(user_id):
+    """A cached user from any of our bots, or None."""
+    try:
+        uid = int(user_id)
+    except (TypeError, ValueError):
+        return None
+    for c in (bot, *WORKERS):
+        u = c.get_user(uid)
+        if u is not None:
+            return u
+    return None
+
+
+def all_guilds() -> list:
+    """Every server any of our bots is in — once each, as seen by the bot that
+    serves it — so loops and the website cover pool-served servers too."""
+    if not WORKERS:
+        return list(bot.guilds)
+    amap = _pool_assignments()
+    by_id = {}
+    for w in WORKERS:
+        u = getattr(w, "user", None)
+        if u is not None:
+            by_id[u.id] = w
+    seen: set = set()
+    out = []
+    for c in (bot, *WORKERS):
+        for g in list(c.guilds):
+            if g.id in seen:
+                continue
+            seen.add(g.id)
+            w = by_id.get(amap.get(g.id))
+            d = w.get_guild(g.id) if w is not None else None
+            out.append(d or g)
+    return out
+
+
+def serves_guild(guild) -> bool:
+    """True when `guild` came from the bot that should act for it — stops
+    double welcomes/logs if the main bot and a pool bot share a server."""
+    if not WORKERS:
+        return True
+    me = getattr(guild, "me", None)
+    du = getattr(designated_client(getattr(guild, "id", 0)), "user", None)
+    if me is None or du is None:
+        return True
+    return me.id == du.id
+
+
 def is_leadership(member: discord.Member) -> bool:
     """True if the member is a server admin or has the configured leadership role.
 
@@ -1485,7 +1593,7 @@ async def _handle_vouch_decision(
     if interaction.user.id != voucher_id:
         await interaction.response.send_message("This vouch request isn't for you.", ephemeral=True)
         return
-    guild = bot.get_guild(guild_id)
+    guild = get_guild_any(guild_id)
     if guild is None:
         await interaction.response.edit_message(
             content="That server is no longer available.", embed=None, view=None
@@ -1601,7 +1709,7 @@ async def _request_vouch(
 @tasks.loop(minutes=1)
 async def eoi_timer_loop() -> None:
     now = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
-    for guild in bot.guilds:
+    for guild in all_guilds():
         if not guild_active(guild.id):
             continue  # paused until the server's subscription is active
         store = guild_store(DATA, guild.id)

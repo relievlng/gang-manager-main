@@ -662,7 +662,7 @@ async def subscription_grant(
         await interaction.response.send_message("Pass a valid `server_id` or run this in the server.", ephemeral=True)
         return
     state = grant(gid, days=(None if lifetime else max(0, days)), plan=plan, status="active", lifetime=lifetime)
-    target = bot.get_guild(gid)
+    target = get_guild_any(gid)
     if target is not None:
         try:
             await send_log(target, guild_store(DATA, gid), f"💳 Subscription granted by the bot owner ({plan}).",
@@ -690,7 +690,7 @@ async def subscription_cancel(interaction: discord.Interaction, server_id: str |
         await interaction.response.send_message("Pass a valid `server_id` or run this in the server.", ephemeral=True)
         return
     state = expire(gid)
-    target = bot.get_guild(gid)
+    target = get_guild_any(gid)
     if target is not None:
         await interaction.response.send_message("🔒 Subscription expired.", embed=_fmt_state(target, state),
                                                 ephemeral=True)

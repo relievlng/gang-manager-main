@@ -23,6 +23,7 @@ from tenshi_bot.tickets import *  # noqa: F401,F403
 from tenshi_bot.gang import *  # noqa: F401,F403
 from tenshi_bot.billing import *  # noqa: F401,F403
 from tenshi_bot.web import *  # noqa: F401,F403
+from tenshi_bot.pool import *  # noqa: F401,F403
 
 
 # --------------------------------------------------------------------------- #
@@ -56,7 +57,7 @@ def _status_activities() -> list[discord.BaseActivity]:
     members", "3 gang wars live". Counts only subscribed servers, so the figures
     match what members actually see. Set BOT_STATUS to pin a line of your own.
     """
-    active = [g for g in bot.guilds if guild_active(g.id)]
+    active = [g for g in all_guilds() if guild_active(g.id)]
     members = sum(g.member_count or 0 for g in active)
     tickets = 0
     wars = 0
@@ -116,24 +117,34 @@ async def _trace_interaction(interaction: discord.Interaction) -> None:
         )
 
 
+def register_persistent_views(client) -> None:
+    """Buttons and menus that must keep working after a restart. Registered on
+    the main bot and on every pool bot, so they behave the same everywhere."""
+    client.add_view(EOI_VIEW)
+    client.add_view(EOIPromptView())
+    client.add_view(SELF_ROLE_VIEW)
+    client.add_view(RADIO_PANEL_VIEW)
+    client.add_view(TICKET_PANEL_VIEW)
+    client.add_view(ORDER_TICKET_VIEW)
+    client.add_view(MUSTER_VIEW)
+    client.add_view(STAFF_DRAW_VIEW)
+    client.add_view(ROSTER_PROPOSAL_VIEW)
+    client.add_view(ROSTER_REFRESH_VIEW)
+    client.add_view(RatingView())
+    client.add_view(DashboardView())
+    client.add_view(WarPanelView())
+    client.add_view(HelpView())
+    client.add_dynamic_items(VouchDecisionButton)
+
+
 @bot.event
 async def on_ready() -> None:
-    # register persistent views so buttons/menus survive restarts
-    bot.add_view(EOI_VIEW)
-    bot.add_view(EOIPromptView())
-    bot.add_view(SELF_ROLE_VIEW)
-    bot.add_view(RADIO_PANEL_VIEW)
-    bot.add_view(TICKET_PANEL_VIEW)
-    bot.add_view(ORDER_TICKET_VIEW)
-    bot.add_view(MUSTER_VIEW)
-    bot.add_view(STAFF_DRAW_VIEW)
-    bot.add_view(ROSTER_PROPOSAL_VIEW)
-    bot.add_view(ROSTER_REFRESH_VIEW)
-    bot.add_view(RatingView())
-    bot.add_view(DashboardView())
-    bot.add_view(WarPanelView())
-    bot.add_view(HelpView())
-    bot.add_dynamic_items(VouchDecisionButton)
+    # on_ready fires again on every reconnect; the one-time setup (buttons,
+    # Stripe heal, bot pool) only needs to run once per process.
+    first = not getattr(bot, "_gm_ready_once", False)
+    if first:
+        bot._gm_ready_once = True
+        register_persistent_views(bot)
     if not status_loop.is_running():
         status_loop.start()
     if not ticket_autoclose_loop.is_running():
@@ -143,19 +154,24 @@ async def on_ready() -> None:
     # Recognise whoever owns the bot application as the operator (no env needed).
     await detect_app_owners()
     await start_web_server()
-    # Stripe is the source of truth for payments: re-apply live subscriptions in
-    # the background, so a reset data file never locks out paying servers.
-    async def _stripe_heal():
+    if first:
+        # Stripe is the source of truth for payments: re-apply live subscriptions
+        # in the background, so a reset data file never locks out paying servers.
+        async def _stripe_heal():
+            try:
+                await sync_subscriptions_from_stripe()
+            except Exception as exc:
+                log.error("Stripe sync failed: %s", exc)
+        asyncio.create_task(_stripe_heal())
+    # A global slash-command sync is one of Discord's most rate-limited calls —
+    # do it once per process, not on every reconnect.
+    if not getattr(bot, "_gm_synced", False):
         try:
-            await sync_subscriptions_from_stripe()
-        except Exception as exc:
-            log.error("Stripe sync failed: %s", exc)
-    asyncio.create_task(_stripe_heal())
-    try:
-        synced = await bot.tree.sync()
-        log.info("Synced %d slash commands.", len(synced))
-    except discord.DiscordException as exc:
-        log.error("Command sync failed: %s", exc)
+            synced = await bot.tree.sync()
+            bot._gm_synced = True
+            log.info("Synced %d slash commands.", len(synced))
+        except discord.DiscordException as exc:
+            log.error("Command sync failed: %s", exc)
     log.info("Logged in as %s (id: %s)", bot.user, bot.user.id)
     log.info(
         "discord.py %s · Components V2 available: %s",
@@ -176,6 +192,16 @@ async def on_ready() -> None:
                     await g.leave()
                 except discord.HTTPException:
                     pass
+    # Extra pool bots (Admin → Bots) — a no-op until pool bots have been added.
+    if first:
+        try:
+            await start_pool(
+                views=register_persistent_views,
+                handlers=[("on_member_join", on_member_join), ("on_member_remove", on_member_remove)],
+                guild_join=on_guild_join,
+            )
+        except Exception as exc:  # noqa: BLE001 — the pool must never take the main bot down
+            log.error("Bot pool failed to start: %s", exc)
 
 
 @bot.event
@@ -222,6 +248,8 @@ async def on_guild_join(guild: discord.Guild) -> None:
 @bot.event
 async def on_member_join(member: discord.Member) -> None:
     guild = member.guild
+    if not serves_guild(guild):
+        return  # another of our bots (a pool bot) handles this server
     if not guild_active(guild.id):
         return  # no welcome/logs until the server is subscribed
     store = guild_store(DATA, guild.id)
@@ -263,6 +291,8 @@ async def on_member_join(member: discord.Member) -> None:
 @bot.event
 async def on_member_remove(member: discord.Member) -> None:
     guild = member.guild
+    if not serves_guild(guild):
+        return  # another of our bots (a pool bot) handles this server
     if not guild_active(guild.id):
         return
     store = guild_store(DATA, guild.id)

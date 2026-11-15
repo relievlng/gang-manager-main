@@ -373,7 +373,7 @@ class RatingView(discord.ui.View):
                     content="Thanks — this ticket was already rated. 🙏", view=None
                 )
                 return
-            g = bot.get_guild(link["guild_id"])
+            g = get_guild_any(link["guild_id"])
             store = guild_store(DATA, link["guild_id"])
             order = next(
                 (o for o in store["orders"] if o.get("id") == link["order_id"]), None
@@ -1362,7 +1362,7 @@ async def ticket_remove(interaction: discord.Interaction, member: discord.Member
 @tasks.loop(minutes=15)
 async def ticket_autoclose_loop() -> None:
     now = datetime.datetime.now(datetime.timezone.utc).timestamp()
-    for guild in bot.guilds:
+    for guild in all_guilds():
         if not guild_active(guild.id):
             continue  # paused until the server's subscription is active
         store = guild_store(DATA, guild.id)
