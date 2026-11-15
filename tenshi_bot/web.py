@@ -2983,6 +2983,8 @@ h1 .g{background-size:200% 100%;animation:sheen 6s ease-in-out infinite}
 .mpset .sk{flex:1;font-size:13.5px;color:#cfcfd6;font-weight:600}
 .mpdrop{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--line);background:rgba(0,0,0,.28);font-size:13px;color:#e8e8ee;min-width:150px}
 .mpdrop::after{content:"▾";margin-left:auto;color:#8a8a94}
+.mpcap{font-size:12px;color:#8a8a94;margin:0 2px 11px;line-height:1.5}
+.mpitem .num{font-weight:800;font-variant-numeric:tabular-nums;color:#e8e8ee;font-size:14px}
 @keyframes ping{0%{box-shadow:0 0 0 0 rgba(34,197,94,.6)}80%,100%{box-shadow:0 0 0 9px rgba(34,197,94,0)}}
 @keyframes sheen{to{background-position:200% center}}
 @media(max-width:760px){.mpstats{grid-template-columns:repeat(2,1fr)}.mock,.mock.up{transform:none}.mphead{padding:12px 14px}.mpbody{padding:14px}.mpchip em{display:none}}
@@ -3077,12 +3079,15 @@ h1 .g{background-size:200% 100%;animation:sheen 6s ease-in-out infinite}
       <div class=mptabs role=tablist>
         <button type=button class="mptab on" data-v=roster>👥 Roster</button>
         <button type=button class=mptab data-v=kos>💀 KOS</button>
+        <button type=button class=mptab data-v=strikes>⚠️ Strikes</button>
+        <button type=button class=mptab data-v=stash>📦 Stash</button>
         <button type=button class=mptab data-v=wars>⚔️ Wars</button>
-        <button type=button class=mptab data-v=orders>🎫 Orders</button>
         <button type=button class=mptab data-v=eois>📨 EOIs</button>
+        <button type=button class=mptab data-v=orders>🎫 Orders</button>
         <button type=button class=mptab data-v=settings>⚙️ Settings</button>
       </div>
       <div class="mpview on" data-v=roster>
+        <div class=mpcap>Built from your rank roles — grouped, ranked and always current.</div>
         <div class=mprank>Boss<span class=pill>1</span></div>
         <ul class=mpmembers><li class=mpmem><span class=mpav style="background:#d9d9e3">S</span><b>Shadow</b><em class=r1>Boss</em></li></ul>
         <div class=mprank>Underboss<span class=pill>1</span></div>
@@ -3094,12 +3099,27 @@ h1 .g{background-size:200% 100%;animation:sheen 6s ease-in-out infinite}
         </ul>
       </div>
       <div class=mpview data-v=kos>
+        <div class=mpcap>Your <b>kill-on-sight hit list</b> — who to drop on sight. Sign-up → random draw → staff approve → announce.</div>
         <div class=mpitem><span class=mpav style="background:#e9b7b7">D</span><b>Dmitri "Ghost" Kane</b><span class="tag red">● ACTIVE</span></div>
         <div class=mpitem><span class=mpav style="background:#e9c7b7">M</span><b>Marco Vitelli</b><span class="tag red">● ACTIVE</span></div>
         <div class=mpitem><span class=mpav style="background:#c7c7d6">T</span><b>Tenpenny crew</b><span class="tag amb">DRAW OPEN</span></div>
         <div class=mpitem><span class=mpav style="background:#bcd6c0">L</span><b>Luca Moreno</b><span class="tag gry">CLEARED</span></div>
       </div>
+      <div class=mpview data-v=strikes>
+        <div class=mpcap>Issue and track warnings — auto-action at the limit, a DM on every change.</div>
+        <div class=mpitem><span class=mpav style="background:#e3d2c4">R</span><b>Riot · griefing civilians</b><span class="tag amb">2 / 3</span></div>
+        <div class=mpitem><span class=mpav style="background:#cdd7e3">P</span><b>Pyro · no-show at war</b><span class="tag gry">1 / 3</span></div>
+        <div class=mpitem><span class=mpav style="background:#e9b7b7">G</span><b>Ghost · friendly fire</b><span class="tag red">AT LIMIT · 3/3</span></div>
+      </div>
+      <div class=mpview data-v=stash>
+        <div class=mpcap>Shared gang stash — cash, weapons and materials, every change logged.</div>
+        <div class=mpitem><b>💵 Cash</b><span class=num>$482,500</span></div>
+        <div class=mpitem><b>🔫 Weapons</b><span class=num>37</span></div>
+        <div class=mpitem><b>💊 Product</b><span class=num>12 kg</span></div>
+        <div class=mpitem><b>🎒 Materials</b><span class=num>1,240</span></div>
+      </div>
       <div class=mpview data-v=wars>
+        <div class=mpcap>A <b>scored gang-vs-gang fight</b> — not a list, a match. Live score, round-by-round rolls, first-to targets.</div>
         <div class=mpwar><div class=wl>
           <div class=wt><span class=mplive></span>War · vs Night Riders <span class=mpbadge>Live</span></div>
           <div class=mpscore><b>5</b><span>:</span><b class=dim>3</b></div>
@@ -3107,16 +3127,19 @@ h1 .g{background-size:200% 100%;animation:sheen 6s ease-in-out infinite}
           <div class=mprounds>🟩🟩🟥🟩🟥🟩🟩🟥</div>
         </div></div>
       </div>
+      <div class=mpview data-v=eois>
+        <div class=mpcap>Recruitment applications with ✅ / ❌ voting, vouches and automatic closing.</div>
+        <div class=mpitem><span class=mpav style="background:#d9d9e3">K</span><b>Kilo — wants in</b><span class="tag grn">✓ 6</span><span class="tag red">✗ 1</span></div>
+        <div class=mpitem><span class=mpav style="background:#cfcfe0">Z</span><b>Zane — referred by Vex</b><span class="tag amb">PENDING</span></div>
+      </div>
       <div class=mpview data-v=orders>
+        <div class=mpcap>Discord tickets for jobs &amp; buys — paid/unpaid, transcripts, auto-close.</div>
         <div class=mpitem><b>#1042 · Weapon crate</b><span class="tag grn">OPEN</span></div>
         <div class=mpitem><b>#1041 · Protection — Vinewood</b><span class="tag grn">OPEN</span></div>
         <div class=mpitem><b>#1038 · Vehicle respray</b><span class="tag gry">CLOSED</span></div>
       </div>
-      <div class=mpview data-v=eois>
-        <div class=mpitem><span class=mpav style="background:#d9d9e3">K</span><b>Kilo — wants in</b><span class="tag grn">✓ 6</span><span class="tag red">✗ 1</span></div>
-        <div class=mpitem><span class=mpav style="background:#cfcfe0">Z</span><b>Zane — referred by Vex</b><span class="tag amb">PENDING</span></div>
-      </div>
       <div class=mpview data-v=settings>
+        <div class=mpcap>Point the bot at your roles and channels — all from dropdowns.</div>
         <div class=mpset><span class=sk>Rank roles</span><span class=mpdrop>@Boss, @Underboss…</span></div>
         <div class=mpset><span class=sk>Log channel</span><span class=mpdrop>#gang-logs</span></div>
         <div class=mpset><span class=sk>KOS channel</span><span class=mpdrop>#kos-board</span></div>
