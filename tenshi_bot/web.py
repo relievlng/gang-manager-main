@@ -4273,8 +4273,8 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
   function renderHealth(){var c={active:0,lifetime:0,expired:0,none:0};SERVERS.forEach(function(s){c[bucket(s)]++});var tot=SERVERS.length||1;function pc(n){return (n/tot*100).toFixed(1)+'%'}var el=$('#subHealth');if(!SERVERS.length){el.style.display='none';return}el.style.display='';el.innerHTML='<div class=bdbar><i class=sa style=width:'+pc(c.active)+'></i><i class=sl style=width:'+pc(c.lifetime)+'></i><i class=se style=width:'+pc(c.expired)+'></i><i class=sn style=width:'+pc(c.none)+'></i></div><div class=bdleg><span><i class="dot" style=background:var(--ok)></i>Active <b>'+c.active+'</b></span><span><i class="dot" style=background:var(--purple)></i>Lifetime <b>'+c.lifetime+'</b></span><span><i class="dot" style=background:var(--bad)></i>Expired <b>'+c.expired+'</b></span><span><i class="dot" style=background:rgba(255,255,255,.3)></i>Inactive <b>'+c.none+'</b></span></div>'}
   function renderFilters(){var counts={all:SERVERS.length,active:0,lifetime:0,expired:0,none:0};SERVERS.forEach(function(s){counts[bucket(s)]++});var defs=[['all','All'],['active','Active'],['lifetime','Lifetime'],['expired','Expired'],['none','Inactive']];$('#subFilters').innerHTML=defs.map(function(d){return '<div class="fchip'+(SUBFILTER===d[0]?' on':'')+'" data-f="'+d[0]+'">'+d[1]+' <span class=cnt>'+counts[d[0]]+'</span></div>'}).join('');$('#subFilters').querySelectorAll('.fchip').forEach(function(c){c.onclick=function(){SUBFILTER=c.getAttribute('data-f');renderFilters();renderSubs()}})}
   function filteredServers(){var q=SUBQ.toLowerCase();var list=SERVERS.filter(function(s){if(SUBFILTER!=='all'&&bucket(s)!==SUBFILTER)return false;if(q&&!((s.name||'').toLowerCase().indexOf(q)>=0||String(s.id).indexOf(q)>=0))return false;return true});list.sort(function(a,b){if(SUBSORT==='members')return (b.members||0)-(a.members||0);if(SUBSORT==='name')return (a.name||'').localeCompare(b.name||'');if(SUBSORT==='created')return (b.created_at||0)-(a.created_at||0);var da=a.lifetime?1e9:(a.days_left==null?-1:a.days_left),db=b.lifetime?1e9:(b.days_left==null?-1:b.days_left);return da-db});return list}
-  function renderSubs(){var box=$('#subsList'),list=filteredServers();if(!list.length){box.innerHTML='<div class=pad>No servers match.</div>';return}box.innerHTML=list.map(function(s){var ic=s.icon?'<img src="'+esc(s.icon)+'" alt="">':'';return '<div class=card><div class=srvhead><div class=srvname>'+ic+esc(s.name)+' '+badge(s)+'</div><div class=acts><button class=sm data-g="'+s.id+'" data-a=add data-d=7>+7d</button><button class=sm data-g="'+s.id+'" data-a=add data-d=30>+30d</button><button class="sm pur" data-g="'+s.id+'" data-a=life>♾ Lifetime</button><button class="sm danger" data-g="'+s.id+'" data-a=rev>Revoke</button></div></div><div class=grid>'+kv('Members',nf(s.members))+kv('Plan',esc(s.plan||'—'))+kv('Expires',esc(expiry(s)))+kv('Server owner',idv(s.owner_name,s.owner_id))+kv('Purchased by',idv(s.purchaser_name,s.purchaser_id))+kv('Server ID',copyspan(s.id,'id'))+kv('Stripe customer',copyspan(s.customer_id,'id'))+kv('Stripe sub',copyspan(s.sub_id,'id'))+kv('Server created',fmtTs(s.created_at))+kv('Sub updated',fmtIso(s.updated_at))+'</div></div>'}).join('');box.querySelectorAll('button[data-a]').forEach(function(b){b.onclick=function(){subAction(b)}})}
-  async function subAction(b){var g=b.getAttribute('data-g'),a=b.getAttribute('data-a'),body,label;if(a==='add'){var d=parseInt(b.getAttribute('data-d'),10);body={guild_id:g,action:'add_days',days:d};label='Added '+d+' days';}else if(a==='life'){body={guild_id:g,action:'lifetime'};label='Lifetime granted';}else{if(!(await confirmBox({icon:'🚫',title:'Revoke subscription?',message:'This server loses access immediately until it re-subscribes.',confirmText:'Revoke',danger:true})))return;body={guild_id:g,action:'revoke'};label='Revoked';}b.disabled=true;api('/api/admin/sub','POST',body).then(function(r){b.disabled=false;if(r.ok){toast(label);loadSubs()}else toast(r.error||'Failed',true)})}
+  function renderSubs(){var box=$('#subsList'),list=filteredServers();if(!list.length){box.innerHTML='<div class=pad>No servers match.</div>';return}box.innerHTML=list.map(function(s){var ic=s.icon?'<img src="'+esc(s.icon)+'" alt="">':'';return '<div class=card><div class=srvhead><div class=srvname>'+ic+esc(s.name)+' '+badge(s)+'</div><div class=acts><button class=sm data-g="'+s.id+'" data-a=add data-d=7>+7d</button><button class=sm data-g="'+s.id+'" data-a=add data-d=30>+30d</button><button class="sm pur" data-g="'+s.id+'" data-a=life>♾ Lifetime</button><button class="sm danger" data-g="'+s.id+'" data-a=rev>Revoke</button>'+(STATE.owner?'<button class="sm danger" data-g="'+s.id+'" data-a=leave>🚪 Remove bot</button>':'')+'</div></div><div class=grid>'+kv('Members',nf(s.members))+kv('Plan',esc(s.plan||'—'))+kv('Expires',esc(expiry(s)))+kv('Server owner',idv(s.owner_name,s.owner_id))+kv('Purchased by',idv(s.purchaser_name,s.purchaser_id))+kv('Server ID',copyspan(s.id,'id'))+kv('Stripe customer',copyspan(s.customer_id,'id'))+kv('Stripe sub',copyspan(s.sub_id,'id'))+kv('Server created',fmtTs(s.created_at))+kv('Sub updated',fmtIso(s.updated_at))+'</div></div>'}).join('');box.querySelectorAll('button[data-a]').forEach(function(b){b.onclick=function(){subAction(b)}})}
+  async function subAction(b){var g=b.getAttribute('data-g'),a=b.getAttribute('data-a'),body,label;if(a==='add'){var d=parseInt(b.getAttribute('data-d'),10);body={guild_id:g,action:'add_days',days:d};label='Added '+d+' days';}else if(a==='life'){body={guild_id:g,action:'lifetime'};label='Lifetime granted';}else if(a==='leave'){if(!(await confirmBox({icon:'🚪',title:'Remove the bot from this server?',message:'Gang Manager will leave this Discord server. The subscription stays as-is — you can re-add the bot any time.',confirmText:'Remove bot',danger:true})))return;b.disabled=true;api('/api/admin/leave','POST',{guild_id:g}).then(function(r){b.disabled=false;if(r.ok){toast('Bot removed from '+(r.name||'server'));loadSubs()}else toast(r.error||'Failed',true)});return;}else{if(!(await confirmBox({icon:'🚫',title:'Revoke subscription?',message:'This server loses access immediately until it re-subscribes.',confirmText:'Revoke',danger:true})))return;body={guild_id:g,action:'revoke'};label='Revoked';}b.disabled=true;api('/api/admin/sub','POST',body).then(function(r){b.disabled=false;if(r.ok){toast(label);loadSubs()}else toast(r.error||'Failed',true)})}
   function customDays(){var g=$('#cdGuild').value.trim(),d=parseInt($('#cdDays').value,10);if(!g){toast('Enter a server ID',true);return}if(!d){toast('Enter days',true);return}api('/api/admin/sub','POST',{guild_id:g,action:'add_days',days:d}).then(function(r){if(r.ok){toast('Done');$('#cdDays').value='';loadSubs()}else toast(r.error||'Failed',true)})}
   function loadBans(){var box=$('#bansList');box.innerHTML='<div class=sk style=height:52px></div>';api('/api/admin/bans').then(function(d){if(!d.ok){box.innerHTML='<div class=pad>Could not load.</div>';return}BANS=d.bans||[];renderBans()})}
   function renderBans(){
@@ -4426,6 +4426,35 @@ async def _h_admin_sub(request):
     log.info("admin sub action=%s guild=%s by=%s", action, gid, uid)
     return _admin_json({"ok": True, "state": {k: st.get(k) for k in
                        ("active", "mode", "status", "days_left", "expires_at", "lifetime")}})
+
+
+async def _h_admin_leave(request):
+    """Make the bot leave a server. Owner-only — it's destructive and the
+    subscription is deliberately left untouched so the bot can be re-added."""
+    uid, owner = _admin_ctx(request)
+    if uid is None:
+        return _admin_json({"ok": False, "error": "forbidden"}, 403)
+    if not owner:
+        return _admin_json({"ok": False, "error": "Only the bot owner can remove the bot from a server."}, 403)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _admin_json({"ok": False, "error": "bad json"}, 400)
+    try:
+        gid = int(body.get("guild_id"))
+    except (TypeError, ValueError):
+        return _admin_json({"ok": False, "error": "bad guild"}, 400)
+    g = bot.get_guild(gid)
+    if g is None:
+        return _admin_json({"ok": False, "error": "The bot isn't in that server."}, 404)
+    name = g.name
+    try:
+        await g.leave()
+    except discord.HTTPException as exc:
+        log.warning("admin leave failed guild=%s: %s", gid, exc)
+        return _admin_json({"ok": False, "error": "Discord wouldn't let the bot leave — try again."}, 502)
+    log.info("admin leave guild=%s (%s) by=%s", gid, name, uid)
+    return _admin_json({"ok": True, "name": name})
 
 
 async def _h_admin_bans(request):
@@ -4616,6 +4645,7 @@ async def start_web_server() -> None:
             _aioweb.get("/api/admin/me", _h_admin_me),
             _aioweb.get("/api/admin/overview", _h_admin_overview),
             _aioweb.post("/api/admin/sub", _h_admin_sub),
+            _aioweb.post("/api/admin/leave", _h_admin_leave),
             _aioweb.get("/api/admin/bans", _h_admin_bans),
             _aioweb.post("/api/admin/ban", _h_admin_ban),
             _aioweb.post("/api/admin/unban", _h_admin_unban),
