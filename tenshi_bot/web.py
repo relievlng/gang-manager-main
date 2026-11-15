@@ -4216,6 +4216,10 @@ async def _h_stats(request):
         store = guild_store(DATA, g.id)
         tickets += sum(1 for o in store.get("orders", []) if o.get("status", "open") == "open")
         wars += sum(1 for w in store.get("wars", []) if w.get("active", True))
+    try:
+        _pc = pool_overview().get("counts", {})
+    except Exception:  # never let the public status endpoint 500 over pool stats
+        _pc = {}
     resp = _aioweb.json_response({
         "online": True,
         "name": "Gang Manager",
@@ -4223,6 +4227,9 @@ async def _h_stats(request):
         "members": members,
         "wars": wars,
         "tickets": tickets,
+        "bots": 1 + int(_pc.get("online", 0)),     # main bot + online pool bots
+        "bots_total": 1 + int(_pc.get("total", 0)),
+        "fleet_servers": int(_pc.get("serving", 0)),  # servers the pool bots serve
         "ts": int(time.time()),
     })
     resp.headers["Cache-Control"] = "no-store"
