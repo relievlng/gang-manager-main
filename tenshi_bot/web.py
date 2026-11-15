@@ -2841,6 +2841,41 @@ h2{text-align:center;font-size:clamp(28px,4.4vw,42px);letter-spacing:-.8px;font-
 .step .ic{font-size:22px;margin:8px 0 8px}
 .step h4{font-size:16px;margin-bottom:5px}
 .step p{color:var(--mute);font-size:13.5px}
+/* interactive walkthrough */
+.walk{display:grid;grid-template-columns:230px 1fr;gap:20px;margin-top:34px;align-items:start}
+.wrail{display:flex;flex-direction:column;gap:8px}
+.wtab{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:13px 14px;border-radius:14px;
+ border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--mute);cursor:pointer;font:inherit;transition:border-color .2s,background .2s,color .2s}
+.wtab:hover{border-color:rgba(255,255,255,.28);color:#fff}
+.wtab .wn{flex:0 0 30px;height:30px;border-radius:9px;display:grid;place-items:center;font-weight:800;font-size:14px;
+ border:1px solid var(--line);background:transparent;color:var(--silver);transition:.2s}
+.wtab .wl{font-weight:700;font-size:14.5px;white-space:nowrap}
+.wtab.on{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.06);color:#fff}
+.wtab.on .wn,.wtab.done .wn{background:linear-gradient(90deg,#c9c9d2,#fff);color:#09090c;border:none}
+.wtab.done{color:#cfcfd6}
+.wstage{position:relative;border:1px solid var(--line);background:var(--pane);border-radius:var(--radius);
+ padding:30px 30px 20px;min-height:258px;backdrop-filter:blur(8px)}
+.wpanel{display:none;animation:wfade .4s ease}
+.walk.js .wpanel.on{display:block}
+.walk:not(.js) .wpanel{display:block;border-top:1px solid var(--line);margin-top:18px;padding-top:18px}
+.walk:not(.js) .wpanel:first-of-type{border:none;margin:0;padding:0}
+@keyframes wfade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.wpanel .wic{font-size:34px;margin-bottom:12px}
+.wpanel h3{font-size:22px;margin-bottom:10px;letter-spacing:-.4px}
+.wpanel>p{color:var(--mute);font-size:15px;max-width:60ch}
+.wtip{margin-top:16px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);
+ background:rgba(255,255,255,.03);color:var(--silver);font-size:13.5px}
+.wtip b{color:#fff}
+.wctl{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+.walk:not(.js) .wctl{display:none}
+.wcount{color:var(--mute);font-size:13px;font-weight:700;letter-spacing:.4px}
+.wback[disabled]{opacity:.4;cursor:not-allowed;transform:none!important}
+@media(max-width:760px){
+ .walk{grid-template-columns:1fr}
+ .wrail{flex-direction:row;overflow-x:auto;gap:8px;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+ .wtab{flex:0 0 auto}
+ .wstage{padding:24px 20px 16px;min-height:0}
+}
 /* stats */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-top:8px}
 .statc{text-align:center;padding:26px 14px;border-radius:var(--radius);border:1px solid var(--line);background:var(--pane)}
@@ -3182,12 +3217,46 @@ h1 .g{background-size:200% 100%;animation:sheen 6s ease-in-out infinite}
 <section id=how>
   <div class="kicker rev">Live in two minutes</div>
   <h2 class=rev>How it works</h2>
-  <p class="sub rev">No hosting, no config files. Add it and you're running.</p>
-  <div class=steps>
-    <div class="step rev"><div class=ic>🔑</div><h4>Log in</h4><p>Log in with Discord and pick the server you want to run it in.</p></div>
-    <div class="step rev"><div class=ic>💳</div><h4>Subscribe</h4><p>$7.99 a month for that server — cancel anytime.</p></div>
-    <div class="step rev"><div class=ic>➕</div><h4>Add the bot</h4><p>One click adds Gang Manager, fully unlocked.</p></div>
-    <div class="step rev"><div class=ic>⚙️</div><h4>Set it up</h4><p>Pick channels &amp; roles from dropdowns in the web panel — you're live.</p></div>
+  <p class="sub rev">Four steps from zero to running — here's exactly what you'll do.</p>
+
+  <div class="walk rev" id="walk" tabindex="0">
+    <div class="wrail" id="wrail">
+      <button type="button" class="wtab" data-i="0"><span class="wn">1</span><span class="wl">Log in</span></button>
+      <button type="button" class="wtab" data-i="1"><span class="wn">2</span><span class="wl">Subscribe</span></button>
+      <button type="button" class="wtab" data-i="2"><span class="wn">3</span><span class="wl">Add the bot</span></button>
+      <button type="button" class="wtab" data-i="3"><span class="wn">4</span><span class="wl">Set it up</span></button>
+    </div>
+    <div class="wstage">
+      <div class="wpanel" data-i="0">
+        <div class="wic">🔑</div>
+        <h3>Log in with Discord</h3>
+        <p>Hit <b>Get started</b> and authorise with Discord — the same account you already use. No password, no form to fill in. You land straight on your panel with every server you can manage listed out.</p>
+        <div class="wtip">What you'll see → each of your servers, each with a button to <b>subscribe</b> or <b>add the bot</b>.</div>
+      </div>
+      <div class="wpanel" data-i="1">
+        <div class="wic">💳</div>
+        <h3>Subscribe your server</h3>
+        <p>Pick the server you want Gang Manager in and start the subscription — <b>$7.99 a month</b>, handled by Stripe. It covers that one server and unlocks every module. Cancel anytime, no lock-in.</p>
+        <div class="wtip">Running two servers? → start a second subscription, or move this one over for free whenever you like.</div>
+      </div>
+      <div class="wpanel" data-i="2">
+        <div class="wic">➕</div>
+        <h3>Add the bot</h3>
+        <p>One click invites Gang Manager, already fully unlocked. It's hosted 24/7 on our side — nothing to run, host or keep online yourself. Give it a few seconds and it's in your server.</p>
+        <div class="wtip">Nothing to install → it's live the moment it joins.</div>
+      </div>
+      <div class="wpanel" data-i="3">
+        <div class="wic">⚙️</div>
+        <h3>Set your channels &amp; roles</h3>
+        <p>Back in the panel, point Gang Manager at your server from simple dropdowns — your rank roles, your log channel, your KOS and recruitment channels. The roster builds itself from the rank roles you pick. Save, and you're live.</p>
+        <div class="wtip">That's it → members show up on the live roster, KOS sign-ups open and EOI voting runs.</div>
+      </div>
+      <div class="wctl">
+        <button type="button" class="btn sm wback" id="wback">◀ Back</button>
+        <span class="wcount" id="wcount">Step 1 of 4</span>
+        <button type="button" class="btn sm primary" id="wnext">Next ▶</button>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -3299,6 +3368,34 @@ if(glow&&!REDUCE&&window.matchMedia("(pointer:fine)").matches){
 }
 // adapt to auth + subscription (invite buttons always route through /invite,
 // which forces Discord login before the bot can be added)
+// interactive setup walkthrough
+(function(){
+ var walk=document.getElementById("walk");
+ if(!walk)return;
+ var tabs=[].slice.call(walk.querySelectorAll(".wtab"));
+ var panels=[].slice.call(walk.querySelectorAll(".wpanel"));
+ var back=document.getElementById("wback"),next=document.getElementById("wnext"),count=document.getElementById("wcount");
+ if(!tabs.length||!panels.length||!back||!next||!count)return;
+ var n=panels.length,cur=0;
+ walk.classList.add("js");
+ function go(i){
+  cur=Math.max(0,Math.min(n-1,i));
+  tabs.forEach(function(t,k){t.classList.toggle("on",k===cur);t.classList.toggle("done",k<cur);});
+  panels.forEach(function(p,k){p.classList.toggle("on",k===cur);});
+  back.disabled=cur===0;
+  count.textContent="Step "+(cur+1)+" of "+n;
+  var last=cur===n-1;
+  next.textContent=last?"Get started ▶":"Next ▶";
+  next.dataset.cta=last?"1":"";
+ }
+ tabs.forEach(function(t){t.addEventListener("click",function(){go(+t.dataset.i);});});
+ back.addEventListener("click",function(){go(cur-1);});
+ next.addEventListener("click",function(){if(next.dataset.cta){location.href="/login";return;}go(cur+1);});
+ walk.addEventListener("keydown",function(e){
+  if(e.key==="ArrowRight"){go(cur+1);}else if(e.key==="ArrowLeft"){go(cur-1);}
+ });
+ go(0);
+})();
 fetch("/api/me").then(function(r){return r.json();}).then(function(me){
  var pub=me.public||{};
  var buy=document.getElementById("buyBtn"),nav=document.getElementById("navCta"),panel=document.getElementById("panelBtn");
