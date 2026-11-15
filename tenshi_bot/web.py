@@ -2771,6 +2771,7 @@ _LANDING_HTML = r"""<!doctype html><html lang=en><head><meta charset=utf-8>
 <title>Gang Manager — the all-in-one FiveM gang bot</title>
 <meta name=description content="Roster, KOS, strikes, wars, tickets, recruitment and a full web control panel — one Discord bot for your FiveM gang.">
 <!--GM_HEAD-->
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#060608;--pane:rgba(14,14,18,.66);--line:rgba(255,255,255,.12);--txt:#ececf1;--mute:#9a9aa6;--silver:#c9c9d2;--radius:20px}
@@ -2912,45 +2913,79 @@ h1 .g{background-size:200% 100%;animation:sheen 6s ease-in-out infinite}
 /* ---- cursor glow ---- */
 .glow{position:fixed;left:0;top:0;width:560px;height:560px;margin:-280px 0 0 -280px;border-radius:50%;pointer-events:none;z-index:-1;
  background:radial-gradient(circle,rgba(255,255,255,.075),transparent 62%);opacity:0;transition:opacity .5s;will-change:transform}
-/* ---- product mockup ---- */
+/* ---- product mockup: live, clickable replica of the real control panel ---- */
 .mockwrap{max-width:1020px;margin:6px auto 0;padding:0 22px;perspective:1600px}
-.mock{border-radius:18px;border:1px solid rgba(255,255,255,.16);background:linear-gradient(180deg,rgba(22,22,28,.94),rgba(10,10,14,.94));
- box-shadow:0 50px 120px rgba(0,0,0,.6),0 0 80px rgba(255,255,255,.05);overflow:hidden;transform:rotateX(16deg) scale(.96);
+.mock{border-radius:18px;border:1px solid rgba(255,255,255,.16);background:linear-gradient(180deg,rgba(22,22,28,.96),rgba(10,10,14,.97));
+ box-shadow:0 50px 120px rgba(0,0,0,.6),0 0 80px rgba(255,255,255,.05);overflow:hidden;transform:rotateX(14deg) scale(.97);
  transform-origin:50% 0;transition:transform .9s cubic-bezier(.2,.7,.2,1);will-change:transform}
-.mock.up{transform:rotateX(3deg) scale(1)}
-.mock.tilt{transition:transform .12s linear}
+.mock.up{transform:none}
 .mbar{display:flex;align-items:center;gap:7px;padding:11px 14px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03)}
 .mbar i{width:11px;height:11px;border-radius:50%;background:#3a3a44}
 .mbar i:nth-child(1){background:#ff5f57}.mbar i:nth-child(2){background:#febc2e}.mbar i:nth-child(3){background:#28c840}
 .mbar span{margin-left:12px;font-size:12px;color:#7a7a84;padding:4px 14px;border-radius:8px;background:rgba(255,255,255,.05)}
-.mbody{display:grid;grid-template-columns:172px 1fr;min-height:330px}
-.mside{border-right:1px solid rgba(255,255,255,.07);padding:14px 10px;display:flex;flex-direction:column;gap:3px}
-.mside img{width:58px;height:34px;object-fit:contain;margin:2px 8px 12px}
-.mside a{font-size:13px;color:#8d8d97;padding:8px 10px;border-radius:9px;font-weight:600}
-.mside a.on{background:rgba(255,255,255,.09);color:#fff}
-.mmain{padding:16px;display:flex;flex-direction:column;gap:14px;text-align:left}
-.mstats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-.mstats div{padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03)}
-.mstats b{display:block;font-size:24px;font-weight:850}
-.mstats span{font-size:10.5px;color:#7d7d87;text-transform:uppercase;letter-spacing:.6px;font-weight:700}
-.mgrid{display:grid;grid-template-columns:1.3fr 1fr;gap:12px}
-.mcard{padding:14px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03)}
-.mcard h5{font-size:11.5px;color:#9a9aa6;text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px}
-.mrow{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid rgba(255,255,255,.05);font-size:13.5px}
-.mrow:first-of-type{border-top:none}
-.av{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800;color:#09090c;flex:none}
-.mrow b{flex:1;font-weight:650}
-.mrow em{font-style:normal;font-size:11px;font-weight:800;padding:3px 8px;border-radius:7px;background:rgba(255,255,255,.08)}
-.mrow em.r1{background:linear-gradient(90deg,#c9c9d2,#fff);color:#09090c}
-.score{display:flex;align-items:baseline;gap:10px;font-size:46px;font-weight:900;line-height:1;margin:6px 0 12px}
-.score .dim{color:#5e5e68}.score span{font-size:28px;color:#5e5e68}
-.wbar{height:8px;border-radius:6px;background:rgba(239,68,68,.35);overflow:hidden}
-.wbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#4ade80,#22c55e);border-radius:6px;transition:width 1.4s cubic-bezier(.2,.7,.2,1)}
-.mock.up .wbar i{width:62%}
-.rounds{margin-top:12px;font-size:15px;letter-spacing:2px}
-.livedot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:6px;box-shadow:0 0 0 0 rgba(34,197,94,.6);animation:ping 1.8s infinite}
+/* app header */
+.mphead{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.07);background:linear-gradient(180deg,rgba(16,11,16,.6),transparent)}
+.mphead img{width:40px;height:26px;object-fit:contain;filter:drop-shadow(0 0 14px rgba(255,255,255,.3))}
+.mpbrand{font-family:"Space Grotesk",Inter,sans-serif;font-weight:700;font-size:18px;letter-spacing:.5px;line-height:1;
+ background:linear-gradient(90deg,#fff,#e8e8ee 40%,#b9b9c4 70%,#fff);background-size:200% auto;-webkit-background-clip:text;background-clip:text;color:transparent;animation:sheen 6s linear infinite}
+.mpbrand small{display:block;font-family:Inter,sans-serif;font-weight:500;font-size:11px;letter-spacing:0;color:#8a8a94;-webkit-text-fill-color:#8a8a94;margin-top:3px}
+.mpchip{margin-left:auto;display:flex;align-items:center;gap:8px;padding:5px 12px 5px 6px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.04);font-size:12.5px;font-weight:600;color:#cfcfd6}
+.mpchip .pa{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,#d9d9e3,#fff);display:grid;place-items:center;color:#09090c;font-weight:800;font-size:11px}
+.mpchip em{font-style:normal;font-size:10px;font-weight:800;color:#c9c9d2;padding:2px 7px;border-radius:6px;background:rgba(255,255,255,.08);text-transform:uppercase;letter-spacing:.4px}
+/* body */
+.mpbody{padding:16px 18px 20px;text-align:left}
+.mpstats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.mpstat{position:relative;overflow:hidden;padding:13px 14px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.14);
+ background:linear-gradient(180deg,rgba(28,17,23,.72),rgba(14,14,19,.72));box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.mpstat::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--silver);opacity:.85}
+.mpstat.bad::after{background:#ef4444}.mpstat.blue::after{background:#60a5fa}.mpstat.warn::after{background:#f59e0b}.mpstat.purple::after{background:#a78bfa}.mpstat.ok::after{background:#22c55e}
+.mpstat .ic{position:absolute;top:10px;right:11px;font-size:13px;opacity:.5}
+.mpstat .n{font-size:23px;font-weight:850;line-height:1;font-variant-numeric:tabular-nums}
+.mpstat.bad .n{color:#ff8a8a}.mpstat.blue .n{color:#93c5fd}.mpstat.warn .n{color:#ffcf6b}.mpstat.purple .n{color:#c4b5fd}.mpstat.ok .n{color:#86efac}
+.mpstat .l{font-size:10px;color:#8a8a94;text-transform:uppercase;letter-spacing:.6px;margin-top:5px;font-weight:700}
+.mptabs{display:flex;gap:4px;padding:4px;border-radius:13px;background:linear-gradient(180deg,rgba(28,17,23,.6),rgba(14,14,19,.6));
+ border:1px solid rgba(255,255,255,.08);margin-bottom:14px;overflow-x:auto;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.mptab{flex:0 0 auto;padding:7px 14px;border-radius:9px;cursor:pointer;color:#8a8a94;font-weight:600;font-size:13px;white-space:nowrap;transition:.18s;border:none;background:none;font-family:inherit}
+.mptab:hover{color:#fff}
+.mptab.on{background:linear-gradient(135deg,#9a9aa8,#3a3a42);color:#fff;box-shadow:0 6px 18px rgba(255,255,255,.25)}
+.mpview{display:none;animation:wfade .35s ease}
+.mpview.on{display:block}
+.mprank{display:flex;align-items:center;gap:9px;margin:4px 2px 9px;font-weight:800;font-size:11px;color:#c9c9d2;text-transform:uppercase;letter-spacing:.7px}
+.mprank::before{content:"";width:3px;height:13px;border-radius:3px;background:linear-gradient(#c9c9d2,#3a3a42)}
+.mprank .pill{margin-left:auto;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:10.5px;color:#9a9aa8}
+.mpmembers{list-style:none;display:flex;flex-direction:column;gap:8px;margin:0 0 14px;padding:0}
+.mpmem{display:flex;align-items:center;gap:12px;padding:9px 13px;border-radius:12px;border:1px solid var(--line);
+ background:linear-gradient(180deg,rgba(26,16,22,.6),rgba(14,14,19,.6));box-shadow:0 8px 26px rgba(0,0,0,.35)}
+.mpav{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;color:#09090c;flex:none}
+.mpmem b{flex:1;font-weight:650;font-size:14px}
+.mpmem em{font-style:normal;font-size:11px;font-weight:800;padding:3px 9px;border-radius:7px;background:rgba(255,255,255,.08);color:#d7d7de}
+.mpmem em.r1{background:linear-gradient(90deg,#c9c9d2,#fff);color:#09090c}
+.mpwar{display:flex;align-items:center;gap:16px;padding:16px 18px;border-radius:14px;border:1px solid var(--line);
+ background:linear-gradient(180deg,rgba(26,16,22,.6),rgba(14,14,19,.6));box-shadow:0 8px 26px rgba(0,0,0,.35)}
+.mpwar .wl{flex:1}
+.mpwar .wt{font-size:11px;color:#9a9aa6;text-transform:uppercase;letter-spacing:.6px;margin-bottom:9px;display:flex;align-items:center;gap:7px}
+.mpscore{display:flex;align-items:baseline;gap:9px;font-size:40px;font-weight:900;line-height:1;margin-bottom:11px}
+.mpscore .dim{color:#5e5e68}.mpscore span{font-size:24px;color:#5e5e68}
+.mpbar{height:8px;border-radius:6px;background:rgba(239,68,68,.35);overflow:hidden;max-width:230px}
+.mpbar i{display:block;height:100%;width:62%;background:linear-gradient(90deg,#4ade80,#22c55e);border-radius:6px}
+.mprounds{margin-top:11px;font-size:15px;letter-spacing:3px}
+.mplive{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 0 rgba(34,197,94,.6);animation:ping 1.8s infinite}
+.mpbadge{font-size:10px;font-weight:800;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.5px;background:rgba(34,197,94,.15);color:#86efac;border:1px solid rgba(34,197,94,.4)}
+.mpitem{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:12px;border:1px solid var(--line);
+ background:linear-gradient(180deg,rgba(26,16,22,.6),rgba(14,14,19,.6));box-shadow:0 8px 26px rgba(0,0,0,.35);margin-bottom:9px;font-size:14px}
+.mpitem b{flex:1;font-weight:650}
+.mpitem .tag{font-size:11px;font-weight:800;padding:3px 9px;border-radius:7px;white-space:nowrap}
+.tag.red{background:rgba(239,68,68,.16);color:#fca5a5;border:1px solid rgba(239,68,68,.35)}
+.tag.grn{background:rgba(34,197,94,.14);color:#86efac;border:1px solid rgba(34,197,94,.35)}
+.tag.gry{background:rgba(255,255,255,.06);color:#b9b9c4;border:1px solid var(--line)}
+.tag.amb{background:rgba(245,158,11,.14);color:#fcd34d;border:1px solid rgba(245,158,11,.35)}
+.mpset{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:linear-gradient(180deg,rgba(26,16,22,.5),rgba(14,14,19,.5));margin-bottom:9px}
+.mpset .sk{flex:1;font-size:13.5px;color:#cfcfd6;font-weight:600}
+.mpdrop{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--line);background:rgba(0,0,0,.28);font-size:13px;color:#e8e8ee;min-width:150px}
+.mpdrop::after{content:"▾";margin-left:auto;color:#8a8a94}
 @keyframes ping{0%{box-shadow:0 0 0 0 rgba(34,197,94,.6)}80%,100%{box-shadow:0 0 0 9px rgba(34,197,94,0)}}
-@media(max-width:760px){.mbody{grid-template-columns:1fr}.mside{display:none}.mstats{grid-template-columns:repeat(2,1fr)}.mgrid{grid-template-columns:1fr}.mock,.mock.up{transform:none}}
+@keyframes sheen{to{background-position:200% center}}
+@media(max-width:760px){.mpstats{grid-template-columns:repeat(2,1fr)}.mock,.mock.up{transform:none}.mphead{padding:12px 14px}.mpbody{padding:14px}.mpchip em{display:none}}
 /* ---- Discord showcase (mirrors the bot's real Components-V2 cards) ---- */
 .dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;align-items:start}
 .dmsg{display:flex;gap:12px;padding:16px;border-radius:16px;background:#2b2d31;border:1px solid rgba(255,255,255,.06);
@@ -3025,35 +3060,66 @@ h1 .g{background-size:200% 100%;animation:sheen 6s ease-in-out infinite}
 </header>
 
 <div class=mockwrap>
-  <div class=mock id=mock aria-hidden=true>
+  <div class=mock id=mock>
     <div class=mbar><i></i><i></i><i></i><span>gang manager · admin panel</span></div>
-    <div class=mbody>
-      <div class=mside>
-        <img src="/gm-logo.png" alt="">
-        <a class=on>👥 Roster</a><a>💀 KOS</a><a>⚔️ Wars</a><a>🎫 Orders</a><a>📨 EOIs</a><a>⚙️ Settings</a>
+    <div class=mphead>
+      <img src="/gm-logo.png" alt="">
+      <div class=mpbrand>GANG MANAGER<small>Control Panel</small></div>
+      <div class=mpchip><span class=pa>S</span>Shadow<em>Owner</em></div>
+    </div>
+    <div class=mpbody>
+      <div class=mpstats>
+        <div class=mpstat><span class=ic>👥</span><div class=n data-n="48">0</div><div class=l>Ranked</div></div>
+        <div class="mpstat bad"><span class=ic>💀</span><div class=n data-n="7">0</div><div class=l>On KOS</div></div>
+        <div class="mpstat blue"><span class=ic>🎫</span><div class=n data-n="12">0</div><div class=l>Open orders</div></div>
+        <div class="mpstat purple"><span class=ic>📨</span><div class=n data-n="3">0</div><div class=l>Pending EOIs</div></div>
       </div>
-      <div class=mmain>
-        <div class=mstats>
-          <div><b data-n="48">0</b><span>Ranked</span></div>
-          <div><b data-n="7">0</b><span>On KOS</span></div>
-          <div><b data-n="12">0</b><span>Open orders</span></div>
-          <div><b data-n="3">0</b><span>Pending EOIs</span></div>
-        </div>
-        <div class=mgrid>
-          <div class=mcard>
-            <h5>Roster</h5>
-            <div class=mrow><span class=av style="background:#d9d9e3">S</span><b>Shadow</b><em class=r1>Boss</em></div>
-            <div class=mrow><span class=av style="background:#c4cfe8">V</span><b>Vex</b><em>Underboss</em></div>
-            <div class=mrow><span class=av style="background:#e3d2c4">R</span><b>Riot</b><em>Enforcer</em></div>
-            <div class=mrow><span class=av style="background:#cde3cf">N</span><b>Nova</b><em>Enforcer</em></div>
-          </div>
-          <div class=mcard>
-            <h5><span class=livedot></span>War · vs Night Riders</h5>
-            <div class=score><b>5</b><span>:</span><b class=dim>3</b></div>
-            <div class=wbar><i></i></div>
-            <div class=rounds>🟩🟩🟥🟩🟥🟩🟩🟥</div>
-          </div>
-        </div>
+      <div class=mptabs role=tablist>
+        <button type=button class="mptab on" data-v=roster>👥 Roster</button>
+        <button type=button class=mptab data-v=kos>💀 KOS</button>
+        <button type=button class=mptab data-v=wars>⚔️ Wars</button>
+        <button type=button class=mptab data-v=orders>🎫 Orders</button>
+        <button type=button class=mptab data-v=eois>📨 EOIs</button>
+        <button type=button class=mptab data-v=settings>⚙️ Settings</button>
+      </div>
+      <div class="mpview on" data-v=roster>
+        <div class=mprank>Boss<span class=pill>1</span></div>
+        <ul class=mpmembers><li class=mpmem><span class=mpav style="background:#d9d9e3">S</span><b>Shadow</b><em class=r1>Boss</em></li></ul>
+        <div class=mprank>Underboss<span class=pill>1</span></div>
+        <ul class=mpmembers><li class=mpmem><span class=mpav style="background:#c4cfe8">V</span><b>Vex</b><em>Underboss</em></li></ul>
+        <div class=mprank>Enforcer<span class=pill>2</span></div>
+        <ul class=mpmembers>
+          <li class=mpmem><span class=mpav style="background:#e3d2c4">R</span><b>Riot</b><em>Enforcer</em></li>
+          <li class=mpmem><span class=mpav style="background:#cde3cf">N</span><b>Nova</b><em>Enforcer</em></li>
+        </ul>
+      </div>
+      <div class=mpview data-v=kos>
+        <div class=mpitem><span class=mpav style="background:#e9b7b7">D</span><b>Dmitri "Ghost" Kane</b><span class="tag red">● ACTIVE</span></div>
+        <div class=mpitem><span class=mpav style="background:#e9c7b7">M</span><b>Marco Vitelli</b><span class="tag red">● ACTIVE</span></div>
+        <div class=mpitem><span class=mpav style="background:#c7c7d6">T</span><b>Tenpenny crew</b><span class="tag amb">DRAW OPEN</span></div>
+        <div class=mpitem><span class=mpav style="background:#bcd6c0">L</span><b>Luca Moreno</b><span class="tag gry">CLEARED</span></div>
+      </div>
+      <div class=mpview data-v=wars>
+        <div class=mpwar><div class=wl>
+          <div class=wt><span class=mplive></span>War · vs Night Riders <span class=mpbadge>Live</span></div>
+          <div class=mpscore><b>5</b><span>:</span><b class=dim>3</b></div>
+          <div class=mpbar><i></i></div>
+          <div class=mprounds>🟩🟩🟥🟩🟥🟩🟩🟥</div>
+        </div></div>
+      </div>
+      <div class=mpview data-v=orders>
+        <div class=mpitem><b>#1042 · Weapon crate</b><span class="tag grn">OPEN</span></div>
+        <div class=mpitem><b>#1041 · Protection — Vinewood</b><span class="tag grn">OPEN</span></div>
+        <div class=mpitem><b>#1038 · Vehicle respray</b><span class="tag gry">CLOSED</span></div>
+      </div>
+      <div class=mpview data-v=eois>
+        <div class=mpitem><span class=mpav style="background:#d9d9e3">K</span><b>Kilo — wants in</b><span class="tag grn">✓ 6</span><span class="tag red">✗ 1</span></div>
+        <div class=mpitem><span class=mpav style="background:#cfcfe0">Z</span><b>Zane — referred by Vex</b><span class="tag amb">PENDING</span></div>
+      </div>
+      <div class=mpview data-v=settings>
+        <div class=mpset><span class=sk>Rank roles</span><span class=mpdrop>@Boss, @Underboss…</span></div>
+        <div class=mpset><span class=sk>Log channel</span><span class=mpdrop>#gang-logs</span></div>
+        <div class=mpset><span class=sk>KOS channel</span><span class=mpdrop>#kos-board</span></div>
       </div>
     </div>
   </div>
@@ -3347,16 +3413,17 @@ function countUp(el){
 }
 var cio=new IntersectionObserver(function(es){es.forEach(function(x){if(x.isIntersecting){countUp(x.target);cio.unobserve(x.target);}});},{threshold:.4});
 document.querySelectorAll("[data-n]").forEach(function(e){cio.observe(e);});
-// product mockup: straightens as it scrolls in, tilts toward the cursor
-var mock=document.getElementById("mock"),mw=document.querySelector(".mockwrap");
+// product mockup: straightens as it scrolls in; its tabs are live
+var mock=document.getElementById("mock");
 if(mock){
  var mio=new IntersectionObserver(function(es){es.forEach(function(x){if(x.isIntersecting){mock.classList.add("up");mio.unobserve(mock);}});},{threshold:.2});
  mio.observe(mock);
- if(!REDUCE&&window.innerWidth>760&&mw){
-  mw.addEventListener("mousemove",function(e){var r=mw.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;
-   mock.classList.add("tilt");mock.style.transform="rotateX("+(3-y*7).toFixed(2)+"deg) rotateY("+(x*9).toFixed(2)+"deg)";});
-  mw.addEventListener("mouseleave",function(){mock.classList.remove("tilt");mock.style.transform="";});
- }
+ var mtabs=[].slice.call(mock.querySelectorAll(".mptab")),mviews=[].slice.call(mock.querySelectorAll(".mpview"));
+ mtabs.forEach(function(t){t.addEventListener("click",function(){
+  var v=t.getAttribute("data-v");
+  mtabs.forEach(function(x){x.classList.toggle("on",x===t);});
+  mviews.forEach(function(x){x.classList.toggle("on",x.getAttribute("data-v")===v);});
+ });});
 }
 // soft light that follows the cursor
 var glow=document.getElementById("glow");
