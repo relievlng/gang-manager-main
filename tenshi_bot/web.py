@@ -2833,17 +2833,24 @@ async def _h_invite(request):
     # server with none of our bots yet gets a free pool bot (when hand-outs are
     # on). Pool bots' own apps don't list our /callback, so their invite has no
     # redirect — the panel/success page waits for the bot to join instead.
-    pool_bid = None
-    if gid.isdigit():
-        pool_bid = _pool_assignments().get(int(gid))
-        if pool_bid is None and get_guild_any(gid) is None:
-            pool_bid = assign_bot_for_guild(gid)
-        elif pool_bid is not None:
-            pool_bid = assign_bot_for_guild(gid)  # revalidates (reissues if that bot broke)
-    if pool_bid:
-        url = _invite_url(gid, client_id=str(pool_bid))
+    # The main bot is the distributor/hub only. Customers ALWAYS get a pool bot and
+    # never the main bot; only the owner can still add the main bot (e.g. to the hub).
+    if is_owner(uid):
+        pool_bid = _pool_assignments().get(int(gid)) if gid.isdigit() else None
+        if pool_bid:
+            url = _invite_url(gid, client_id=str(pool_bid))
+        else:
+            url = _invite_url(gid if gid.isdigit() else None, redirect_uri=_redirect_uri(request))
     else:
-        url = _invite_url(gid if gid.isdigit() else None, redirect_uri=_redirect_uri(request))
+        pool_bid = assign_bot_for_guild(gid) if gid.isdigit() else None
+        if not pool_bid:
+            return _simple_page(
+                "⏳", "All bots are busy",
+                "Every Gang Manager bot is at capacity right now. This usually clears within a "
+                "minute — try again shortly, or open a ticket if it keeps happening.",
+                "<a class='b p' href='/panel'>Back to the panel</a>", 503,
+            )
+        url = _invite_url(gid, client_id=str(pool_bid))
     if not url:
         return _simple_page(
             "⏳", "Almost ready", "The bot is still starting up — try again in a few seconds.",
@@ -5365,7 +5372,25 @@ async def start_web_server() -> None:
             "PORT is set but DISCORD_CLIENT_SECRET is not — the website loads but "
             "nobody can log in until you set it."
         )
-    app = _aioweb.Application()
+    @_aioweb.middleware
+    async def _security_headers(request, handler):
+        """Baseline hardening headers on every response, errors included."""
+        def _apply(h):
+            h.setdefault("X-Content-Type-Options", "nosniff")
+            h.setdefault("X-Frame-Options", "SAMEORIGIN")
+            h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+            h.setdefault("Strict-Transport-Security", "max-age=15552000")
+            h.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+            h.setdefault("X-Permitted-Cross-Domain-Policies", "none")
+        try:
+            resp = await handler(request)
+        except _aioweb.HTTPException as exc:
+            _apply(exc.headers)
+            raise
+        _apply(resp.headers)
+        return resp
+
+    app = _aioweb.Application(middlewares=[_security_headers])
     app.add_routes(
         [
             _aioweb.get("/", _h_landing),
