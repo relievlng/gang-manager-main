@@ -1158,6 +1158,19 @@ def _audit(request, actor, action: str, target: str = "", detail: str = "") -> N
         })
     except Exception as exc:  # noqa: BLE001
         log.warning("audit write failed (%s): %s", action, exc)
+    # Mirror it into its own Discord log channel via the GM Support staff bot.
+    try:
+        kind, title = _audit_kind(action)
+        actor_name = _user_label(actor) or str(actor)
+        fields = [{"name": "Who", "value": f"{actor_name} (`{actor}`)", "inline": True}]
+        if target:
+            fields.append({"name": "Target", "value": f"`{target}`", "inline": True})
+        if detail:
+            fields.append({"name": "Detail", "value": str(detail)[:1024], "inline": False})
+        fields.append({"name": "IP", "value": f"`{_client_ip(request)}`", "inline": True})
+        _fire(_gmlog(kind, title, fields=fields))
+    except Exception as exc:  # noqa: BLE001
+        log.info("gmlog audit forward skipped: %s", exc)
 
 
 async def _alert_owners(text: str) -> None:
@@ -1186,6 +1199,51 @@ def _fire(coro) -> None:
             coro.close()
         except Exception:  # noqa: BLE001
             pass
+
+
+def _gmlog_on() -> bool:
+    """Event forwarding is live once the staff bot URL + shared secret are set
+    (independent of whether admin 2FA is switched on)."""
+    return bool((os.getenv("STAFF_BOT_URL") or "").strip() and (os.getenv("MFA_SECRET") or "").strip())
+
+
+async def _gmlog(kind: str, title: str, description: str = "", fields=None, color=None) -> None:
+    """Forward one event to the GM Support staff bot, which posts it in the
+    channel for this kind. Best-effort — never blocks or breaks the caller."""
+    if not _gmlog_on() or _aiohttp is None:
+        return
+    base = (os.getenv("STAFF_BOT_URL") or "").strip().rstrip("/")
+    secret = (os.getenv("MFA_SECRET") or "").strip()
+    ts = str(int(time.time()))
+    sig = hmac.new(secret.encode(), f"{ts}.{kind}".encode(), hashlib.sha256).hexdigest()
+    payload: dict = {"kind": kind, "title": str(title)[:256], "description": str(description or "")[:4000]}
+    if fields:
+        payload["fields"] = fields
+    if color is not None:
+        payload["color"] = color
+    try:
+        async with _aiohttp.ClientSession(timeout=_aiohttp.ClientTimeout(total=10)) as s:
+            async with s.post(base + "/internal/log", json=payload,
+                              headers={"X-Guard-Token": secret, "X-Guard-TS": ts, "X-Guard-Sig": sig}) as r:
+                if r.status != 200:
+                    log.info("gmlog %s -> HTTP %s", kind, r.status)
+    except Exception as exc:  # noqa: BLE001
+        log.info("gmlog %s failed: %s", kind, exc)
+
+
+# admin audit action -> (log channel kind, human title for the Discord embed)
+def _audit_kind(action: str) -> "tuple[str, str]":
+    a = action or ""
+    if a == "admin_signin":     return "signin", "🔑 Admin sign-in"
+    if a == "mfa_lockout":      return "security", "🚨 Sign-in code lockout"
+    if a == "ban":              return "moderation", "🔨 User banned"
+    if a == "unban":            return "moderation", "♻️ User unbanned"
+    if a == "staff_add":        return "staff", "🛡️ Staff authorised"
+    if a == "staff_remove":     return "staff", "🚫 Staff access removed"
+    if a.startswith("sub_"):    return "subscription", "💳 Subscription " + a[4:].replace("_", " ")
+    if a == "bot_leave_server": return "server", "👋 Bot removed from a server"
+    if a.startswith("pool_"):   return "pool", "🤖 Pool · " + a[5:].replace("_", " ")
+    return "security", "📋 " + a
 
 
 # ---- Discord OAuth --------------------------------------------------------- #
@@ -4365,6 +4423,21 @@ async def _h_billing_webhook(request):
             })
         except Exception:  # noqa: BLE001
             log.exception("shop log record failed")
+        try:
+            g = get_guild_any(gid)
+            det = obj.get("customer_details") or {}
+            amt = int(obj.get("amount_total") or obj.get("amount_paid") or 0)
+            _fire(_gmlog(
+                "purchase",
+                "🛒 New purchase" if etype == "checkout.session.completed" else "💳 Subscription renewal",
+                fields=[
+                    {"name": "Server", "value": f"{g.name if g else gid} (`{gid}`)", "inline": False},
+                    {"name": "Amount", "value": (f"{amt/100:.2f} {(obj.get('currency') or '').upper()}").strip(), "inline": True},
+                    {"name": "Email", "value": (det.get("email") or obj.get("customer_email") or "—")[:200], "inline": True},
+                ],
+            ))
+        except Exception:  # noqa: BLE001
+            log.info("gmlog purchase skipped")
         if not was_active:
             await _notify(gid, "💳 Subscription active — Gang Manager is fully unlocked. Thanks!")
     elif etype == "invoice.payment_failed":

@@ -23,6 +23,7 @@ from tenshi_bot.tickets import *  # noqa: F401,F403
 from tenshi_bot.gang import *  # noqa: F401,F403
 from tenshi_bot.billing import *  # noqa: F401,F403
 from tenshi_bot.web import *  # noqa: F401,F403
+from tenshi_bot.web import _gmlog, _fire  # underscore names aren't picked up by *
 from tenshi_bot.pool import *  # noqa: F401,F403
 
 
@@ -245,6 +246,16 @@ async def on_guild_join(guild: discord.Guild) -> None:
             await guild.leave()
         except discord.HTTPException:
             pass
+        return
+
+    # Added and staying (paid, owner-comped, or allowlisted) — log it.
+    try:
+        _fire(_gmlog("server", "🌐 Bot added to a server", fields=[
+            {"name": "Server", "value": f"{guild.name} (`{guild.id}`)", "inline": False},
+            {"name": "Members", "value": str(getattr(guild, "member_count", None) or "—"), "inline": True},
+        ]))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 @bot.event
