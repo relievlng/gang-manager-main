@@ -1024,6 +1024,97 @@ def _rl_ok(key: str, limit: int, window: float = 60.0) -> bool:
     return True
 
 
+# ---- admin 2FA: one-time code DMed by the GM Support bot ------------------- #
+_MFA_COOKIE = "tenshi_mfa"
+_MFA: dict[str, dict] = {}   # uid -> {"code","exp","tries","sent"}
+
+
+def _mfa_on() -> bool:
+    """2FA is active only when explicitly turned on AND fully configured, so an
+    unset or half-set config can never lock the owner out of the panel."""
+    if (os.getenv("ADMIN_MFA") or "").strip().lower() not in ("on", "1", "true", "yes"):
+        return False
+    return bool((os.getenv("STAFF_BOT_URL") or "").strip() and (os.getenv("MFA_SECRET") or "").strip())
+
+
+def _sign_mfa(uid, ttl: int = 43200) -> str:
+    payload = {"uid": str(uid), "k": "mfa", "exp": int(time.time()) + ttl}
+    raw = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+    sig = hmac.new(_secret(), raw.encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{raw}.{sig}"
+
+
+def _read_mfa(cookie: str | None) -> str | None:
+    if not cookie or "." not in cookie:
+        return None
+    raw, sig = cookie.rsplit(".", 1)
+    if not hmac.compare_digest(sig, hmac.new(_secret(), raw.encode(), hashlib.sha256).hexdigest()[:32]):
+        return None
+    try:
+        payload = json.loads(base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)))
+    except Exception:  # noqa: BLE001
+        return None
+    if payload.get("k") != "mfa" or int(payload.get("exp", 0)) < int(time.time()):
+        return None
+    return payload.get("uid")
+
+
+def _mfa_ok(request, uid) -> bool:
+    return (not _mfa_on()) or _read_mfa(request.cookies.get(_MFA_COOKIE)) == str(uid)
+
+
+def _mfa_friendly(err: str) -> str:
+    return {
+        "dms_closed": "Your Discord DMs are closed — turn on DMs from members of a server you share with GM Support, then resend.",
+        "user not found": "GM Support couldn't find your Discord account.",
+    }.get(err, "Couldn't send the code — GM Support didn't respond. Try again in a moment.")
+
+
+async def _mfa_send_code(uid) -> tuple[bool, str]:
+    """Generate (or reuse) a code and ask the GM Support bot to DM it. (ok, error)."""
+    import secrets
+    now = int(time.time())
+    cur = _MFA.get(str(uid))
+    code = cur["code"] if (cur and now - cur.get("sent", 0) < 20) else f"{secrets.randbelow(10**6):06d}"
+    _MFA[str(uid)] = {"code": code, "exp": now + 300, "tries": 0, "sent": now}
+    if _aiohttp is None:
+        return False, "http unavailable"
+    url = (os.getenv("STAFF_BOT_URL") or "").strip().rstrip("/") + "/internal/send-code"
+    secret = (os.getenv("MFA_SECRET") or "").strip()
+    try:
+        async with _aiohttp.ClientSession(timeout=_aiohttp.ClientTimeout(total=10)) as s:
+            async with s.post(url, json={"user_id": str(uid), "code": code,
+                                         "service": "the Gang Manager admin panel"},
+                              headers={"X-Guard-Token": secret}) as r:
+                try:
+                    data = await r.json()
+                except Exception:  # noqa: BLE001
+                    data = {}
+                if r.status == 200 and data.get("ok"):
+                    return True, ""
+                return False, str(data.get("error") or f"status {r.status}")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("MFA send to GM Support failed: %s", exc)
+        return False, "unreachable"
+
+
+def _mfa_verify(uid, code: str) -> tuple[bool, str]:
+    rec = _MFA.get(str(uid))
+    if not rec:
+        return False, "No code pending — send a new one."
+    if int(time.time()) > rec.get("exp", 0):
+        _MFA.pop(str(uid), None)
+        return False, "That code expired — send a new one."
+    if rec.get("tries", 0) >= 5:
+        _MFA.pop(str(uid), None)
+        return False, "Too many attempts — send a new code."
+    if (code or "").strip() != rec["code"]:
+        rec["tries"] = rec.get("tries", 0) + 1
+        return False, "That code isn't right."
+    _MFA.pop(str(uid), None)
+    return True, ""
+
+
 # ---- Discord OAuth --------------------------------------------------------- #
 # identify + guilds: who you are, and which servers you're in (so the panel can
 # offer "add the bot here" / "ask the owner" instead of a dead end).
@@ -4907,8 +4998,9 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
   function toast(msg,bad){var t=$('#toast');t.innerHTML='<span>'+(bad?'⚠️':'✓')+'</span>'+esc(msg);t.className='toast show'+(bad?' bad':'');setTimeout(function(){t.className='toast'},2400)}
   function confirmBox(o){o=o||{};var m=$('#confirmModal');$('#confirmIcon').textContent=o.icon||'⚠️';$('#confirmTitle').textContent=o.title||'Are you sure?';$('#confirmMsg').textContent=o.message||'';var ok=$('#confirmOk');ok.textContent=o.confirmText||'Confirm';ok.className=o.danger?'brand-btn danger-solid':'brand-btn';m.classList.add('show');setTimeout(function(){ok.focus()},30);
     return new Promise(function(resolve){function done(v){m.classList.remove('show');ok.onclick=null;$('#confirmCancel').onclick=null;m.onclick=null;document.removeEventListener('keydown',key,true);resolve(v)}ok.onclick=function(){done(true)};$('#confirmCancel').onclick=function(){done(false)};m.onclick=function(e){if(e.target===m)done(false)};function key(e){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();done(false)}else if(e.key==='Enter'){e.preventDefault();e.stopPropagation();done(true)}}document.addEventListener('keydown',key,true)});}
-  function boot(){api('/api/admin/me').then(function(me){if(!me||!me.authed){showGate('login');return}if(!me.access){showGate('denied');return}STATE.owner=!!me.owner;var tbb=$('#tab-bots');if(tbb)tbb.style.display=STATE.owner?'':'none';var u=me.user||{};$('#uname').textContent=u.name||'Account';$('#uinitial').textContent=initial(u.name);var av=$('#uav');if(u.avatar){av.src=u.avatar;av.onerror=function(){av.style.display='none'}}else{av.style.display='none'}var role=$('#urole');role.textContent=STATE.owner?'Owner':'Staff';role.classList.toggle('owner',STATE.owner);$('#uchip').style.display='';$('#gate').style.display='none';$('#app').style.display='';selectTab('subs');loadSubs()}).catch(function(){showGate('error')})}
+  function boot(){api('/api/admin/me').then(function(me){if(!me||!me.authed){showGate('login');return}if(!me.access){showGate('denied');return}if(me.mfa){showMfaGate();return}STATE.owner=!!me.owner;var tbb=$('#tab-bots');if(tbb)tbb.style.display=STATE.owner?'':'none';var u=me.user||{};$('#uname').textContent=u.name||'Account';$('#uinitial').textContent=initial(u.name);var av=$('#uav');if(u.avatar){av.src=u.avatar;av.onerror=function(){av.style.display='none'}}else{av.style.display='none'}var role=$('#urole');role.textContent=STATE.owner?'Owner':'Staff';role.classList.toggle('owner',STATE.owner);$('#uchip').style.display='';$('#gate').style.display='none';$('#app').style.display='';selectTab('subs');loadSubs()}).catch(function(){showGate('error')})}
   function showGate(kind){$('#app').style.display='none';var g=$('#gate');g.style.display='';if(kind==='login')g.innerHTML='<div class=card><div class=big>🔐</div><h2>Admin sign-in</h2><p class=mute>Log in with a Discord account that owns or is authorised for the bot.</p><a href="/login?next=/admin"><button class="brand-btn" style=margin-top:12px>Log in with Discord</button></a></div>';else if(kind==='denied')g.innerHTML='<div class=card><div class=big>⛔</div><h2>Not authorised</h2><p class=mute>This account isn\'t on the admin list. Ask the owner to authorise your Discord ID.</p><a href="/logout"><button class=ghost style=margin-top:12px>Switch account</button></a></div>';else g.innerHTML='<div class=card><div class=big>⚠️</div><h2>Couldn\'t load</h2><p class=mute>Something went wrong. Refresh to try again.</p><a href="/admin"><button class=ghost style=margin-top:12px>Refresh</button></a></div>'}
+  function showMfaGate(){$('#app').style.display='none';var g=$('#gate');g.style.display='';g.innerHTML='<div class=card><div class=big>🔐</div><h2>Verify it\'s you</h2><p class=mute>Confirm this sign-in with a one-time code — GM Support will DM it to your Discord.</p><div id=mfa1><button class="brand-btn" id=mfaSend style=margin-top:12px>Send my code</button></div><div id=mfa2 style="display:none;margin-top:12px"><input id=mfaCode placeholder="6-digit code" inputmode=numeric maxlength=6 autocomplete=one-time-code style="text-align:center;letter-spacing:6px;font-size:18px"><button class="brand-btn" id=mfaVerify style=margin-top:10px>Verify</button><div class=mute style=margin-top:8px><a href=# id=mfaResend>Resend code</a></div></div><div class=mute id=mfaMsg style=margin-top:10px></div><div style=margin-top:14px><a href="/logout"><button class=ghost>Switch account</button></a></div></div>';function send(){$('#mfaMsg').textContent='Sending…';api('/api/admin/mfa/send','POST',{}).then(function(r){if(r&&r.ok){$('#mfa1').style.display='none';$('#mfa2').style.display='';$('#mfaMsg').textContent='Code sent to your Discord DMs from GM Support.';var c=$('#mfaCode');if(c)setTimeout(function(){c.focus()},40)}else{$('#mfaMsg').textContent=(r&&r.error)||'Could not send the code.'}})}function verify(){var c=($('#mfaCode').value||'').trim();if(!c){$('#mfaMsg').textContent='Enter the code.';return}$('#mfaMsg').textContent='Checking…';api('/api/admin/mfa/verify','POST',{code:c}).then(function(r){if(r&&r.ok){boot()}else{$('#mfaMsg').textContent=(r&&r.error)||'Wrong code.'}})}$('#mfaSend').onclick=send;$('#mfaVerify').onclick=verify;$('#mfaResend').onclick=function(e){e.preventDefault();send()};$('#mfaCode').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();verify()}})}
   function selectTab(id){curTab=id;['subs','bans','shop','staff','bots'].forEach(function(t){var on=t===id,tab=$('#tab-'+t),pan=$('#pan-'+t);if(tab)tab.classList.toggle('active',on);if(pan)pan.style.display=on?'':'none'});if(id==='subs')loadSubs();if(id==='bans')loadBans();if(id==='shop')loadShop();if(id==='staff')loadStaff();if(id==='bots')loadBots()}
   function setStats(c){c=c||{};var map={statServers:c.servers||0,statActive:c.active||0,statLife:c.lifetime||0,statMembers:c.members||0,statBans:c.bans||0,statStaff:c.staff||0};for(var k in map){var el=document.getElementById(k);if(!el)continue;if(firstStats)animateNum(el,map[k]);else el.textContent=nf(map[k])}firstStats=false}
   function bucket(s){if(s.lifetime)return 'lifetime';if(s.active)return 'active';if(s.status==='expired')return 'expired';return 'none'}
@@ -5023,6 +5115,8 @@ def _admin_ctx(request):
     uid = _read_session(request.cookies.get(_COOKIE))
     if not uid or not has_admin_access(uid):
         return None, False
+    if not _mfa_ok(request, uid):   # 2FA on but not verified this session
+        return None, False
     return uid, is_owner(uid)
 
 
@@ -5047,8 +5141,41 @@ async def _h_admin_me(request):
     prof = _cached_profile(uid) or {}
     if not has_admin_access(uid):
         return _admin_json({"authed": True, "access": False, "user": prof, "brand": brand})
+    if not _mfa_ok(request, uid):
+        return _admin_json({"authed": True, "access": True, "owner": is_owner(uid),
+                            "mfa": True, "user": prof, "brand": brand})
     return _admin_json({"authed": True, "access": True, "owner": is_owner(uid),
                         "user": prof, "brand": brand})
+
+
+async def _h_admin_mfa_send(request):
+    uid = _read_session(request.cookies.get(_COOKIE))
+    if not uid or not has_admin_access(uid):
+        return _admin_json({"ok": False, "error": "forbidden"}, 403)
+    if not _mfa_on():
+        return _admin_json({"ok": False, "error": "Two-step sign-in isn't enabled."}, 400)
+    ok, err = await _mfa_send_code(uid)
+    if not ok:
+        return _admin_json({"ok": False, "error": _mfa_friendly(err)}, 502)
+    return _admin_json({"ok": True})
+
+
+async def _h_admin_mfa_verify(request):
+    uid = _read_session(request.cookies.get(_COOKIE))
+    if not uid or not has_admin_access(uid):
+        return _admin_json({"ok": False, "error": "forbidden"}, 403)
+    if not _mfa_on():
+        return _admin_json({"ok": True})
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    ok, err = _mfa_verify(uid, str(body.get("code") or ""))
+    if not ok:
+        return _admin_json({"ok": False, "error": err}, 400)
+    resp = _admin_json({"ok": True})
+    resp.set_cookie(_MFA_COOKIE, _sign_mfa(uid), max_age=43200, httponly=True, secure=True, samesite="Lax")
+    return resp
 
 
 async def _h_admin_overview(request):
@@ -5543,6 +5670,8 @@ async def start_web_server() -> None:
             _aioweb.get("/api/admin/staff", _h_admin_staff),
             _aioweb.post("/api/admin/staff_add", _h_admin_staff_add),
             _aioweb.post("/api/admin/staff_remove", _h_admin_staff_remove),
+            _aioweb.post("/api/admin/mfa/send", _h_admin_mfa_send),
+            _aioweb.post("/api/admin/mfa/verify", _h_admin_mfa_verify),
             _aioweb.get("/api/admin/shop_log", _h_admin_shop_log),
         ]
     )
