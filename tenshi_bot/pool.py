@@ -234,6 +234,7 @@ def _pick_bot(gid: str):
     cand = [
         b for b, r in bots.items()
         if _slots(r) > 0
+        and not r.get("disabled")
         and r.get("status") not in ("bad_token", "locked")
         and r.get("public", True) is not False
         and _is_online(b)
@@ -754,6 +755,8 @@ async def start_pool(*, views=None, handlers=(), guild_join=None) -> None:
 
     async def _go() -> None:
         for bid in ids:
+            if (_rec(bid) or {}).get("disabled"):
+                continue  # turned off in Admin → Bots; stays off until turned on
             try:
                 await _launch(int(bid))
             except Exception as exc:  # noqa: BLE001
@@ -828,6 +831,31 @@ async def restart_bot(bid) -> dict:
     return {"ok": ok}
 
 
+async def disable_bot(bid) -> dict:
+    """Turn a pool bot off: stop it and keep it off across restarts. Its token and
+    its server assignments are kept, so turning it back on resumes them."""
+    rec = _rec(bid)
+    if rec is None:
+        raise KeyError(bid)
+    rec["disabled"] = True
+    save_data(DATA)
+    await stop_worker(bid)
+    log.info("Bot pool: pool bot %s turned off.", bid)
+    return {"ok": True, "off": True}
+
+
+async def enable_bot(bid) -> dict:
+    """Turn a pool bot back on and bring it online."""
+    rec = _rec(bid)
+    if rec is None:
+        raise KeyError(bid)
+    rec.pop("disabled", None)
+    rec.pop("status", None)
+    save_data(DATA)
+    ok = await _launch(int(bid))
+    return {"ok": bool(ok), "off": False}
+
+
 def pool_overview() -> dict:
     """Everything Admin → Bots shows. Never includes tokens."""
     rows = []
@@ -868,7 +896,10 @@ def pool_overview() -> dict:
             "name": r.get("name") or str(b),
             "avatar": avatar,
             "online": online,
-            "status": "online" if online else (r.get("status") or st.get("status") or "offline"),
+            "off": bool(r.get("disabled")),
+            "status": ("off" if r.get("disabled")
+                       else "online" if online
+                       else (r.get("status") or st.get("status") or "offline")),
             "members_intent": bool(st.get("members")) if online else (r.get("members_intent", True) is not False),
             "public": r.get("public", True) is not False,
             "code_grant": bool(r.get("code_grant")),
@@ -897,5 +928,5 @@ __all__ = [
     "MAX_POOL", "pool_state", "pool_enabled", "set_pool_enabled", "crypto_status",
     "admin_guild", "set_admin_guild",
     "assign_bot_for_guild", "reclaim_stale", "add_tokens", "start_pool", "stop_worker",
-    "free_bot", "remove_bot", "restart_bot", "pool_overview",
+    "free_bot", "remove_bot", "restart_bot", "disable_bot", "enable_bot", "pool_overview",
 ]

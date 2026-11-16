@@ -60,6 +60,8 @@ from .pool import (
     free_bot,
     remove_bot,
     restart_bot,
+    disable_bot,
+    enable_bot,
     set_pool_enabled,
     set_admin_guild,
 )
@@ -4700,6 +4702,7 @@ button.on{border-color:var(--ok);color:#86efac;background:rgba(34,197,94,.1)}
 .pres.ok{border-color:rgba(34,197,94,.35)}.pres.bad{border-color:rgba(239,68,68,.35);color:#fca5a5}
 .howto{margin-top:14px;font-size:13px;color:var(--mute)}.howto summary{cursor:pointer;font-weight:700;color:var(--text)}.howto ol{margin:8px 0 0 18px;line-height:1.75}.howto b{color:var(--text)}
 .bcard{border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:10px;background:rgba(255,255,255,.025)}
+.bcard.boff{opacity:.55}
 .bhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .bav{position:relative;width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.06);display:grid;place-items:center;flex:none;font-size:20px}
 .bav img{width:42px;height:42px;border-radius:12px;object-fit:cover}
@@ -4952,7 +4955,7 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
     if(!all.length){box.innerHTML='<div class=pad>No pool bots yet — add tokens above. Until hand-outs are on, every customer keeps getting your main bot.</div>';return}
     var list=all.filter(function(b){return !q||(b.name||'').toLowerCase().indexOf(q)>=0||String(b.id).indexOf(q)>=0||(b.servers||[]).some(function(s){return (s.name||'').toLowerCase().indexOf(q)>=0||String(s.id).indexOf(q)>=0})});
     if(!list.length){box.innerHTML='<div class=pad>Nothing matches.</div>';return}
-    var LBL={online:'Online',starting:'Starting…',offline:'Offline',error:'Crashed — retrying',bad_token:'Token rejected',locked:'Locked — re-add token',stopped:'Stopped'};
+    var LBL={online:'Online',off:'Turned off',starting:'Starting…',offline:'Offline',error:'Crashed — retrying',bad_token:'Token rejected',locked:'Locked — re-add token',stopped:'Stopped'};
     box.innerHTML=list.map(function(b){var n=all.indexOf(b)+1,dot=b.online?'on':(b.status==='starting'?'wait':'off');
       var srv=b.servers||[],cap=b.cap||10;
       var chips=srv.map(function(s){var nm=esc(s.name||s.id);return s.in_guild
@@ -4966,14 +4969,16 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
       var strain=b.online?'<div class="bstrain '+lvl+'"><div class=sbar><i style="width:'+(b.count?Math.max(pct,7):0)+'%"></i></div><span class=slab>'+slab+' strain · '+(b.count||0)+'/'+cap+' servers'+lat+'</span></div>':'';
       var hub=b.hub_invite?'<a class="sm ghost" href="'+esc(b.hub_invite)+'" target=_blank rel=noopener>🏠 Add to hub</a>':'';
       var w=[];if(!b.public)w.push('Public Bot is off — customers can’t add it. Turn it on in its Developer Portal → Bot page, then Restart.');if(b.code_grant)w.push('“Requires OAuth2 Code Grant” is on — turn it off or invites fail.');if(b.online&&!b.members_intent)w.push('Server Members Intent is off — no welcome messages or full member lists. Turn it on in its Developer Portal → Bot page, then Restart.');if(b.status==='bad_token')w.push('Discord rejected its token — reset the token and paste the new one above.');if(b.status==='locked')w.push('Its saved token can’t be decrypted (the encryption key changed) — paste the token again above.');
-      return '<div class=bcard><div class=bhead><div class=bav>'+(b.avatar?'<img src="'+esc(b.avatar)+'" alt="">':'🤖')+'<span class="bdot '+dot+'"></span></div><div class=bmain><div class=bname>'+esc(b.name)+' <span class=bnum>#'+n+'</span> '+capb+'</div><div class=mt>'+copyspan(b.id,'mono')+' · '+esc(LBL[b.status]||b.status||'')+(b.added_at?' · added '+fmtIso(b.added_at):'')+'</div></div></div>'
+      return '<div class="bcard'+(b.off?' boff':'')+'"><div class=bhead><div class=bav>'+(b.avatar?'<img src="'+esc(b.avatar)+'" alt="">':'🤖')+'<span class="bdot '+dot+'"></span></div><div class=bmain><div class=bname>'+esc(b.name)+' <span class=bnum>#'+n+'</span> '+capb+'</div><div class=mt>'+copyspan(b.id,'mono')+' · '+esc(LBL[b.status]||b.status||'')+(b.added_at?' · added '+fmtIso(b.added_at):'')+'</div></div></div>'
         +'<div class=bservers>'+serveRow+'</div>'+strain
         +(w.length?'<div class=bwarn>'+w.map(function(x){return '<div>⚠ '+esc(x)+'</div>'}).join('')+'</div>':'')
-        +'<div class=bacts>'+hub+'<button class="sm ghost" data-pa=restart data-b="'+esc(b.id)+'">⟳ Restart</button><button class="sm danger" data-pa=remove data-b="'+esc(b.id)+'" data-g="'+(b.count?'1':'')+'">🗑 Remove</button></div></div>'}).join('');
+        +'<div class=bacts>'+hub+(b.off?'<button class="sm ghost" data-pa=enable data-b="'+esc(b.id)+'">▶ Turn on</button>':'<button class="sm ghost" data-pa=disable data-b="'+esc(b.id)+'" data-g="'+(b.in_count?'1':'')+'">⏻ Turn off</button><button class="sm ghost" data-pa=restart data-b="'+esc(b.id)+'">⟳ Restart</button>')+'<button class="sm danger" data-pa=remove data-b="'+esc(b.id)+'" data-g="'+(b.count?'1':'')+'">🗑 Remove</button></div></div>'}).join('');
     box.querySelectorAll('[data-pa]').forEach(function(x){x.onclick=function(){poolAct(x)}})}
   function poolAct(x){var a=x.getAttribute('data-pa'),b=x.getAttribute('data-b');
     if(a==='copy'){var v=x.getAttribute('data-v');try{navigator.clipboard.writeText(v);toast('Invite link copied')}catch(e){toast('Copy failed',true)}return}
     if(a==='restart'){x.disabled=true;api('/api/admin/pool/action','POST',{action:'restart',bot_id:b}).then(function(r){x.disabled=false;if(r.ok){toast('Restarting…');setTimeout(loadBots,3000)}else toast(r.error||'Failed',true)});return}
+    if(a==='disable'){var g=x.getAttribute('data-g');confirmBox({icon:'⏻',title:'Turn this bot off?',message:g?'This bot is serving a server — turning it off takes that server offline until you turn it back on. Its token and assignments are kept.':'The bot goes offline and stays off across restarts. Its token and assignments are kept — turn it back on anytime.',confirmText:'Turn off',danger:true}).then(function(ok){if(!ok)return;x.disabled=true;api('/api/admin/pool/action','POST',{action:'disable',bot_id:b}).then(function(r){x.disabled=false;if(r.ok){toast('Bot turned off');loadBots();loadSubs()}else toast(r.error||'Failed',true)})});return}
+    if(a==='enable'){x.disabled=true;api('/api/admin/pool/action','POST',{action:'enable',bot_id:b}).then(function(r){x.disabled=false;if(r.ok){toast('Turning on…');setTimeout(loadBots,3000)}else toast(r.error||'Failed',true)});return}
     if(a==='free'){var g=x.getAttribute('data-g');confirmBox({icon:'↩️',title:'Remove from this server?',message:'The bot leaves this server and that slot frees up. The server can add a bot again from the panel — its subscription isn’t touched.',confirmText:'Remove bot',danger:true}).then(function(ok){if(!ok)return;x.disabled=true;api('/api/admin/pool/action','POST',{action:'free',bot_id:b,guild:g}).then(function(r){x.disabled=false;if(r.ok){toast('Removed from the server');loadBots();loadSubs()}else toast(r.error||'Failed',true)})});return}
     if(a==='remove'){var g=x.getAttribute('data-g');confirmBox({icon:'🗑️',title:'Remove from the pool?',message:g?'This bot is serving a server — removing it makes it leave that server and forgets its token.':'Its token is forgotten. You can add it back any time.',confirmText:'Remove',danger:true}).then(function(ok){if(!ok)return;x.disabled=true;api('/api/admin/pool/action','POST',{action:'remove',bot_id:b,force:!!g}).then(function(r){x.disabled=false;if(r.ok){toast('Removed');loadBots();loadSubs()}else toast(r.error||'Failed',true)})})}}
   function togglePool(){if(!POOL)return;var on=!POOL.enabled;function go(){api('/api/admin/pool/action','POST',{action:'toggle',enabled:on}).then(function(r){if(r.ok){POOL.enabled=r.enabled;renderPool();toast(r.enabled?'Hand-outs on — new servers get their own bot':'Hand-outs off — new servers get the main bot')}else toast(r.error||'Failed',true)})}
@@ -5266,6 +5271,10 @@ async def _h_admin_pool_action(request):
             res = await remove_bot(bid, force=bool(body.get("force")))
         elif action == "restart":
             res = await restart_bot(bid)
+        elif action == "disable":
+            res = await disable_bot(bid)
+        elif action == "enable":
+            res = await enable_bot(bid)
         else:
             return _admin_json({"ok": False, "error": "unknown action"}, 400)
     except KeyError:
