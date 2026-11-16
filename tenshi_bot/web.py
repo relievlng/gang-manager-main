@@ -52,6 +52,9 @@ from .billing import (
     set_admin_staff_name,
     shop_log_add,
     shop_log_list,
+    owner_ids,
+    audit_log_add,
+    audit_log_list,
 )
 from .settings import CONFIG_SETTINGS, _SETTING_EMOJI, _LOG_KEYS, ensure_log_channels
 from .pool import (
@@ -1024,6 +1027,24 @@ def _rl_ok(key: str, limit: int, window: float = 60.0) -> bool:
     return True
 
 
+# Content-Security-Policy served on every page. 'unsafe-inline' stays in
+# script-src only because the panels use inline on* handlers; every other
+# directive is locked down (see the _apply() comment for what this buys).
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com data:; "
+    "img-src 'self' data: https:; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'; "
+    "frame-ancestors 'none'; "
+    "frame-src 'none'"
+)
+
+
 # ---- admin 2FA: one-time code DMed by the GM Support bot ------------------- #
 _MFA_COOKIE = "tenshi_mfa"
 _MFA: dict[str, dict] = {}   # uid -> {"code","exp","tries","sent"}
@@ -1081,11 +1102,17 @@ async def _mfa_send_code(uid) -> tuple[bool, str]:
         return False, "http unavailable"
     url = (os.getenv("STAFF_BOT_URL") or "").strip().rstrip("/") + "/internal/send-code"
     secret = (os.getenv("MFA_SECRET") or "").strip()
+    uid_s = str(uid)
+    ts = str(int(time.time()))
+    # Bind timestamp + target + code with the shared secret so a captured request
+    # can't be replayed (GM Support rejects a stale ts or a bad signature).
+    sig = hmac.new(secret.encode(), f"{ts}.{uid_s}.{code}".encode(), hashlib.sha256).hexdigest()
     try:
         async with _aiohttp.ClientSession(timeout=_aiohttp.ClientTimeout(total=10)) as s:
-            async with s.post(url, json={"user_id": str(uid), "code": code,
+            async with s.post(url, json={"user_id": uid_s, "code": code,
                                          "service": "the Gang Manager admin panel"},
-                              headers={"X-Guard-Token": secret}) as r:
+                              headers={"X-Guard-Token": secret,
+                                       "X-Guard-TS": ts, "X-Guard-Sig": sig}) as r:
                 try:
                     data = await r.json()
                 except Exception:  # noqa: BLE001
@@ -1113,6 +1140,52 @@ def _mfa_verify(uid, code: str) -> tuple[bool, str]:
         return False, "That code isn't right."
     _MFA.pop(str(uid), None)
     return True, ""
+
+
+# ---- audit log + owner security alerts ------------------------------------- #
+
+def _audit(request, actor, action: str, target: str = "", detail: str = "") -> None:
+    """Record one privileged admin-site action to the durable audit log.
+    Best-effort: a logging failure must never break the action itself."""
+    try:
+        audit_log_add({
+            "actor": str(actor),
+            "actor_name": _user_label(actor) or "",
+            "action": str(action),
+            "target": str(target or ""),
+            "detail": str(detail or "")[:300],
+            "ip": _client_ip(request),
+        })
+    except Exception as exc:  # noqa: BLE001
+        log.warning("audit write failed (%s): %s", action, exc)
+
+
+async def _alert_owners(text: str) -> None:
+    """DM every bot operator a short security alert via the main bot. Best-effort."""
+    try:
+        emb = discord.Embed(description=text[:3500], colour=0xB33A3A)
+        emb.set_author(name="Gang Manager · security")
+    except Exception:  # noqa: BLE001
+        emb = None
+    for oid in owner_ids():
+        try:
+            u = bot.get_user(int(oid)) or await bot.fetch_user(int(oid))
+            await (u.send(embed=emb) if emb is not None else u.send(text[:1900]))
+        except Exception as exc:  # noqa: BLE001
+            log.info("owner alert to %s skipped: %s", oid, exc)
+
+
+def _fire(coro) -> None:
+    """Schedule a fire-and-forget coroutine from inside a request handler."""
+    try:
+        import asyncio
+        asyncio.create_task(coro)
+    except Exception as exc:  # noqa: BLE001
+        log.info("background alert skipped: %s", exc)
+        try:
+            coro.close()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 # ---- Discord OAuth --------------------------------------------------------- #
@@ -4900,6 +4973,7 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
     <div class=tab id=tab-shop>Shop log</div>
     <div class=tab id=tab-staff>Staff access</div>
     <div class=tab id=tab-bots style=display:none>🤖 Bots</div>
+    <div class=tab id=tab-audit style=display:none>📜 Audit</div>
   </div>
   <div id=pan-subs>
     <div class="card bd" id=subHealth style=display:none></div>
@@ -4975,6 +5049,12 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
       <div id=poolList></div>
     </div>
   </div>
+  <div id=pan-audit style=display:none>
+    <div class=card><h3>Admin audit log</h3><p class=hint>Every privileged action taken on this admin site — who did it, what they did, when, and from which IP. Owner-only, newest first.</p>
+      <div class=toolbar style=margin-bottom:10px><input id=auditSearch placeholder="Search action, person or target…" autocomplete=off><button class="ghost sm" id=auditRefresh>↻ Refresh</button></div>
+      <div id=auditList></div>
+    </div>
+  </div>
 </div>
 <div class=cmdk id=cmdk><div class=cmdkbox><input id=cmdkInput placeholder="Jump to a server or section…" autocomplete=off><div class=cmdkList id=cmdkList></div><div class=cmdkFoot><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span></div></div></div>
 <div class=confirm id=confirmModal><div class=confirmbox><div class=ci2 id=confirmIcon>⚠️</div><h4 id=confirmTitle>Are you sure?</h4><p id=confirmMsg></p><div class=confirmbtns><button class=ghost id=confirmCancel>Cancel</button><button class="brand-btn" id=confirmOk>Confirm</button></div></div></div>
@@ -4998,10 +5078,10 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
   function toast(msg,bad){var t=$('#toast');t.innerHTML='<span>'+(bad?'⚠️':'✓')+'</span>'+esc(msg);t.className='toast show'+(bad?' bad':'');setTimeout(function(){t.className='toast'},2400)}
   function confirmBox(o){o=o||{};var m=$('#confirmModal');$('#confirmIcon').textContent=o.icon||'⚠️';$('#confirmTitle').textContent=o.title||'Are you sure?';$('#confirmMsg').textContent=o.message||'';var ok=$('#confirmOk');ok.textContent=o.confirmText||'Confirm';ok.className=o.danger?'brand-btn danger-solid':'brand-btn';m.classList.add('show');setTimeout(function(){ok.focus()},30);
     return new Promise(function(resolve){function done(v){m.classList.remove('show');ok.onclick=null;$('#confirmCancel').onclick=null;m.onclick=null;document.removeEventListener('keydown',key,true);resolve(v)}ok.onclick=function(){done(true)};$('#confirmCancel').onclick=function(){done(false)};m.onclick=function(e){if(e.target===m)done(false)};function key(e){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();done(false)}else if(e.key==='Enter'){e.preventDefault();e.stopPropagation();done(true)}}document.addEventListener('keydown',key,true)});}
-  function boot(){api('/api/admin/me').then(function(me){if(!me||!me.authed){showGate('login');return}if(!me.access){showGate('denied');return}if(me.mfa){showMfaGate();return}STATE.owner=!!me.owner;var tbb=$('#tab-bots');if(tbb)tbb.style.display=STATE.owner?'':'none';var u=me.user||{};$('#uname').textContent=u.name||'Account';$('#uinitial').textContent=initial(u.name);var av=$('#uav');if(u.avatar){av.src=u.avatar;av.onerror=function(){av.style.display='none'}}else{av.style.display='none'}var role=$('#urole');role.textContent=STATE.owner?'Owner':'Staff';role.classList.toggle('owner',STATE.owner);$('#uchip').style.display='';$('#gate').style.display='none';$('#app').style.display='';selectTab('subs');loadSubs()}).catch(function(){showGate('error')})}
+  function boot(){api('/api/admin/me').then(function(me){if(!me||!me.authed){showGate('login');return}if(!me.access){showGate('denied');return}if(me.mfa){showMfaGate();return}STATE.owner=!!me.owner;var tbb=$('#tab-bots');if(tbb)tbb.style.display=STATE.owner?'':'none';var tba=$('#tab-audit');if(tba)tba.style.display=STATE.owner?'':'none';var u=me.user||{};$('#uname').textContent=u.name||'Account';$('#uinitial').textContent=initial(u.name);var av=$('#uav');if(u.avatar){av.src=u.avatar;av.onerror=function(){av.style.display='none'}}else{av.style.display='none'}var role=$('#urole');role.textContent=STATE.owner?'Owner':'Staff';role.classList.toggle('owner',STATE.owner);$('#uchip').style.display='';$('#gate').style.display='none';$('#app').style.display='';selectTab('subs');loadSubs()}).catch(function(){showGate('error')})}
   function showGate(kind){$('#app').style.display='none';var g=$('#gate');g.style.display='';if(kind==='login')g.innerHTML='<div class=card><div class=big>🔐</div><h2>Admin sign-in</h2><p class=mute>Log in with a Discord account that owns or is authorised for the bot.</p><a href="/login?next=/admin"><button class="brand-btn" style=margin-top:12px>Log in with Discord</button></a></div>';else if(kind==='denied')g.innerHTML='<div class=card><div class=big>⛔</div><h2>Not authorised</h2><p class=mute>This account isn\'t on the admin list. Ask the owner to authorise your Discord ID.</p><a href="/logout"><button class=ghost style=margin-top:12px>Switch account</button></a></div>';else g.innerHTML='<div class=card><div class=big>⚠️</div><h2>Couldn\'t load</h2><p class=mute>Something went wrong. Refresh to try again.</p><a href="/admin"><button class=ghost style=margin-top:12px>Refresh</button></a></div>'}
   function showMfaGate(){$('#app').style.display='none';var g=$('#gate');g.style.display='';g.innerHTML='<div class=card><div class=big>🔐</div><h2>Verify it\'s you</h2><p class=mute>Confirm this sign-in with a one-time code — GM Support will DM it to your Discord.</p><div id=mfa1><button class="brand-btn" id=mfaSend style=margin-top:12px>Send my code</button></div><div id=mfa2 style="display:none;margin-top:12px"><input id=mfaCode placeholder="6-digit code" inputmode=numeric maxlength=6 autocomplete=one-time-code style="text-align:center;letter-spacing:6px;font-size:18px"><button class="brand-btn" id=mfaVerify style=margin-top:10px>Verify</button><div class=mute style=margin-top:8px><a href=# id=mfaResend>Resend code</a></div></div><div class=mute id=mfaMsg style=margin-top:10px></div><div style=margin-top:14px><a href="/logout"><button class=ghost>Switch account</button></a></div></div>';function send(){$('#mfaMsg').textContent='Sending…';api('/api/admin/mfa/send','POST',{}).then(function(r){if(r&&r.ok){$('#mfa1').style.display='none';$('#mfa2').style.display='';$('#mfaMsg').textContent='Code sent to your Discord DMs from GM Support.';var c=$('#mfaCode');if(c)setTimeout(function(){c.focus()},40)}else{$('#mfaMsg').textContent=(r&&r.error)||'Could not send the code.'}})}function verify(){var c=($('#mfaCode').value||'').trim();if(!c){$('#mfaMsg').textContent='Enter the code.';return}$('#mfaMsg').textContent='Checking…';api('/api/admin/mfa/verify','POST',{code:c}).then(function(r){if(r&&r.ok){boot()}else{$('#mfaMsg').textContent=(r&&r.error)||'Wrong code.'}})}$('#mfaSend').onclick=send;$('#mfaVerify').onclick=verify;$('#mfaResend').onclick=function(e){e.preventDefault();send()};$('#mfaCode').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();verify()}})}
-  function selectTab(id){curTab=id;['subs','bans','shop','staff','bots'].forEach(function(t){var on=t===id,tab=$('#tab-'+t),pan=$('#pan-'+t);if(tab)tab.classList.toggle('active',on);if(pan)pan.style.display=on?'':'none'});if(id==='subs')loadSubs();if(id==='bans')loadBans();if(id==='shop')loadShop();if(id==='staff')loadStaff();if(id==='bots')loadBots()}
+  function selectTab(id){curTab=id;['subs','bans','shop','staff','bots','audit'].forEach(function(t){var on=t===id,tab=$('#tab-'+t),pan=$('#pan-'+t);if(tab)tab.classList.toggle('active',on);if(pan)pan.style.display=on?'':'none'});if(id==='subs')loadSubs();if(id==='bans')loadBans();if(id==='shop')loadShop();if(id==='staff')loadStaff();if(id==='bots')loadBots();if(id==='audit')loadAudit()}
   function setStats(c){c=c||{};var map={statServers:c.servers||0,statActive:c.active||0,statLife:c.lifetime||0,statMembers:c.members||0,statBans:c.bans||0,statStaff:c.staff||0};for(var k in map){var el=document.getElementById(k);if(!el)continue;if(firstStats)animateNum(el,map[k]);else el.textContent=nf(map[k])}firstStats=false}
   function bucket(s){if(s.lifetime)return 'lifetime';if(s.active)return 'active';if(s.status==='expired')return 'expired';return 'none'}
   function badge(s){var b=bucket(s);if(b==='lifetime')return '<span class="badge pur">Lifetime</span>';if(b==='active')return '<span class="badge live">Active</span>';if(b==='expired')return '<span class="badge red">Expired</span>';return '<span class="badge off">Inactive</span>'}
@@ -5035,10 +5115,15 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
   function shopFiltered(){var q=SHOPQ.toLowerCase();return SHOP.filter(function(e){return !q||((e.email||'').toLowerCase().indexOf(q)>=0||(e.ip||'').indexOf(q)>=0||(e.guild_name||'').toLowerCase().indexOf(q)>=0||String(e.guild_id||'').indexOf(q)>=0)})}
   function renderShop(){var box=$('#shopList'),list=shopFiltered();var tot={};list.forEach(function(e){if(e.amount){var c=e.currency||'';tot[c]=(tot[c]||0)+e.amount}});var revs=Object.keys(tot).map(function(c){return (tot[c]/100).toFixed(2)+' '+c});$('#shopRev').innerHTML=list.length?('Showing <b>'+list.length+'</b> · total <b>'+(revs.join(' + ')||'—')+'</b>'):'';if(!list.length){box.innerHTML='<div class=pad>'+(SHOP.length?'Nothing matches.':'No purchases logged yet — they show here after the next sale.')+'</div>';return}box.innerHTML='<table class=tbl><thead><tr><th>When</th><th>Type</th><th>Email</th><th>IP</th><th>Amount</th><th>Server</th></tr></thead><tbody>'+list.map(function(e){return '<tr><td>'+fmtTs(e.ts)+'</td><td>'+esc(e.kind||'')+'</td><td>'+copyspan(e.email,'mono')+'</td><td>'+copyspan(e.ip,'mono')+'</td><td>'+money(e.amount,e.currency)+'</td><td>'+esc(e.guild_name||e.guild_id||'')+'</td></tr>'}).join('')+'</tbody></table>'}
   function exportCsv(){var list=shopFiltered();if(!list.length){toast('Nothing to export',true);return}var head=['when','kind','email','ip','amount','currency','server','server_id'];var rows=list.map(function(e){return [fmtTs(e.ts),e.kind||'',e.email||'',e.ip||'',(e.amount?(e.amount/100).toFixed(2):''),e.currency||'',e.guild_name||'',e.guild_id||''].map(function(v){return '"'+String(v).replace(/"/g,'""')+'"'}).join(',')});var csv=head.join(',')+'\n'+rows.join('\n');var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='shop-log.csv';a.click();toast('CSV exported')}
+  function loadAudit(){var box=$('#auditList');box.innerHTML='<div class=sk style=height:40px></div><div class=sk style=height:40px></div>';api('/api/admin/audit_log').then(function(d){if(!d.ok){box.innerHTML='<div class=pad>'+esc(d.error||'Could not load.')+'</div>';return}AUDIT=d.log||[];renderAudit()})}
+  function auditFiltered(){var q=AUDITQ.toLowerCase();return AUDIT.filter(function(e){return !q||((e.action||'').toLowerCase().indexOf(q)>=0||(e.actor_name||'').toLowerCase().indexOf(q)>=0||String(e.actor||'').indexOf(q)>=0||String(e.target||'').indexOf(q)>=0||(e.detail||'').toLowerCase().indexOf(q)>=0)})}
+  var AUDIT_LBL={admin_signin:'🔑 Sign-in',mfa_lockout:'⛔ Code lockout',ban:'🔨 Ban',unban:'♻️ Unban',staff_add:'🛡️ Staff add',staff_remove:'🚫 Staff remove',bot_leave_server:'👋 Bot left server',pool_add_tokens:'➕ Pool tokens',pool_handouts:'🔀 Hand-outs',pool_hub:'🏠 Hub',sub_add_days:'📅 Sub +days',sub_lifetime:'♾️ Lifetime',sub_revoke:'❌ Sub revoke'};
+  function auditLabel(a){if(AUDIT_LBL[a])return AUDIT_LBL[a];if(a&&a.indexOf('pool_')===0)return '🤖 '+esc(a.slice(5));return esc(a||'—')}
+  function renderAudit(){var box=$('#auditList'),list=auditFiltered();if(!list.length){box.innerHTML='<div class=pad>'+(AUDIT.length?'Nothing matches.':'No admin actions logged yet — privileged actions will appear here.')+'</div>';return}box.innerHTML='<table class=tbl><thead><tr><th>When</th><th>Action</th><th>By</th><th>Target</th><th>Detail</th><th>IP</th></tr></thead><tbody>'+list.map(function(e){var by=(e.actor_name?esc(e.actor_name)+' ':'')+copyspan(String(e.actor||''),'mono');return '<tr><td>'+fmtTs(e.ts)+'</td><td>'+auditLabel(e.action)+'</td><td>'+by+'</td><td>'+(e.target?copyspan(String(e.target),'mono'):'<span class=mute>—</span>')+'</td><td>'+esc(e.detail||'')+'</td><td>'+copyspan(e.ip,'mono')+'</td></tr>'}).join('')+'</tbody></table>'}
   function loadStaff(){var box=$('#staffList');box.innerHTML='<div class=sk style=height:52px></div>';api('/api/admin/staff').then(function(d){if(!d.ok){box.innerHTML='<div class=pad>Could not load.</div>';return}var canEdit=!!d.owner;$('#staffForm').style.display=canEdit?'':'none';$('#staffOwnerNote').style.display=canEdit?'none':'';if(!d.staff.length){box.innerHTML='<div class=pad>No extra staff authorised — just you.</div>';return}box.innerHTML=d.staff.map(function(s){return '<div class=rowline><div class=rowmain><div class=nm>'+esc(s.name||('ID '+s.id))+'</div><div class=mt>'+copyspan(s.id,'mono')+' · added '+fmtTs(s.ts)+'</div></div>'+(canEdit?'<button class="sm danger" data-s="'+esc(s.id)+'">Remove</button>':'')+'</div>'}).join('');if(canEdit)box.querySelectorAll('button[data-s]').forEach(function(x){x.onclick=function(){confirmBox({icon:'🛡️',title:'Remove staff access?',message:'They will lose access to this admin site.',confirmText:'Remove',danger:true}).then(function(ok){if(!ok)return;api('/api/admin/staff_remove','POST',{user_id:x.getAttribute('data-s')}).then(function(r){if(r.ok){toast('Removed');loadStaff();loadSubs()}else toast(r.error||'Failed',true)})})}})})}
   function addStaff(){var id=$('#staffId').value.trim();if(!id){toast('Enter a Discord ID',true);return}api('/api/admin/staff_add','POST',{user_id:id}).then(function(r){if(r.ok){toast('Authorised');$('#staffId').value='';loadStaff();loadSubs()}else toast(r.error||'Failed',true)})}
   // ---- Bots (bot pool) ----
-  var POOL=null,POOLQ='';
+  var POOL=null,POOLQ='',AUDIT=[],AUDITQ='';
   function loadBots(){var box=$('#poolList');if(!POOL)box.innerHTML='<div class=sk style=height:68px></div><div class=sk style=height:68px></div>';api('/api/admin/pool').then(function(d){if(!d||!d.ok){box.innerHTML='<div class=pad>'+esc((d&&d.error)||'Could not load.')+'</div>';return}POOL=d;renderPool()})}
   function renderPool(){var d=POOL;if(!d)return;var sw=$('#poolSwitch');sw.classList.toggle('on',!!d.enabled);$('#poolSwitchTxt').textContent=d.enabled?'Hand-outs on':'Hand-outs off';
     var c=d.counts||{};$('#poolStats').innerHTML=[['🤖',c.total,'Pool bots'],['🟢',c.online,'Online'],['🏴',c.serving,'Servers'],['⏳',c.reserved,'Reserved'],['🎟️',c.slots,'Open slots']].map(function(x){return '<div class=pst><span>'+x[0]+'</span><b>'+nf(x[1]||0)+'</b><small>'+x[2]+'</small></div>'}).join('');
@@ -5084,16 +5169,16 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
       ta.value='';
       $('#poolResults').innerHTML='<div class=presults>'+res.map(function(x){x=x||{};return '<div class="pres '+(x.ok?'ok':'bad')+'">'+(x.ok?'✓':'✗')+' Token '+(x.n||'?')+': '+(x.ok?('<b>'+esc(x.name)+'</b> '+(x.updated?'updated':'added')+(x.public===false?' — ⚠ Public Bot is off':'')+(x.members_intent===false?' — ⚠ couldn’t switch on Server Members Intent':'')):esc(x.error||'failed'))+'</div>'}).join('')+'</div>';
       toast((r.added||0)+' bot'+((r.added||0)===1?'':'s')+' added',!(r.added>0));setTimeout(loadBots,2000)})}
-  function toggleLive(){LIVE=!LIVE;var b=$('#liveBtn');b.classList.toggle('on',LIVE);b.innerHTML=LIVE?'<span class=live-dot></span> Live':'⟳ Live';if(liveTimer){clearInterval(liveTimer);liveTimer=null}if(LIVE){liveTimer=setInterval(function(){if(document.hidden)return;if(curTab==='subs')loadSubs();else if(curTab==='bans')loadBans();else if(curTab==='shop')loadShop();else if(curTab==='bots')loadBots();else loadStaff()},20000);toast('Live refresh on')}}
+  function toggleLive(){LIVE=!LIVE;var b=$('#liveBtn');b.classList.toggle('on',LIVE);b.innerHTML=LIVE?'<span class=live-dot></span> Live':'⟳ Live';if(liveTimer){clearInterval(liveTimer);liveTimer=null}if(LIVE){liveTimer=setInterval(function(){if(document.hidden)return;if(curTab==='subs')loadSubs();else if(curTab==='bans')loadBans();else if(curTab==='shop')loadShop();else if(curTab==='bots')loadBots();else if(curTab==='audit')loadAudit();else loadStaff()},20000);toast('Live refresh on')}}
   // command palette
   var cmdkItems=[],cmdkSel=0;
   function openCmdk(){var o=$('#cmdk');o.classList.add('show');$('#cmdkInput').value='';cmdkBuild('');setTimeout(function(){$('#cmdkInput').focus()},30)}
   function closeCmdk(){$('#cmdk').classList.remove('show')}
-  function cmdkBuild(q){q=(q||'').toLowerCase();var items=[];var nav=[['subs','📂','Subscriptions'],['bans','⛔','Bans'],['shop','🧾','Shop log'],['staff','🛡️','Staff access']];if(STATE.owner)nav.push(['bots','🤖','Bots']);nav.forEach(function(n){if(!q||n[2].toLowerCase().indexOf(q)>=0)items.push({t:'tab',id:n[0],ic:n[1],label:n[2],sub:'Section'})});SERVERS.forEach(function(s){if(!q||(s.name||'').toLowerCase().indexOf(q)>=0||String(s.id).indexOf(q)>=0)items.push({t:'srv',id:s.id,ic:'🌐',label:s.name,sub:bucket(s)})});cmdkItems=items.slice(0,40);cmdkSel=0;cmdkRender()}
+  function cmdkBuild(q){q=(q||'').toLowerCase();var items=[];var nav=[['subs','📂','Subscriptions'],['bans','⛔','Bans'],['shop','🧾','Shop log'],['staff','🛡️','Staff access']];if(STATE.owner){nav.push(['bots','🤖','Bots']);nav.push(['audit','📜','Audit log'])}nav.forEach(function(n){if(!q||n[2].toLowerCase().indexOf(q)>=0)items.push({t:'tab',id:n[0],ic:n[1],label:n[2],sub:'Section'})});SERVERS.forEach(function(s){if(!q||(s.name||'').toLowerCase().indexOf(q)>=0||String(s.id).indexOf(q)>=0)items.push({t:'srv',id:s.id,ic:'🌐',label:s.name,sub:bucket(s)})});cmdkItems=items.slice(0,40);cmdkSel=0;cmdkRender()}
   function cmdkRender(){$('#cmdkList').innerHTML=cmdkItems.length?cmdkItems.map(function(it,i){return '<div class="ci'+(i===cmdkSel?' sel':'')+'" data-i="'+i+'"><span class=cig>'+it.ic+'</span><span>'+esc(it.label)+'</span><span class=cis>'+esc(it.sub)+'</span></div>'}).join(''):'<div class=pad>No matches</div>';$('#cmdkList').querySelectorAll('.ci').forEach(function(el){el.onclick=function(){cmdkSel=parseInt(el.getAttribute('data-i'),10);cmdkGo()}})}
   function cmdkGo(){var it=cmdkItems[cmdkSel];if(!it){return}closeCmdk();if(it.t==='tab'){selectTab(it.id)}else{selectTab('subs');SUBFILTER='all';SUBQ='';$('#subSearch').value=String(it.id);SUBQ=String(it.id);renderFilters();renderSubs();toast('Jumped to '+it.label)}}
-  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-bots')selectTab('bots');if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
-  document.addEventListener('input',function(e){var t=e.target;if(t.id==='subSearch'){SUBQ=t.value;renderSubs()}if(t.id==='shopSearch'){SHOPQ=t.value;renderShop()}if(t.id==='banSearch'){BANQ=t.value;renderBans()}if(t.id==='poolSearch'){POOLQ=t.value;renderPool()}if(t.id==='cmdkInput'){cmdkBuild(t.value)}});
+  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
+  document.addEventListener('input',function(e){var t=e.target;if(t.id==='subSearch'){SUBQ=t.value;renderSubs()}if(t.id==='shopSearch'){SHOPQ=t.value;renderShop()}if(t.id==='banSearch'){BANQ=t.value;renderBans()}if(t.id==='poolSearch'){POOLQ=t.value;renderPool()}if(t.id==='auditSearch'){AUDITQ=t.value;renderAudit()}if(t.id==='cmdkInput'){cmdkBuild(t.value)}});
   document.addEventListener('change',function(e){if(e.target.id==='subSort'){SUBSORT=e.target.value;renderSubs()}});
   document.addEventListener('keydown',function(e){
     if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){e.preventDefault();openCmdk();return}
@@ -5154,6 +5239,9 @@ async def _h_admin_mfa_send(request):
         return _admin_json({"ok": False, "error": "forbidden"}, 403)
     if not _mfa_on():
         return _admin_json({"ok": False, "error": "Two-step sign-in isn't enabled."}, 400)
+    # Stop a stolen session (or a stuck client) spamming code DMs.
+    if not _rl_ok(f"mfasend:{uid}", 5, 300):
+        return _admin_json({"ok": False, "error": "Too many code requests — wait a few minutes."}, 429)
     ok, err = await _mfa_send_code(uid)
     if not ok:
         return _admin_json({"ok": False, "error": _mfa_friendly(err)}, 502)
@@ -5172,9 +5260,19 @@ async def _h_admin_mfa_verify(request):
         body = {}
     ok, err = _mfa_verify(uid, str(body.get("code") or ""))
     if not ok:
+        if err.startswith("Too many"):
+            _audit(request, uid, "mfa_lockout", str(uid), "too many bad codes")
+            _fire(_alert_owners(
+                f"⚠️ **Multiple failed sign-in codes** for {_user_label(uid) or 'an admin'} "
+                f"(`{uid}`) from `{_client_ip(request)}`. If that wasn't them, review admin access."))
         return _admin_json({"ok": False, "error": err}, 400)
     resp = _admin_json({"ok": True})
     resp.set_cookie(_MFA_COOKIE, _sign_mfa(uid), max_age=43200, httponly=True, secure=True, samesite="Lax")
+    role = "owner" if is_owner(uid) else "staff"
+    _audit(request, uid, "admin_signin", str(uid), role)
+    _fire(_alert_owners(
+        f"✅ **Admin sign-in** — {_user_label(uid) or 'an admin'} (`{uid}`, {role}) "
+        f"signed in to the panel from `{_client_ip(request)}`."))
     return resp
 
 
@@ -5273,6 +5371,8 @@ async def _h_admin_sub(request):
     else:
         return _admin_json({"ok": False, "error": "unknown action"}, 400)
     log.info("admin sub action=%s guild=%s by=%s", action, gid, uid)
+    _audit(request, uid, f"sub_{action}", str(gid),
+           f"{days:+d} days" if action == "add_days" else action)
     return _admin_json({"ok": True, "state": {k: st.get(k) for k in
                        ("active", "mode", "status", "days_left", "expires_at", "lifetime")}})
 
@@ -5303,6 +5403,7 @@ async def _h_admin_leave(request):
         log.warning("admin leave failed guild=%s: %s", gid, exc)
         return _admin_json({"ok": False, "error": "Discord wouldn't let the bot leave — try again."}, 502)
     log.info("admin leave guild=%s (%s) by=%s", gid, name, uid)
+    _audit(request, uid, "bot_leave_server", str(gid), name)
     return _admin_json({"ok": True, "name": name})
 
 
@@ -5369,6 +5470,7 @@ async def _h_admin_pool_add(request):
         return _admin_json({"ok": False, "error": "That's too much at once — paste up to about 100 tokens."}, 400)
     res = await add_tokens(raw)
     log.info("admin pool add by=%s added=%s", uid, res.get("added"))
+    _audit(request, uid, "pool_add_tokens", "", f"added {res.get('added')}")
     return _admin_json(res, 200 if res.get("ok") else 400)
 
 
@@ -5383,10 +5485,12 @@ async def _h_admin_pool_action(request):
     if action == "toggle":
         on = set_pool_enabled(bool(body.get("enabled")))
         log.info("admin pool toggle=%s by=%s", on, uid)
+        _audit(request, uid, "pool_handouts", "", "on" if on else "off")
         return _admin_json({"ok": True, "enabled": on})
     if action == "hub":
         g = set_admin_guild(body.get("guild"))
         log.info("admin pool hub=%s by=%s", g or "(cleared)", uid)
+        _audit(request, uid, "pool_hub", str(g or ""), "cleared" if not g else "")
         return _admin_json({"ok": True, "admin_guild": g,
                             "main_hub_invite": _invite_url(g) if g else ""})
     bid = str(body.get("bot_id") or "")
@@ -5410,6 +5514,7 @@ async def _h_admin_pool_action(request):
     except ValueError as exc:
         return _admin_json({"ok": False, "error": str(exc)}, 400)
     log.info("admin pool action=%s bot=%s by=%s", action, bid, uid)
+    _audit(request, uid, f"pool_{action}", bid)
     return _admin_json(res if isinstance(res, dict) else {"ok": True})
 
 
@@ -5451,7 +5556,9 @@ async def _h_admin_ban(request):
         return _admin_json({"ok": False, "error": "That isn't a valid Discord ID."}, 400)
     if is_owner(tid):
         return _admin_json({"ok": False, "error": "You can't ban a bot operator."}, 400)
-    ban_user(tid, by=uid, name=_user_label(tid), reason=str(body.get("reason") or "")[:200])
+    reason = str(body.get("reason") or "")[:200]
+    ban_user(tid, by=uid, name=_user_label(tid), reason=reason)
+    _audit(request, uid, "ban", str(tid), reason)
     return _admin_json({"ok": True})
 
 
@@ -5463,7 +5570,9 @@ async def _h_admin_unban(request):
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _admin_json({"ok": False, "error": "bad json"}, 400)
-    unban_user(str(body.get("user_id") or "").strip())
+    target = str(body.get("user_id") or "").strip()
+    unban_user(target)
+    _audit(request, uid, "unban", target)
     return _admin_json({"ok": True})
 
 
@@ -5510,6 +5619,7 @@ async def _h_admin_staff_add(request):
         except Exception:  # noqa: BLE001
             name = ""
     add_admin_staff(tid, by=uid, name=name)
+    _audit(request, uid, "staff_add", str(tid), name)
     return _admin_json({"ok": True})
 
 
@@ -5521,7 +5631,9 @@ async def _h_admin_staff_remove(request):
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _admin_json({"ok": False, "error": "bad json"}, 400)
-    remove_admin_staff(str(body.get("user_id") or "").strip())
+    target = str(body.get("user_id") or "").strip()
+    remove_admin_staff(target)
+    _audit(request, uid, "staff_remove", target)
     return _admin_json({"ok": True})
 
 
@@ -5539,6 +5651,16 @@ async def _h_admin_shop_log(request):
             pass
         rows.append({**e, "guild_name": gname})
     return _admin_json({"ok": True, "log": rows})
+
+
+async def _h_admin_audit_log(request):
+    """The admin-action audit trail. Owner-only — it records what staff did."""
+    uid, owner = _admin_ctx(request)
+    if uid is None:
+        return _admin_json({"ok": False, "error": "forbidden"}, 403)
+    if not owner:
+        return _admin_json({"ok": False, "error": "Only the bot owner can view the audit log."}, 403)
+    return _admin_json({"ok": True, "log": audit_log_list(300)})
 
 
 async def start_web_server() -> None:
@@ -5566,9 +5688,16 @@ async def start_web_server() -> None:
             h.setdefault("X-Content-Type-Options", "nosniff")
             h.setdefault("X-Frame-Options", "SAMEORIGIN")
             h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-            h.setdefault("Strict-Transport-Security", "max-age=15552000")
+            h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
             h.setdefault("Cross-Origin-Opener-Policy", "same-origin")
             h.setdefault("X-Permitted-Cross-Domain-Policies", "none")
+            h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), browsing-topics=()")
+            # Enforcing CSP. Scripts keep 'unsafe-inline' because the panel uses
+            # inline on* handlers, but everything else is locked down: no plugins,
+            # no framing, no base-tag hijack, forms/XHR only to our own origin,
+            # fonts from Google, images from self/Discord. This blocks the common
+            # XSS *exfiltration* and object/base/frame vectors even if an escape slips.
+            h.setdefault("Content-Security-Policy", _CSP)
 
         path = request.path
         # Never throttle the Stripe webhook — it must always get through.
@@ -5586,6 +5715,14 @@ async def start_web_server() -> None:
                 )
                 _apply(resp.headers)
                 return resp
+
+        # CSRF defence in depth: reject cross-site browser POSTs to the API
+        # (the Stripe webhook isn't under /api/, and server-to-server calls send
+        # no Origin header, so neither is affected).
+        if request.method == "POST" and path.startswith("/api/") and not _origin_ok(request):
+            resp = _aioweb.json_response({"ok": False, "error": "Cross-site request blocked."}, status=403)
+            _apply(resp.headers)
+            return resp
 
         try:
             resp = await handler(request)
@@ -5673,6 +5810,7 @@ async def start_web_server() -> None:
             _aioweb.post("/api/admin/mfa/send", _h_admin_mfa_send),
             _aioweb.post("/api/admin/mfa/verify", _h_admin_mfa_verify),
             _aioweb.get("/api/admin/shop_log", _h_admin_shop_log),
+            _aioweb.get("/api/admin/audit_log", _h_admin_audit_log),
         ]
     )
     runner = _aioweb.AppRunner(app)

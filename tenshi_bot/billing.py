@@ -57,6 +57,9 @@ __all__ = [
     "list_admin_staff",
     "shop_log_add",
     "shop_log_list",
+    "owner_ids",
+    "audit_log_add",
+    "audit_log_list",
 ]
 
 # Plans people can buy. ``days`` is how long one purchase/renewal lasts.
@@ -103,6 +106,19 @@ def is_owner(user_id) -> bool:
     except (TypeError, ValueError):
         return False
     return uid in BOT_OWNER_IDS or uid in _APP_OWNERS
+
+
+def owner_ids() -> set[int]:
+    """Every Discord id that counts as the bot operator (env + detected app
+    owners/team). Used to DM security alerts to the people who run the bot."""
+    out: set[int] = set()
+    for src in (BOT_OWNER_IDS, _APP_OWNERS):
+        for i in src or ():
+            try:
+                out.add(int(i))
+            except (TypeError, ValueError):
+                pass
+    return out
 
 
 async def detect_app_owners() -> set[int]:
@@ -265,6 +281,32 @@ def shop_log_add(entry: dict) -> None:
 
 def shop_log_list(limit: int = 200) -> list:
     return list(_shop_log_store())[: max(0, int(limit))]
+
+
+# Admin audit log — every privileged admin-site action (newest first, capped).
+_AUDIT_LOG_CAP = 1000
+
+
+def _audit_log_store() -> list:
+    lg = DATA.get("admin_audit")
+    if not isinstance(lg, list):
+        lg = []
+        DATA["admin_audit"] = lg
+    return lg
+
+
+def audit_log_add(entry: dict) -> None:
+    """Append one admin action: {ts, actor, actor_name, action, target, detail, ip}."""
+    lg = _audit_log_store()
+    rec = dict(entry)
+    rec.setdefault("ts", int(_now().timestamp()))
+    lg.insert(0, rec)
+    del lg[_AUDIT_LOG_CAP:]
+    save_data(DATA)
+
+
+def audit_log_list(limit: int = 300) -> list:
+    return list(_audit_log_store())[: max(0, int(limit))]
 
 
 # --------------------------------------------------------------------------- #
