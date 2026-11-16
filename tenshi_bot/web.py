@@ -2172,6 +2172,92 @@ async def _h_war_cancel(request):
     return _aioweb.json_response({"ok": True, "wars": _wars_list(store)})
 
 
+async def _h_war_start(request):
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    guild = _guild_from(str(body.get("guild") or ""))
+    if guild is None:
+        return _aioweb.json_response({"error": "Guild not found."}, status=404)
+    ok, code, msg = await _gate(request, guild)
+    if not ok:
+        return _aioweb.json_response({"error": msg}, status=code)
+    enemy = str(body.get("enemy") or "").strip()
+    raw_ft = body.get("first_to")
+    first_to = None
+    if raw_ft not in (None, "", 0, "0"):
+        try:
+            first_to = int(raw_ft)
+        except (TypeError, ValueError):
+            return _aioweb.json_response({"error": "First-to must be a number."}, status=400)
+        if not 1 <= first_to <= 100:
+            return _aioweb.json_response({"error": "First-to must be between 1 and 100."}, status=400)
+    from . import gang
+    try:
+        war = await gang.web_start_war(guild, enemy, first_to, actor=_web_actor(request, guild))
+    except ValueError as exc:
+        return _aioweb.json_response({"error": str(exc)}, status=400)
+    except Exception:  # noqa: BLE001
+        log.exception("web war start failed")
+        return _aioweb.json_response({"error": "Couldn't start the war."}, status=500)
+    store = guild_store(DATA, guild.id)
+    return _aioweb.json_response(
+        {"ok": True, "posted": bool(war.get("_posted")), "wars": _wars_list(store)}
+    )
+
+
+async def _h_war_round(request):
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    guild = _guild_from(str(body.get("guild") or ""))
+    if guild is None:
+        return _aioweb.json_response({"error": "Guild not found."}, status=404)
+    ok, code, msg = await _gate(request, guild)
+    if not ok:
+        return _aioweb.json_response({"error": msg}, status=code)
+    enemy = str(body.get("enemy") or "").strip()
+    result = str(body.get("result") or "").strip().lower()
+    if result not in ("win", "loss", "undo"):
+        return _aioweb.json_response({"error": "Unknown action."}, status=400)
+    from . import gang
+    try:
+        await gang.web_war_round(guild, enemy, result, actor=_web_actor(request, guild))
+    except ValueError as exc:
+        return _aioweb.json_response({"error": str(exc)}, status=400)
+    except Exception:  # noqa: BLE001
+        log.exception("web war round failed")
+        return _aioweb.json_response({"error": "Couldn't update the war."}, status=500)
+    store = guild_store(DATA, guild.id)
+    return _aioweb.json_response({"ok": True, "wars": _wars_list(store)})
+
+
+async def _h_war_end(request):
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    guild = _guild_from(str(body.get("guild") or ""))
+    if guild is None:
+        return _aioweb.json_response({"error": "Guild not found."}, status=404)
+    ok, code, msg = await _gate(request, guild)
+    if not ok:
+        return _aioweb.json_response({"error": msg}, status=code)
+    enemy = str(body.get("enemy") or "").strip()
+    from . import gang
+    try:
+        await gang.web_end_war(guild, enemy, actor=_web_actor(request, guild))
+    except ValueError as exc:
+        return _aioweb.json_response({"error": str(exc)}, status=400)
+    except Exception:  # noqa: BLE001
+        log.exception("web war end failed")
+        return _aioweb.json_response({"error": "Couldn't end the war."}, status=500)
+    store = guild_store(DATA, guild.id)
+    return _aioweb.json_response({"ok": True, "wars": _wars_list(store)})
+
+
 async def _h_orders(request):
     guild = await _req_guild(request)
     if guild is None:
@@ -5315,6 +5401,9 @@ async def start_web_server() -> None:
             _aioweb.post("/api/stash_remove", _h_stash_remove),
             _aioweb.post("/api/stash_scan", _h_stash_scan),
             _aioweb.get("/api/wars", _h_wars),
+            _aioweb.post("/api/war_start", _h_war_start),
+            _aioweb.post("/api/war_round", _h_war_round),
+            _aioweb.post("/api/war_end", _h_war_end),
             _aioweb.post("/api/war_cancel", _h_war_cancel),
             _aioweb.get("/api/orders", _h_orders),
             _aioweb.post("/api/order_create", _h_order_create),
@@ -5538,6 +5627,13 @@ _PAGE_HTML = r"""
   .wrounds i.l{background:#ef4444}
   .wrate{height:6px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:9px;max-width:240px}
   .wrate>span{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#4ade80)}
+  .warbtns{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+  .wb{padding:7px 13px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:#e8e8ee;font-weight:700;font-size:13px;cursor:pointer;transition:filter .15s,border-color .15s}
+  .wb:hover{filter:brightness(1.15)}
+  .wb.win{border-color:rgba(34,197,94,.45);background:rgba(34,197,94,.14);color:#86efac}
+  .wb.loss{border-color:rgba(239,68,68,.45);background:rgba(239,68,68,.14);color:#fca5a5}
+  .wb.end{border-color:rgba(245,158,11,.4);color:#fcd34d}
+  .wb.undo{color:var(--mute)}
 
   ul.members{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px}
   li.member{display:flex;align-items:center;gap:13px;background:var(--card);border:1px solid var(--line);
@@ -6187,11 +6283,18 @@ function renderKos(){
   const q=$("search").value.toLowerCase();
   const ks=STATE.kos.filter(k=>k.name.toLowerCase().includes(q));
   $("count").textContent=STATE.kos.length+" on KOS";
+  const pick=(STATE.members&&STATE.members.length)
+    ? '<select id="kosPick" class="i" onchange="if(this.value){$(\'kosId\').value=this.value}">'
+      +'<option value="">— or pick a current member —</option>'
+      +STATE.members.map(m=>`<option value="${h(m.id)}">${h(m.name)}${m.rank?" · "+h(m.rank):""}</option>`).join("")
+      +'</select>'
+    : '';
   const add='<div class="card"><h4 style="margin:0 0 10px">💀 Add to KOS</h4>'
     +'<div class="addbar"><input id="kosId" class="i" placeholder="Discord user ID (right-click user → Copy ID)" inputmode="numeric">'
+    +pick
     +'<input id="kosReason" class="i" placeholder="Reason (optional)">'
     +'<button onclick="addKos()">➕ Add to KOS</button></div>'
-    +'<div class="muted" style="font-size:12px;margin-top:6px">Paste the member\'s Discord ID — they get the KOS role automatically if one is set in Settings.</div></div>';
+    +'<div class="muted" style="font-size:12px;margin-top:6px">Paste a Discord ID, or pick a current member from the list — they get the KOS role automatically if one is set in Settings.</div></div>';
   if(!ks.length){$("kosView").innerHTML=add+'<div class="empty">Nobody on the KOS list yet. 🕊️</div>';return;}
   $("kosView").innerHTML=add+`<ul class="members">${ks.map(k=>{
     const meta=[k.added_by?"added by "+h(k.added_by):"",k.at?h(k.at):""].filter(Boolean).join(" · ");
@@ -6307,11 +6410,17 @@ async function stashRemove(item){try{await post("/api/stash_remove",{guild:STATE
   catch(e){if(e.status===401||e.status===403)return boot();toast(e.message||"Failed","err");}}
 function renderWars(){
   const q=$("search").value.toLowerCase();
-  const ws=(STATE.wars||[]).filter(w=>(w.enemy||"").toLowerCase().includes(q));
-  const all=STATE.wars||[];const liveN=all.filter(w=>w.active).length;
+  const all=STATE.wars||[];
+  const ws=all.filter(w=>(w.enemy||"").toLowerCase().includes(q));
+  const liveN=all.filter(w=>w.active).length;
   $("count").textContent=all.length+" war"+(all.length===1?"":"s")+(liveN?" · "+liveN+" live":"");
-  if(!ws.length){$("warsView").innerHTML=`<div class="empty">No wars tracked.</div>`;return;}
-  $("warsView").innerHTML=`<ul class="members" style="gap:10px">`+ws.map(w=>{
+  const start=`<div class="card"><h4 style="margin:0 0 10px">⚔️ Start a war</h4>`
+    +`<div class="addbar"><input id="warEnemy" class="i" placeholder="Enemy gang or crew" maxlength="60" onkeydown="if(event.key==='Enter')startWar()">`
+    +`<input id="warFirstTo" class="q" type="number" min="1" max="100" placeholder="First to">`
+    +`<button class="brand-btn" onclick="startWar()">⚔️ Start</button></div>`
+    +`<div class="muted" style="font-size:12px;margin-top:6px">Posts a live scoreboard to your KOS log channel (set one in Settings). Log rounds here or from the scoreboard — they stay in sync.</div></div>`;
+  if(!ws.length){$("warsView").innerHTML=start+`<div class="empty">${q?"No wars match.":"No wars yet — start one above. ⚔️"}</div>`;return;}
+  $("warsView").innerHTML=start+`<ul class="members" style="gap:10px">`+ws.map(w=>{
     const col=w.wins>w.losses?"var(--ok)":w.losses>w.wins?"var(--bad)":"var(--mute)";
     const rounds=(w.recent||[]).map(r=>`<i class="${r?'w':'l'}"></i>`).join("");
     const meta=[
@@ -6321,16 +6430,21 @@ function renderWars(){
       w.first_to?`first to ${w.first_to} (${Math.max(w.wins,w.losses)}/${w.first_to})`:"",
       w.last_ts?`last round ${ago(w.last_ts)}${w.last_by?" by "+h(w.last_by):""}`:"",
     ].filter(Boolean).map(x=>`<span>${x}</span>`).join("");
+    const ctrls=w.active?`<div class="warbtns">
+        <button class="wb win" onclick="warRound('${h(w.enemy)}','win')">🏆 Won</button>
+        <button class="wb loss" onclick="warRound('${h(w.enemy)}','loss')">💀 Lost</button>
+        <button class="wb undo" onclick="warRound('${h(w.enemy)}','undo')">↩ Undo</button>
+        <button class="wb end" onclick="endWar('${h(w.enemy)}')">🏳 End</button></div>`:"";
     return `<li class="warcard" style="align-items:flex-start;flex-wrap:wrap">
       <div class="grow"><div class="mname">vs ${h(w.enemy)}</div>
         <div class="wmeta">${meta}</div>
         ${w.rounds>0?`<div class="wrate"><span style="width:${w.winrate}%"></span></div>`:""}
-        ${rounds?`<div class="wrounds" title="recent rounds (oldest → newest)">${rounds}</div>`:""}</div>
+        ${rounds?`<div class="wrounds" title="recent rounds (oldest → newest)">${rounds}</div>`:""}
+        ${ctrls}</div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:7px">
         <span class="badge ${w.active?'live':'done'}">${w.active?'Live':'Done'}</span>
-        <div class="score" style="color:${col}">${w.wins} – ${w.losses}</div>
-        ${w.active?`<button class="danger warcancel" data-enemy="${h(w.enemy)}" style="padding:5px 11px;font-size:12px">✕ Cancel war</button>`:""}</div></li>`;}).join("")+`</ul>`;
-  document.querySelectorAll('#warsView .warcancel').forEach(b=>b.onclick=()=>cancelWar(b.dataset.enemy));}
+        <div class="score" style="color:${col}">${w.wins} – ${w.losses}</div></div></li>`;}).join("")+`</ul>`;
+}
 function renderEois(){const es=STATE.eois||[];$("count").textContent=es.length+" pending";
   if(!es.length){$("eoisView").innerHTML=`<div class="empty">No pending applications. 🎉</div>`;return;}
   $("eoisView").innerHTML=`<ul class="members" style="gap:9px">`+es.map(e=>`<li class="member">${e.avatar?`<div class="av"><img src="${h(e.avatar)}" alt=""></div>`:`<div class="av skull" style="background:linear-gradient(135deg,#1a2033,#243154)">📨</div>`}<div class="grow"><div class="mname">${h(e.ign||e.applicant||"Applicant")}</div><div class="muted" style="font-size:12px">${h(e.role||"—")}${e.applicant&&e.applicant!==e.ign?" · "+h(e.applicant):""}</div></div><div style="display:flex;gap:7px;align-items:center">${e.ends?`<span class="badge done" data-ts="${e.ends}"></span>`:""}<span class="badge" style="background:rgba(34,197,94,.15);color:#86efac;border:1px solid rgba(34,197,94,.4)">✅ ${e.yes}</span><span class="badge" style="background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.4)">❌ ${e.no}</span><button style="padding:6px 11px;background:linear-gradient(135deg,#16a34a,#15803d);border:none;color:#fff;font-weight:700;border-radius:11px;cursor:pointer" onclick="acceptEoi('${h(e.id)}','${h(e.ign||e.applicant||"this")}')">Accept</button><button class="danger" style="padding:6px 11px" onclick="closeEoi('${h(e.id)}','${h(e.ign||e.applicant||"this")}')">Close</button></div></li>`).join("")+`</ul>`;
@@ -6339,6 +6453,24 @@ function renderEois(){const es=STATE.eois||[];$("count").textContent=es.length+"
 async function cancelWar(enemy){
   if(!await confirmBox({icon:"🏳️",title:"Cancel war?",message:"The war against "+enemy+" stops immediately and is marked done.",confirmText:"Cancel war",danger:true}))return;
   try{const r=await post("/api/war_cancel",{guild:STATE.guild,enemy:enemy});toast("War cancelled","ok");STATE.wars=r.wars;render();}
+  catch(e){if(e.status===401||e.status===403)return boot();toast(e.message||"Failed","err");}
+}
+async function startWar(){
+  const enemy=(($("warEnemy")||{}).value||"").trim();
+  if(!enemy)return toast("Enter who you're at war with","err");
+  const ft=(($("warFirstTo")||{}).value||"").trim();
+  try{const r=await post("/api/war_start",{guild:STATE.guild,enemy:enemy,first_to:ft||null});
+    STATE.wars=r.wars;renderWars();
+    toast("War started vs "+enemy+(r.posted?" · scoreboard posted":" · set a KOS log channel in Settings for a live scoreboard"),"ok");}
+  catch(e){if(e.status===401||e.status===403)return boot();toast(e.message||"Couldn't start the war","err");}
+}
+async function warRound(enemy,result){
+  try{const r=await post("/api/war_round",{guild:STATE.guild,enemy:enemy,result:result});STATE.wars=r.wars;renderWars();}
+  catch(e){if(e.status===401||e.status===403)return boot();toast(e.message||"Failed","err");}
+}
+async function endWar(enemy){
+  if(!await confirmBox({icon:"🏳️",title:"End war?",message:"End the war against "+enemy+" and lock in the final score.",confirmText:"End war"}))return;
+  try{const r=await post("/api/war_end",{guild:STATE.guild,enemy:enemy});toast("War ended","ok");STATE.wars=r.wars;render();}
   catch(e){if(e.status===401||e.status===403)return boot();toast(e.message||"Failed","err");}
 }
 async function closeEoi(id,name){

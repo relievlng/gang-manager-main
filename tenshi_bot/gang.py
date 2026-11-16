@@ -266,6 +266,119 @@ async def _announce_war_end(channel, war: dict, guild: discord.Guild, actor=None
     )
 
 
+# ---- web-panel bridges (called from web.py) -------------------------------- #
+
+def _war_post_channel(guild: discord.Guild, store: dict[str, Any]):
+    """Where a web-started war's scoreboard goes: the KOS log channel, else the
+    general log channel. Returns None if neither is set or sendable."""
+    cid = store.get("kos_log_channel_id") or store.get("log_channel_id") or 0
+    ch = guild.get_channel(int(cid)) if cid else None
+    if ch is None:
+        return None
+    me = guild.me
+    if me is not None and not ch.permissions_for(me).send_messages:
+        return None
+    return ch
+
+
+async def web_start_war(guild: discord.Guild, enemy: str,
+                        first_to: int | None = None, actor=None) -> dict:
+    """Start a war from the website. Posts a live scoreboard if a channel is set.
+    Raises ValueError with a user-facing message on bad input / duplicate."""
+    store = guild_store(DATA, guild.id)
+    enemy = (enemy or "").strip()[:60]
+    if not enemy:
+        raise ValueError("Enter who you're at war with.")
+    if _find_war(store, enemy):
+        raise ValueError(f"You're already at war with {enemy}.")
+    war = {
+        "enemy": enemy, "wins": 0, "losses": 0,
+        "start": int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+        "active": True, "first_to": first_to, "log": [],
+    }
+    store["wars"].append(war)
+    save_data(DATA)
+    posted = False
+    ch = _war_post_channel(guild, store)
+    if ch is not None:
+        try:
+            await _post_war_panel(ch, war, guild)
+            posted = True
+        except Exception:  # noqa: BLE001
+            log.exception("web war scoreboard post failed")
+    try:
+        await send_log(
+            guild, store,
+            f"⚔️ War started vs **{enemy}**"
+            + (f" · first to {first_to}" if first_to else "") + " (via web panel).",
+            category="kos", actor=actor,
+        )
+    except Exception:  # noqa: BLE001
+        log.exception("web war start log failed")
+    war["_posted"] = posted
+    return war
+
+
+async def web_war_round(guild: discord.Guild, enemy: str, result: str, actor=None) -> dict:
+    """Record a round (``win``/``loss``) or ``undo`` from the website, keeping the
+    Discord scoreboard in sync and auto-ending on a first-to target."""
+    store = guild_store(DATA, guild.id)
+    war = _find_war(store, enemy)
+    if war is None:
+        raise ValueError("No active war against that enemy.")
+    now = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+    log_ = war.setdefault("log", [])
+    if result in ("win", "loss"):
+        key = "wins" if result == "win" else "losses"
+        war[key] = war.get(key, 0) + 1
+        log_.append({"r": result, "ts": now,
+                     "by": getattr(actor, "id", 0) or 0,
+                     "by_name": getattr(actor, "display_name", None) or "Web panel"})
+        war["log"] = log_[-200:]
+    elif result == "undo":
+        if not log_:
+            raise ValueError("No rounds to undo.")
+        last = log_.pop()
+        key = "wins" if last["r"] == "win" else "losses"
+        war[key] = max(0, war.get(key, 0) - 1)
+    else:
+        raise ValueError("Unknown action.")
+    target = war.get("first_to")
+    ended = bool(target and (war["wins"] >= target or war["losses"] >= target))
+    if ended:
+        war["active"] = False
+        war["end"] = now
+    save_data(DATA)
+    try:
+        await _refresh_war_panel(guild, war)
+        if ended:
+            ch = guild.get_channel((war.get("panel") or {}).get("channel_id") or 0)
+            if ch is not None:
+                await _announce_war_end(ch, war, guild, actor)
+    except Exception:  # noqa: BLE001
+        log.exception("web war round sync failed")
+    return war
+
+
+async def web_end_war(guild: discord.Guild, enemy: str, actor=None) -> dict:
+    """End a war from the website and lock the final score."""
+    store = guild_store(DATA, guild.id)
+    war = _find_war(store, enemy)
+    if war is None:
+        raise ValueError("No active war against that enemy.")
+    war["active"] = False
+    war["end"] = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+    save_data(DATA)
+    try:
+        await _refresh_war_panel(guild, war)
+        ch = guild.get_channel((war.get("panel") or {}).get("channel_id") or 0)
+        if ch is not None:
+            await _announce_war_end(ch, war, guild, actor)
+    except Exception:  # noqa: BLE001
+        log.exception("web war end sync failed")
+    return war
+
+
 class WarPanelView(GatedView):
     """Staff buttons on a war scoreboard."""
 
