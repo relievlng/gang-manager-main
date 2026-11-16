@@ -1154,7 +1154,6 @@ def _audit(request, actor, action: str, target: str = "", detail: str = "") -> N
             "action": str(action),
             "target": str(target or ""),
             "detail": str(detail or "")[:300],
-            "ip": _client_ip(request),
         })
     except Exception as exc:  # noqa: BLE001
         log.warning("audit write failed (%s): %s", action, exc)
@@ -1167,7 +1166,6 @@ def _audit(request, actor, action: str, target: str = "", detail: str = "") -> N
             fields.append({"name": "Target", "value": f"`{target}`", "inline": True})
         if detail:
             fields.append({"name": "Detail", "value": str(detail)[:1024], "inline": False})
-        fields.append({"name": "IP", "value": f"`{_client_ip(request)}`", "inline": True})
         _fire(_gmlog(kind, title, fields=fields))
     except Exception as exc:  # noqa: BLE001
         log.info("gmlog audit forward skipped: %s", exc)
@@ -4434,6 +4432,7 @@ async def _h_billing_webhook(request):
                     {"name": "Server", "value": f"{g.name if g else gid} (`{gid}`)", "inline": False},
                     {"name": "Amount", "value": (f"{amt/100:.2f} {(obj.get('currency') or '').upper()}").strip(), "inline": True},
                     {"name": "Email", "value": (det.get("email") or obj.get("customer_email") or "—")[:200], "inline": True},
+                    {"name": "IP", "value": (_event_meta(obj, "client_ip") or "—")[:64], "inline": True},
                 ],
             ))
         except Exception:  # noqa: BLE001
@@ -5192,7 +5191,7 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
   function auditFiltered(){var q=AUDITQ.toLowerCase();return AUDIT.filter(function(e){return !q||((e.action||'').toLowerCase().indexOf(q)>=0||(e.actor_name||'').toLowerCase().indexOf(q)>=0||String(e.actor||'').indexOf(q)>=0||String(e.target||'').indexOf(q)>=0||(e.detail||'').toLowerCase().indexOf(q)>=0)})}
   var AUDIT_LBL={admin_signin:'🔑 Sign-in',mfa_lockout:'⛔ Code lockout',ban:'🔨 Ban',unban:'♻️ Unban',staff_add:'🛡️ Staff add',staff_remove:'🚫 Staff remove',bot_leave_server:'👋 Bot left server',pool_add_tokens:'➕ Pool tokens',pool_handouts:'🔀 Hand-outs',pool_hub:'🏠 Hub',sub_add_days:'📅 Sub +days',sub_lifetime:'♾️ Lifetime',sub_revoke:'❌ Sub revoke'};
   function auditLabel(a){if(AUDIT_LBL[a])return AUDIT_LBL[a];if(a&&a.indexOf('pool_')===0)return '🤖 '+esc(a.slice(5));return esc(a||'—')}
-  function renderAudit(){var box=$('#auditList'),list=auditFiltered();if(!list.length){box.innerHTML='<div class=pad>'+(AUDIT.length?'Nothing matches.':'No admin actions logged yet — privileged actions will appear here.')+'</div>';return}box.innerHTML='<table class=tbl><thead><tr><th>When</th><th>Action</th><th>By</th><th>Target</th><th>Detail</th><th>IP</th></tr></thead><tbody>'+list.map(function(e){var by=(e.actor_name?esc(e.actor_name)+' ':'')+copyspan(String(e.actor||''),'mono');return '<tr><td>'+fmtTs(e.ts)+'</td><td>'+auditLabel(e.action)+'</td><td>'+by+'</td><td>'+(e.target?copyspan(String(e.target),'mono'):'<span class=mute>—</span>')+'</td><td>'+esc(e.detail||'')+'</td><td>'+copyspan(e.ip,'mono')+'</td></tr>'}).join('')+'</tbody></table>'}
+  function renderAudit(){var box=$('#auditList'),list=auditFiltered();if(!list.length){box.innerHTML='<div class=pad>'+(AUDIT.length?'Nothing matches.':'No admin actions logged yet — privileged actions will appear here.')+'</div>';return}box.innerHTML='<table class=tbl><thead><tr><th>When</th><th>Action</th><th>By</th><th>Target</th><th>Detail</th></tr></thead><tbody>'+list.map(function(e){var by=(e.actor_name?esc(e.actor_name)+' ':'')+copyspan(String(e.actor||''),'mono');return '<tr><td>'+fmtTs(e.ts)+'</td><td>'+auditLabel(e.action)+'</td><td>'+by+'</td><td>'+(e.target?copyspan(String(e.target),'mono'):'<span class=mute>—</span>')+'</td><td>'+esc(e.detail||'')+'</td></tr>'}).join('')+'</tbody></table>'}
   function loadStaff(){var box=$('#staffList');box.innerHTML='<div class=sk style=height:52px></div>';api('/api/admin/staff').then(function(d){if(!d.ok){box.innerHTML='<div class=pad>Could not load.</div>';return}var canEdit=!!d.owner;$('#staffForm').style.display=canEdit?'':'none';$('#staffOwnerNote').style.display=canEdit?'none':'';if(!d.staff.length){box.innerHTML='<div class=pad>No extra staff authorised — just you.</div>';return}box.innerHTML=d.staff.map(function(s){return '<div class=rowline><div class=rowmain><div class=nm>'+esc(s.name||('ID '+s.id))+'</div><div class=mt>'+copyspan(s.id,'mono')+' · added '+fmtTs(s.ts)+'</div></div>'+(canEdit?'<button class="sm danger" data-s="'+esc(s.id)+'">Remove</button>':'')+'</div>'}).join('');if(canEdit)box.querySelectorAll('button[data-s]').forEach(function(x){x.onclick=function(){confirmBox({icon:'🛡️',title:'Remove staff access?',message:'They will lose access to this admin site.',confirmText:'Remove',danger:true}).then(function(ok){if(!ok)return;api('/api/admin/staff_remove','POST',{user_id:x.getAttribute('data-s')}).then(function(r){if(r.ok){toast('Removed');loadStaff();loadSubs()}else toast(r.error||'Failed',true)})})}})})}
   function addStaff(){var id=$('#staffId').value.trim();if(!id){toast('Enter a Discord ID',true);return}api('/api/admin/staff_add','POST',{user_id:id}).then(function(r){if(r.ok){toast('Authorised');$('#staffId').value='';loadStaff();loadSubs()}else toast(r.error||'Failed',true)})}
   // ---- Bots (bot pool) ----
