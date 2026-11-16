@@ -51,20 +51,21 @@ bot.tree.interaction_check = subscription_gate
 # --------------------------------------------------------------------------- #
 
 def _status_activities() -> list[discord.BaseActivity]:
-    """The presence rotation, built fresh each tick off live numbers.
-
-    Clean custom lines (no verb) so they read as one voice — "managing 12,400
-    members", "3 gang wars live". Counts only subscribed servers, so the figures
-    match what members actually see. Set BOT_STATUS to pin a line of your own.
+    """The distributor bot's presence rotation, built fresh each tick off live
+    fleet numbers — it hands out the pool bots, so its status is about that.
+    Set BOT_STATUS to pin a line of your own.
     """
     active = [g for g in all_guilds() if guild_active(g.id)]
     members = sum(g.member_count or 0 for g in active)
-    tickets = 0
     wars = 0
     for g in active:
         store = guild_store(DATA, g.id)
-        tickets += sum(1 for o in store.get("orders", []) if o.get("status", "open") == "open")
         wars += sum(1 for w in store.get("wars", []) if w.get("active", True))
+    bots_online = 0
+    try:  # best-effort: the pool may not be up yet
+        bots_online = int(pool_overview().get("counts", {}).get("online", 0))
+    except Exception:  # noqa: BLE001 — a status blip must never matter
+        bots_online = 0
 
     def line(text: str) -> discord.CustomActivity:
         return discord.CustomActivity(name=text[:128])
@@ -73,15 +74,16 @@ def _status_activities() -> list[discord.BaseActivity]:
     custom = (os.getenv("BOT_STATUS") or "").strip()
     if custom:
         acts.append(line(custom))
-    if members:
-        acts.append(line(f"👥 managing {members:,} member{'s' if members != 1 else ''}"))
+    acts.append(line("📦 distributing Gang Manager bots"))
+    if bots_online:
+        acts.append(line(f"📡 running {bots_online} bot{'s' if bots_online != 1 else ''} across the fleet"))
     if active:
-        acts.append(line(f"🏴 managing {len(active)} gang{'s' if len(active) != 1 else ''}"))
+        acts.append(line(f"🏴 handing bots to {len(active)} gang{'s' if len(active) != 1 else ''}"))
+    if members:
+        acts.append(line(f"👥 {members:,} member{'s' if members != 1 else ''} on the network"))
     if wars:
         acts.append(line(f"⚔️ {wars} gang war{'s' if wars != 1 else ''} live"))
-    if tickets:
-        acts.append(line(f"🎫 {tickets} open ticket{'s' if tickets != 1 else ''}"))
-    acts.append(line("🥷 /help"))
+    acts.append(line("🥷 gangmanager.site"))
     return acts
 
 
