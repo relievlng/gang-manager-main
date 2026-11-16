@@ -989,6 +989,38 @@ def _read_session(cookie: str | None) -> str | None:
     return payload.get("uid")
 
 
+# ---- per-IP abuse limiting (in-memory sliding window) ---------------------- #
+_RL: dict[str, list[float]] = {}
+_RL_SWEEP = [0.0]
+
+
+def _client_ip(request) -> str:
+    """Real client IP behind Railway's proxy (first X-Forwarded-For hop)."""
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        first = xff.split(",")[0].strip()
+        if first:
+            return first
+    return request.remote or "?"
+
+
+def _rl_ok(key: str, limit: int, window: float = 60.0) -> bool:
+    """True while `key` stays under `limit` hits per `window` seconds."""
+    now = time.time()
+    cutoff = now - window
+    arr = [t for t in _RL.get(key, ()) if t >= cutoff]
+    if len(arr) >= limit:
+        _RL[key] = arr
+        return False
+    arr.append(now)
+    _RL[key] = arr
+    if now - _RL_SWEEP[0] > 300:                       # periodic cleanup of idle keys
+        _RL_SWEEP[0] = now
+        for k in [k for k, v in list(_RL.items()) if not v or v[-1] < now - 3600]:
+            _RL.pop(k, None)
+    return True
+
+
 # ---- Discord OAuth --------------------------------------------------------- #
 # identify + guilds: who you are, and which servers you're in (so the panel can
 # offer "add the bot here" / "ask the owner" instead of a dead end).
@@ -5374,7 +5406,7 @@ async def start_web_server() -> None:
         )
     @_aioweb.middleware
     async def _security_headers(request, handler):
-        """Baseline hardening headers on every response, errors included."""
+        """Per-IP abuse limiting + baseline hardening headers on every response."""
         def _apply(h):
             h.setdefault("X-Content-Type-Options", "nosniff")
             h.setdefault("X-Frame-Options", "SAMEORIGIN")
@@ -5382,6 +5414,24 @@ async def start_web_server() -> None:
             h.setdefault("Strict-Transport-Security", "max-age=15552000")
             h.setdefault("Cross-Origin-Opener-Policy", "same-origin")
             h.setdefault("X-Permitted-Cross-Domain-Policies", "none")
+
+        path = request.path
+        # Never throttle the Stripe webhook — it must always get through.
+        if not path.startswith("/billing/webhook"):
+            ip = _client_ip(request)
+            blocked = False
+            if path in ("/login", "/callback"):
+                blocked = not _rl_ok(f"auth:{ip}", 40, 60)        # logins per IP / min
+            elif request.method == "POST" and path.startswith("/api/"):
+                blocked = not _rl_ok(f"api:{ip}", 150, 60)        # API writes per IP / min
+            if blocked:
+                resp = _aioweb.json_response(
+                    {"error": "Too many requests — give it a moment."},
+                    status=429, headers={"Retry-After": "30"},
+                )
+                _apply(resp.headers)
+                return resp
+
         try:
             resp = await handler(request)
         except _aioweb.HTTPException as exc:
