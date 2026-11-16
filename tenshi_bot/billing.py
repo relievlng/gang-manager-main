@@ -235,6 +235,15 @@ def list_admin_staff() -> list:
     )
 
 
+def set_admin_staff_name(user_id, name: str) -> None:
+    """Update just the cached display name of a staff entry (keeps added-by/ts)."""
+    uid = str(user_id)
+    staff = _admin_staff_store()
+    if uid in staff and isinstance(staff[uid], dict) and (name or "") != staff[uid].get("name"):
+        staff[uid]["name"] = name or ""
+        save_data(DATA)
+
+
 # Shop log — purchases with email + IP for the admin site (newest first, capped).
 _SHOP_LOG_CAP = 500
 

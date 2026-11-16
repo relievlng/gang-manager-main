@@ -49,6 +49,7 @@ from .billing import (
     add_admin_staff,
     remove_admin_staff,
     list_admin_staff,
+    set_admin_staff_name,
     shop_log_add,
     shop_log_list,
 )
@@ -1197,7 +1198,7 @@ def _remember_user(uid: str, user: dict, guilds: list | None) -> None:
         "at": int(time.time()),
         "user": {
             "id": str(uid),
-            "name": user.get("global_name") or user.get("username") or "You",
+            "name": user.get("global_name") or user.get("username") or "",
             "avatar": _avatar_url(user),
         },
         "guilds": slim if guilds is not None else None,
@@ -1212,7 +1213,7 @@ def _cached_profile(uid: str) -> dict:
     if u is not None:
         return {"id": str(uid), "name": getattr(u, "global_name", None) or u.name,
                 "avatar": str(u.display_avatar.url)}
-    return {"id": str(uid), "name": "You", "avatar": "https://cdn.discordapp.com/embed/avatars/0.png"}
+    return {"id": str(uid), "name": "", "avatar": "https://cdn.discordapp.com/embed/avatars/0.png"}
 
 
 _PERM_ADMIN = 0x8
@@ -5345,8 +5346,19 @@ async def _h_admin_staff(request):
         return _admin_json({"ok": False, "error": "forbidden"}, 403)
     staff = []
     for s in list_admin_staff():
-        prof = _cached_profile(s.get("id")) or {}
-        staff.append({**s, "name": s.get("name") or prof.get("name") or ""})
+        name = s.get("name") or ""
+        if not name:
+            prof = _cached_profile(s.get("id")) or {}
+            name = prof.get("name") or ""
+            if not name and str(s.get("id")).isdigit():
+                try:  # resolve from Discord once, then remember it
+                    u = await bot.fetch_user(int(s["id"]))
+                    name = getattr(u, "global_name", None) or u.name or ""
+                except Exception:  # noqa: BLE001
+                    name = ""
+            if name:
+                set_admin_staff_name(s["id"], name)
+        staff.append({**s, "name": name})
     return _admin_json({"ok": True, "owner": owner, "staff": staff})
 
 
@@ -5363,7 +5375,14 @@ async def _h_admin_staff_add(request):
         tid = int(raw)
     except (TypeError, ValueError):
         return _admin_json({"ok": False, "error": "That isn't a valid Discord ID."}, 400)
-    add_admin_staff(tid, by=uid, name=_user_label(tid))
+    name = _user_label(tid)
+    if not name:
+        try:  # pull their real Discord name even if we share no server
+            u = await bot.fetch_user(tid)
+            name = getattr(u, "global_name", None) or u.name or ""
+        except Exception:  # noqa: BLE001
+            name = ""
+    add_admin_staff(tid, by=uid, name=name)
     return _admin_json({"ok": True})
 
 
