@@ -5245,6 +5245,7 @@ a.link,.link{color:var(--brand2)}
     <div class=tab id=tab-shop>Shop log</div>
     <div class=tab id=tab-staff>Staff access</div>
     <div class=tab id=tab-bots style=display:none>🤖 Bots</div>
+    <div class=tab id=tab-log style=display:none>📋 Changelog</div>
     <div class=tab id=tab-audit style=display:none>📜 Audit</div>
   </div>
   <div id=pan-subs>
@@ -5426,6 +5427,67 @@ a.link,.link{color:var(--brand2)}
       <p class=hint id=brandStatus style="margin:10px 0 0"></p>
     </div>
   </div>
+  <div id=pan-log style=display:none>
+    <style>
+    #clCard .clwrap{display:grid;grid-template-columns:1fr 372px;gap:18px;margin-top:14px;align-items:start}
+    #clCard .clhead{display:grid;grid-template-columns:1fr 150px 150px;gap:10px}
+    #clCard input,#clCard select,#clCard textarea{width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.28);color:#ececf1;font:inherit}
+    #clCard textarea{line-height:1.5;resize:vertical;min-height:58px}
+    #clCard input:focus,#clCard select:focus,#clCard textarea:focus{outline:none;border-color:#2f6bff;box-shadow:0 0 0 3px rgba(47,107,255,.22)}
+    #clCard .cllbl{display:block;margin:12px 0 5px;font-size:12px;font-weight:700;letter-spacing:.3px;color:#cdd0da}
+    #clCard .clcat{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+    #clCard .clrow{display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap}
+    #clCard .clprev{background:#2b2d31;border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,.4)}
+    #clCard .clp-inner{border-left:4px solid #2f6bff;border-radius:4px;background:#313338;padding:14px 16px}
+    #clCard .clp-title{font-weight:700;color:#f2f3f5;font-size:15px;margin-bottom:6px}
+    #clCard .clp-sum{color:#dbdee1;font-size:14px;line-height:1.45;margin-bottom:8px;white-space:pre-wrap}
+    #clCard .clp-sec{font-weight:700;color:#f2f3f5;font-size:13px;margin:10px 0 3px}
+    #clCard .clp-items{color:#dbdee1;font-size:14px;line-height:1.5}
+    #clCard .clp-empty{color:#949ba4;font-size:13px}
+    #clCard .clp-foot{display:flex;align-items:center;gap:6px;margin-top:12px;color:#949ba4;font-size:12px;border-top:1px solid rgba(255,255,255,.06);padding-top:8px}
+    #clCard .clh-row{display:flex;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--line);font-size:13px}
+    #clCard .clh-v{font-weight:700;color:#e8e8ee}
+    #clCard .clh-m{color:var(--mute);flex:1}
+    #clCard .clh-row a{color:#5b93ff}
+    @media(max-width:860px){#clCard .clwrap{grid-template-columns:1fr}#clCard .clcat{grid-template-columns:1fr}#clCard .clhead{grid-template-columns:1fr}}
+    </style>
+    <div class=card id=clCard>
+      <h3>📋 Changelog</h3>
+      <p class=hint>Write an update, build it up section by section, preview it, then post it to your server — rendered in the same embed the bots use. The staff bot posts it.</p>
+      <div class=clwrap>
+        <div>
+          <div class=clhead>
+            <div><label class=cllbl>Title</label><input id=clTitle maxlength=120 placeholder="Gang Manager · Update"></div>
+            <div><label class=cllbl>Version</label><input id=clVersion maxlength=40 placeholder="v1.4.0"></div>
+            <div><label class=cllbl>Date</label><input id=clDate maxlength=40 placeholder="2026-11-18"></div>
+          </div>
+          <label class=cllbl>Summary <span class=hint style=font-weight:400>— optional intro line</span></label>
+          <textarea id=clSummary maxlength=600 rows=2 placeholder="What this update is about…"></textarea>
+          <div class=clcat>
+            <div><label class=cllbl>✨ Added</label><textarea id=cl_added rows=3 placeholder="One change per line"></textarea></div>
+            <div><label class=cllbl>⚡ Improved</label><textarea id=cl_improved rows=3 placeholder="One change per line"></textarea></div>
+            <div><label class=cllbl>🔧 Fixed</label><textarea id=cl_fixed rows=3 placeholder="One change per line"></textarea></div>
+            <div><label class=cllbl>🔀 Changed</label><textarea id=cl_changed rows=3 placeholder="One change per line"></textarea></div>
+            <div><label class=cllbl>🗑️ Removed</label><textarea id=cl_removed rows=3 placeholder="One change per line"></textarea></div>
+          </div>
+          <label class=cllbl>Post to</label>
+          <div style=display:flex;gap:10px;align-items:center><select id=clChannel></select><button class="ghost sm" id=clRefresh title="Reload channels">↻</button></div>
+          <p class=hint id=clChanHint style=margin:6px 0 0></p>
+          <div class=clrow>
+            <button class=ghost id=clSaveBtn>💾 Save draft</button>
+            <span style=flex:1></span>
+            <button class=brand-btn id=clPostBtn>📣 Post now</button>
+          </div>
+        </div>
+        <div>
+          <p class=plabel>Live preview</p>
+          <div class=clprev><div class=clp-inner id=clPrev></div></div>
+          <p class=plabel style=margin-top:16px>Recently posted</p>
+          <div id=clHistory><div class=hint>No changelogs posted yet.</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
   <div id=pan-audit style=display:none>
     <div class=card><h3>Admin audit log</h3><p class=hint>Every privileged action taken on this admin site — who did it, what they did, when, and from which IP. Owner-only, newest first.</p>
       <div class=toolbar style=margin-bottom:10px><input id=auditSearch placeholder="Search action, person or target…" autocomplete=off><button class="ghost sm" id=auditRefresh>↻ Refresh</button></div>
@@ -5457,10 +5519,10 @@ a.link,.link{color:var(--brand2)}
     var wrap=$('#confirmInputWrap'),inp=$('#confirmInput');if(o.input){inp.placeholder=o.input;inp.value='';wrap.style.display='';setTimeout(function(){inp.focus()},40)}else{wrap.style.display='none';setTimeout(function(){ok.focus()},30)}
     m.classList.add('show');
     return new Promise(function(resolve){function done(v){m.classList.remove('show');ok.onclick=null;$('#confirmCancel').onclick=null;m.onclick=null;document.removeEventListener('keydown',key,true);resolve(v)}ok.onclick=function(){done(o.input?inp.value:true)};$('#confirmCancel').onclick=function(){done(o.input?null:false)};m.onclick=function(e){if(e.target===m)done(o.input?null:false)};function key(e){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();done(o.input?null:false)}else if(e.key==='Enter'){e.preventDefault();e.stopPropagation();done(o.input?inp.value:true)}}document.addEventListener('keydown',key,true)});}
-  function boot(){api('/api/admin/me').then(function(me){if(!me||!me.authed){showGate('login');return}if(!me.access){showGate('denied');return}if(me.mfa){showMfaGate(me);return}STATE.owner=!!me.owner;var tbb=$('#tab-bots');if(tbb)tbb.style.display=STATE.owner?'':'none';var tba=$('#tab-audit');if(tba)tba.style.display=STATE.owner?'':'none';var u=me.user||{};$('#uname').textContent=u.name||'Account';$('#uinitial').textContent=initial(u.name);var av=$('#uav');if(u.avatar){av.src=u.avatar;av.onerror=function(){av.style.display='none'}}else{av.style.display='none'}var role=$('#urole');role.textContent=STATE.owner?'Owner':'Staff';role.classList.toggle('owner',STATE.owner);$('#uchip').style.display='';$('#gate').style.display='none';$('#app').style.display='';selectTab('subs');loadSubs()}).catch(function(){showGate('error')})}
+  function boot(){api('/api/admin/me').then(function(me){if(!me||!me.authed){showGate('login');return}if(!me.access){showGate('denied');return}if(me.mfa){showMfaGate(me);return}STATE.owner=!!me.owner;var tbb=$('#tab-bots');if(tbb)tbb.style.display=STATE.owner?'':'none';var tbl=$('#tab-log');if(tbl)tbl.style.display=STATE.owner?'':'none';var tba=$('#tab-audit');if(tba)tba.style.display=STATE.owner?'':'none';var u=me.user||{};$('#uname').textContent=u.name||'Account';$('#uinitial').textContent=initial(u.name);var av=$('#uav');if(u.avatar){av.src=u.avatar;av.onerror=function(){av.style.display='none'}}else{av.style.display='none'}var role=$('#urole');role.textContent=STATE.owner?'Owner':'Staff';role.classList.toggle('owner',STATE.owner);$('#uchip').style.display='';$('#gate').style.display='none';$('#app').style.display='';selectTab('subs');loadSubs()}).catch(function(){showGate('error')})}
   function showGate(kind){$('#app').style.display='none';var g=$('#gate');g.style.display='';if(kind==='login')g.innerHTML='<div class=card><div class=big>🔐</div><h2>Admin sign-in</h2><p class=mute>Log in with a Discord account that owns or is authorised for the bot.</p><a href="/login?next=/admin"><button class="brand-btn" style=margin-top:12px>Log in with Discord</button></a></div>';else if(kind==='denied')g.innerHTML='<div class=card><div class=big>⛔</div><h2>Not authorised</h2><p class=mute>This account isn\'t on the admin list. Ask the owner to authorise your Discord ID.</p><a href="/logout"><button class=ghost style=margin-top:12px>Switch account</button></a></div>';else g.innerHTML='<div class=card><div class=big>⚠️</div><h2>Couldn\'t load</h2><p class=mute>Something went wrong. Refresh to try again.</p><a href="/admin"><button class=ghost style=margin-top:12px>Refresh</button></a></div>'}
   function showMfaGate(me){$('#app').style.display='none';var g=$('#gate');g.style.display='';var inv=(me&&me.support_invite)||'';var joinBtn=inv?'<a href="'+inv+'" target=_blank rel=noopener><button class="brand-btn" style=margin-top:10px>Join GM Support</button></a>':'';var help='<div id=mfaHelp style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line,rgba(255,255,255,.08))"><div class=mute style="font-size:13px;line-height:1.6">No code arriving? GM Support can only DM you if you share a server with it and have direct messages switched on.</div>'+joinBtn+'<ol class=mute style="text-align:left;font-size:12px;margin:10px auto 0;max-width:330px;line-height:1.7;padding-left:18px"><li>'+(inv?'Join the GM Support server with the button above.':'Join a server that GM Support is in.')+'</li><li>Right-click that server, open <b>Privacy Settings</b>, and turn on <b>Direct Messages</b>.</li><li>Come back here and press <b>Resend code</b>.</li></ol></div>';g.innerHTML='<div class=card><div class=big>🔐</div><h2>Verify it\'s you</h2><p class=mute>Confirm this sign-in with a one-time code — GM Support will DM it to your Discord.</p><div id=mfa1><button class="brand-btn" id=mfaSend style=margin-top:12px>Send my code</button></div><div id=mfa2 style="display:none;margin-top:12px"><input id=mfaCode placeholder="6-digit code" inputmode=numeric maxlength=6 autocomplete=one-time-code style="text-align:center;letter-spacing:6px;font-size:18px"><button class="brand-btn" id=mfaVerify style=margin-top:10px>Verify</button><div class=mute style=margin-top:8px><a href=# id=mfaResend>Resend code</a></div></div><div class=mute id=mfaMsg style=margin-top:10px></div>'+help+'<div style=margin-top:14px><a href="/logout"><button class=ghost>Switchaccount</button></a></div></div>';function send(){$('#mfaMsg').textContent='Sending…';api('/api/admin/mfa/send','POST',{}).then(function(r){if(r&&r.ok){$('#mfa1').style.display='none';$('#mfa2').style.display='';$('#mfaMsg').textContent='Code sent to your Discord DMs from GM Support.';var c=$('#mfaCode');if(c)setTimeout(function(){c.focus()},40)}else{$('#mfaMsg').textContent=(r&&r.error)||'Could not send the code.'}})}function verify(){var c=($('#mfaCode').value||'').trim();if(!c){$('#mfaMsg').textContent='Enter the code.';return}$('#mfaMsg').textContent='Checking…';api('/api/admin/mfa/verify','POST',{code:c}).then(function(r){if(r&&r.ok){boot()}else{$('#mfaMsg').textContent=(r&&r.error)||'Wrong code.'}})}$('#mfaSend').onclick=send;$('#mfaVerify').onclick=verify;$('#mfaResend').onclick=function(e){e.preventDefault();send()};$('#mfaCode').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();verify()}})}
-  function selectTab(id){curTab=id;['subs','bans','shop','staff','bots','audit'].forEach(function(t){var on=t===id,tab=$('#tab-'+t),pan=$('#pan-'+t);if(tab)tab.classList.toggle('active',on);if(pan)pan.style.display=on?'':'none'});if(id==='subs')loadSubs();if(id==='bans')loadBans();if(id==='shop')loadShop();if(id==='staff')loadStaff();if(id==='bots')loadBots();if(id==='audit')loadAudit()}
+  function selectTab(id){curTab=id;['subs','bans','shop','staff','bots','log','audit'].forEach(function(t){var on=t===id,tab=$('#tab-'+t),pan=$('#pan-'+t);if(tab)tab.classList.toggle('active',on);if(pan)pan.style.display=on?'':'none'});if(id==='subs')loadSubs();if(id==='bans')loadBans();if(id==='shop')loadShop();if(id==='staff')loadStaff();if(id==='bots')loadBots();if(id==='log')loadChangelog();if(id==='audit')loadAudit()}
   function setStats(c){c=c||{};var map={statServers:c.servers||0,statActive:c.active||0,statLife:c.lifetime||0,statMembers:c.members||0,statBans:c.bans||0,statStaff:c.staff||0};for(var k in map){var el=document.getElementById(k);if(!el)continue;if(firstStats)animateNum(el,map[k]);else el.textContent=nf(map[k])}firstStats=false}
   function bucket(s){if(s.lifetime)return 'lifetime';if(s.active)return 'active';if(s.status==='expired')return 'expired';return 'none'}
   function badge(s){var b=bucket(s);if(b==='lifetime')return '<span class="badge pur">Lifetime</span>';if(b==='active')return '<span class="badge live">Active</span>';if(b==='expired')return '<span class="badge red">Expired</span>';return '<span class="badge off">Inactive</span>'}
@@ -5603,6 +5665,44 @@ a.link,.link{color:var(--brand2)}
     }else{go()}
    });
   }
+  var CL_CATS=[['added','✨','Added'],['improved','⚡','Improved'],['fixed','🔧','Fixed'],['changed','🔀','Changed'],['removed','🗑️','Removed']];
+  var CL_CHANS=[],CL_BRAND='',CL_BOUND=false;
+  function clToday(){try{return new Date().toISOString().slice(0,10)}catch(e){return ''}}
+  function clBullets(v){return String(v||'').split('\n').map(function(x){return x.trim()}).filter(Boolean)}
+  function clGather(){var sec={};CL_CATS.forEach(function(c){var el=$('#cl_'+c[0]);sec[c[0]]=el?el.value:''});
+    return {title:($('#clTitle').value||'').trim(),version:($('#clVersion').value||'').trim(),date:($('#clDate').value||'').trim(),summary:($('#clSummary').value||'').trim(),channel_id:($('#clChannel').value||'').trim(),sections:sec}}
+  function clRenderPreview(){var d=clGather();var title=d.title||'Gang Manager · Update';
+    var html='<div class=clp-title>📋 '+esc(title)+(d.version?' · '+esc(d.version):'')+'</div>';
+    if(d.summary)html+='<div class=clp-sum>'+esc(d.summary)+'</div>';var any=false;
+    CL_CATS.forEach(function(c){var items=clBullets(d.sections[c[0]]);if(!items.length)return;any=true;
+      html+='<div class=clp-sec>'+c[1]+' '+esc(c[2])+'</div><div class=clp-items>'+items.map(function(x){return '• '+esc(x)}).join('<br>')+'</div>'});
+    if(!any&&!d.summary)html+='<div class=clp-empty>Fill in a summary or some changes to see them here…</div>';
+    var foot=CL_BRAND||'GM Support';if(d.version)foot+=' · '+d.version;if(d.date)foot+=' · '+d.date;
+    html+='<div class=clp-foot>'+esc(foot)+'</div>';$('#clPrev').innerHTML=html}
+  function clRenderHistory(h){var box=$('#clHistory');if(!h||!h.length){box.innerHTML='<div class=hint>No changelogs posted yet.</div>';return}
+    box.innerHTML=h.map(function(e){var when='';try{when=e.at?new Date(e.at).toLocaleDateString():''}catch(x){}var lbl=esc(e.version||e.title||'Update');var ch=e.channel?esc(e.channel):'';var lnk=e.url?' · <a href="'+esc(e.url)+'" target=_blank rel=noopener>view</a>':'';
+      return '<div class=clh-row><span class=clh-v>'+lbl+'</span><span class=clh-m>'+ch+(when?' · '+esc(when):'')+'</span>'+lnk+'</div>'}).join('')}
+  function clInit(){if(CL_BOUND)return;CL_BOUND=true;
+    ['clTitle','clVersion','clDate','clSummary'].forEach(function(id){var el=$('#'+id);if(el)el.addEventListener('input',clRenderPreview)});
+    CL_CATS.forEach(function(c){var el=$('#cl_'+c[0]);if(el)el.addEventListener('input',clRenderPreview)});
+    var ch=$('#clChannel');if(ch)ch.addEventListener('change',clRenderPreview);
+    var sb=$('#clSaveBtn');if(sb)sb.onclick=function(){clSave()};
+    var pb=$('#clPostBtn');if(pb)pb.onclick=clPost;
+    var rb=$('#clRefresh');if(rb)rb.onclick=function(){loadChangelog()}}
+  function loadChangelog(){clInit();api('/api/admin/changelog').then(function(d){if(!d||!d.ok)return;CL_BRAND=d.brand||'';
+    var dr=d.draft||{};$('#clTitle').value=dr.title||'';$('#clVersion').value=dr.version||'';$('#clDate').value=dr.date||clToday();$('#clSummary').value=dr.summary||'';
+    var sec=dr.sections||{};CL_CATS.forEach(function(c){var el=$('#cl_'+c[0]);if(el)el.value=((sec[c[0]]||[])).join('\n')});
+    CL_CHANS=d.channels||[];var sel=$('#clChannel');var opts='<option value="">'+(d.staff_ok?'Default log channel':'Staff bot offline')+'</option>';
+    CL_CHANS.forEach(function(c){opts+='<option value="'+c.id+'">#'+esc(c.name)+'</option>'});sel.innerHTML=opts;if(dr.channel_id)sel.value=dr.channel_id;
+    $('#clChanHint').textContent=d.staff_ok?('Posts in '+(d.guild||'your server')+' · '+CL_CHANS.length+' channel'+(CL_CHANS.length===1?'':'s')+' available'):'Couldn\'t reach the staff bot — it posts the embed, so it needs to be online.';
+    clRenderHistory(d.history||[]);clRenderPreview()})}
+  function clSave(cb){var btn=$('#clSaveBtn');btn.disabled=true;api('/api/admin/changelog','POST',{action:'save',draft:clGather()}).then(function(r){btn.disabled=false;if(r&&r.ok){toast('Draft saved');if(cb)cb()}else{toast((r&&r.error)||'Save failed',true)}})}
+  function clPost(){var d=clGather();var has=(d.title||d.summary||CL_CATS.some(function(c){return clBullets(d.sections[c[0]]).length}));if(!has){toast('Add a title or at least one change first',true);return}
+    var chName=d.channel_id?('#'+(((CL_CHANS.filter(function(c){return c.id===d.channel_id})[0])||{}).name||'channel')):'the default log channel';
+    confirmBox({icon:'📋',title:'Post this changelog?',message:'It will be posted now to '+chName+' in the server\'s embed style.',confirmText:'Post now'}).then(function(go){if(!go)return;
+      var btn=$('#clPostBtn');btn.disabled=true;btn.textContent='Posting…';
+      api('/api/admin/changelog','POST',{action:'post',draft:d}).then(function(r){btn.disabled=false;btn.textContent='📣 Post now';
+        if(r&&r.ok){toast('Posted to '+(r.channel||'the channel'));if(r.history)clRenderHistory(r.history)}else{toast((r&&r.error)||'Post failed',true)}})})}
   function loadBots(){loadFleet();loadBrand();var box=$('#poolList');if(!POOL)box.innerHTML='<div class=sk style=height:68px></div><div class=sk style=height:68px></div>';api('/api/admin/pool').then(function(d){if(!d||!d.ok){box.innerHTML='<div class=pad>'+esc((d&&d.error)||'Could not load.')+'</div>';return}POOL=d;renderPool()})}
   function renderPool(){var d=POOL;if(!d)return;var sw=$('#poolSwitch');sw.classList.toggle('on',!!d.enabled);$('#poolSwitchTxt').textContent=d.enabled?'Hand-outs on':'Hand-outs off';
     var c=d.counts||{};$('#poolStats').innerHTML=[['🤖',c.total,'Pool bots'],['🟢',c.online,'Online'],['🏴',c.serving,'Servers'],['⏳',c.reserved,'Reserved'],['🎟️',c.slots,'Open slots']].map(function(x){return '<div class=pst><span>'+x[0]+'</span><b>'+nf(x[1]||0)+'</b><small>'+x[2]+'</small></div>'}).join('');
@@ -5657,7 +5757,7 @@ a.link,.link{color:var(--brand2)}
       ta.value='';
       $('#poolResults').innerHTML='<div class=presults>'+res.map(function(x){x=x||{};return '<div class="pres '+(x.ok?'ok':'bad')+'">'+(x.ok?'✓':'✗')+' Token '+(x.n||'?')+': '+(x.ok?('<b>'+esc(x.name)+'</b> '+(x.updated?'updated':'added')+(x.public===false?' — ⚠ Public Bot is off':'')+(x.members_intent===false?' — ⚠ couldn’t switch on Server Members Intent':'')):esc(x.error||'failed'))+'</div>'}).join('')+'</div>';
       toast((r.added||0)+' bot'+((r.added||0)===1?'':'s')+' added',!(r.added>0));setTimeout(loadBots,2000)})}
-  function toggleLive(){LIVE=!LIVE;var b=$('#liveBtn');b.classList.toggle('on',LIVE);b.innerHTML=LIVE?'<span class=live-dot></span> Live':'⟳ Live';if(liveTimer){clearInterval(liveTimer);liveTimer=null}if(LIVE){liveTimer=setInterval(function(){if(document.hidden)return;if(curTab==='subs')loadSubs();else if(curTab==='bans')loadBans();else if(curTab==='shop')loadShop();else if(curTab==='bots')loadBots();else if(curTab==='audit')loadAudit();else loadStaff()},20000);toast('Live refresh on')}}
+  function toggleLive(){LIVE=!LIVE;var b=$('#liveBtn');b.classList.toggle('on',LIVE);b.innerHTML=LIVE?'<span class=live-dot></span> Live':'⟳ Live';if(liveTimer){clearInterval(liveTimer);liveTimer=null}if(LIVE){liveTimer=setInterval(function(){if(document.hidden)return;if(curTab==='subs')loadSubs();else if(curTab==='bans')loadBans();else if(curTab==='shop')loadShop();else if(curTab==='bots')loadBots();else if(curTab==='audit')loadAudit();else if(curTab==='staff')loadStaff()},20000);toast('Live refresh on')}}
   // command palette
   var cmdkItems=[],cmdkSel=0;
   function openCmdk(){var o=$('#cmdk');o.classList.add('show');$('#cmdkInput').value='';cmdkBuild('');setTimeout(function(){$('#cmdkInput').focus()},30)}
@@ -5665,7 +5765,7 @@ a.link,.link{color:var(--brand2)}
   function cmdkBuild(q){q=(q||'').toLowerCase();var items=[];var nav=[['subs','📂','Subscriptions'],['bans','⛔','Bans'],['shop','🧾','Shop log'],['staff','🛡️','Staff access']];if(STATE.owner){nav.push(['bots','🤖','Bots']);nav.push(['audit','📜','Audit log'])}nav.forEach(function(n){if(!q||n[2].toLowerCase().indexOf(q)>=0)items.push({t:'tab',id:n[0],ic:n[1],label:n[2],sub:'Section'})});SERVERS.forEach(function(s){if(!q||(s.name||'').toLowerCase().indexOf(q)>=0||String(s.id).indexOf(q)>=0)items.push({t:'srv',id:s.id,ic:'🌐',label:s.name,sub:bucket(s)})});cmdkItems=items.slice(0,40);cmdkSel=0;cmdkRender()}
   function cmdkRender(){$('#cmdkList').innerHTML=cmdkItems.length?cmdkItems.map(function(it,i){return '<div class="ci'+(i===cmdkSel?' sel':'')+'" data-i="'+i+'"><span class=cig>'+it.ic+'</span><span>'+esc(it.label)+'</span><span class=cis>'+esc(it.sub)+'</span></div>'}).join(''):'<div class=pad>No matches</div>';$('#cmdkList').querySelectorAll('.ci').forEach(function(el){el.onclick=function(){cmdkSel=parseInt(el.getAttribute('data-i'),10);cmdkGo()}})}
   function cmdkGo(){var it=cmdkItems[cmdkSel];if(!it){return}closeCmdk();if(it.t==='tab'){selectTab(it.id)}else{selectTab('subs');SUBFILTER='all';SUBQ='';$('#subSearch').value=String(it.id);SUBQ=String(it.id);renderFilters();renderSubs();toast('Jumped to '+it.label)}}
-  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='brandApply')applyBrand();var _fb=t.closest&&t.closest('[data-fleet]');if(_fb){fleetPower(_fb.getAttribute('data-fleet'),_fb.getAttribute('data-act'))}if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
+  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-log')selectTab('log');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='brandApply')applyBrand();var _fb=t.closest&&t.closest('[data-fleet]');if(_fb){fleetPower(_fb.getAttribute('data-fleet'),_fb.getAttribute('data-act'))}if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
   document.addEventListener('input',function(e){var t=e.target;if(t.id==='subSearch'){SUBQ=t.value;renderSubs()}if(t.id==='shopSearch'){SHOPQ=t.value;renderShop()}if(t.id==='banSearch'){BANQ=t.value;renderBans()}if(t.id==='poolSearch'){POOLQ=t.value;renderPool()}if(t.id==='brandBio'){brandCount()}if(t.id==='auditSearch'){AUDITQ=t.value;renderAudit()}if(t.id==='cmdkInput'){cmdkBuild(t.value)}});
   document.addEventListener('change',function(e){if(e.target.id==='subSort'){SUBSORT=e.target.value;renderSubs()}});
   document.addEventListener('keydown',function(e){
@@ -6207,6 +6307,124 @@ async def _h_admin_fleet_power(request):
     return _admin_json({"ok": False, "error": "bad target"}, 400)
 
 
+# ---- changelog composer ---------------------------------------------------- #
+_CHANGELOG_CATS = ("added", "improved", "fixed", "changed", "removed")
+
+
+async def _staff_changelog_call(method, payload=None):
+    """Talk to the staff bot's /internal/changelog — GET lists postable channels,
+    POST renders + posts the changelog in the server's embed style. Authed with
+    the shared secret. Returns None if the staff bot is unreachable."""
+    base = _staff_base()
+    secret = (os.getenv("MFA_SECRET") or os.getenv("WEBHOOK_SECRET") or "").strip()
+    if not base or not secret or _aiohttp is None:
+        return None
+    url = base + "/internal/changelog"
+    headers = {"X-Guard-Token": secret}
+    try:
+        timeout = _aiohttp.ClientTimeout(total=15)
+        async with _aiohttp.ClientSession(timeout=timeout) as s:
+            if method == "GET":
+                async with s.get(url, headers=headers) as r:
+                    return await r.json(content_type=None) if r.status == 200 else None
+            async with s.post(url, headers=headers, json=payload or {}) as r:
+                if r.status == 200:
+                    return await r.json(content_type=None)
+                try:
+                    j = await r.json(content_type=None)
+                except Exception:  # noqa: BLE001
+                    j = {}
+                return {"ok": False, "error": (j or {}).get("error") or ("staff bot returned " + str(r.status))}
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _sanitise_changelog(d):
+    """Normalise a submitted draft into the shape the staff bot expects."""
+    d = d if isinstance(d, dict) else {}
+    out = {
+        "title": str(d.get("title") or "")[:120],
+        "version": str(d.get("version") or "")[:40],
+        "date": str(d.get("date") or "")[:40],
+        "summary": str(d.get("summary") or "")[:600],
+        "channel_id": "".join(ch for ch in str(d.get("channel_id") or "") if ch.isdigit())[:25],
+        "sections": {},
+    }
+    secs = d.get("sections") if isinstance(d.get("sections"), dict) else {}
+    for cat in _CHANGELOG_CATS:
+        raw = secs.get(cat)
+        if isinstance(raw, list):
+            lines = [str(x).strip()[:300] for x in raw if str(x).strip()]
+        else:
+            lines = [ln.strip()[:300] for ln in str(raw or "").splitlines() if ln.strip()]
+        out["sections"][cat] = lines[:25]
+    return out
+
+
+def _changelog_has_content(d):
+    if str(d.get("title") or "").strip() or str(d.get("summary") or "").strip():
+        return True
+    return any((d.get("sections") or {}).get(c) for c in _CHANGELOG_CATS)
+
+
+async def _h_admin_changelog(request):
+    """Owner-only. GET returns the saved draft + the staff bot's postable channels;
+    POST either saves the draft (action=save) or posts it (action=post)."""
+    uid, err = _admin_owner_only(request)
+    if err is not None:
+        return err
+    cl = DATA.setdefault("changelog", {})
+    cl.setdefault("draft", {})
+    cl.setdefault("history", [])
+    if request.method == "GET":
+        channels, staff_ok, guild_name, brand = [], False, "", ""
+        res = await _staff_changelog_call("GET")
+        if isinstance(res, dict) and res.get("ok"):
+            channels = res.get("channels") or []
+            guild_name = res.get("guild") or ""
+            brand = res.get("brand") or ""
+            staff_ok = True
+        return _admin_json({
+            "ok": True,
+            "draft": cl.get("draft") or {},
+            "history": (cl.get("history") or [])[:5],
+            "channels": channels, "staff_ok": staff_ok, "guild": guild_name, "brand": brand,
+        })
+    if not _origin_ok(request):
+        return _admin_json({"ok": False, "error": "Cross-site request blocked."}, 403)
+    body = await _admin_body(request)
+    action = str(body.get("action") or "save").lower()
+    draft = _sanitise_changelog(body.get("draft") or {})
+    cl["draft"] = draft
+    if action == "save":
+        save_data(DATA)
+        _audit(request, uid, "changelog_save", "", draft.get("version") or "")
+        return _admin_json({"ok": True, "saved": True, "draft": draft})
+    if action == "post":
+        if not _changelog_has_content(draft):
+            return _admin_json({"ok": False, "error": "Add a title or at least one change before posting."}, 400)
+        res = await _staff_changelog_call("POST", {**draft, "by": uid})
+        if res is None:
+            save_data(DATA)
+            return _admin_json({"ok": False, "error": "Couldn't reach the staff bot to post."}, 502)
+        if not res.get("ok"):
+            save_data(DATA)
+            return _admin_json({"ok": False, "error": res.get("error") or "Post failed."}, 502)
+        entry = {
+            "version": draft.get("version") or "", "title": draft.get("title") or "",
+            "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "by": uid, "url": res.get("url") or "", "channel": res.get("channel") or "",
+        }
+        cl["history"] = ([entry] + (cl.get("history") or []))[:20]
+        save_data(DATA)
+        _audit(request, uid, "changelog_post", res.get("channel") or "", draft.get("version") or "")
+        return _admin_json({
+            "ok": True, "posted": True, "url": res.get("url") or "",
+            "channel": res.get("channel") or "", "history": cl["history"][:5],
+        })
+    return _admin_json({"ok": False, "error": "bad action"}, 400)
+
+
 async def _h_admin_pool(request):
     uid, err = _admin_owner_only(request)
     if err is not None:
@@ -6577,6 +6795,8 @@ async def start_web_server() -> None:
             _aioweb.post("/api/admin/bot_profile", _h_admin_bot_profile),
             _aioweb.get("/api/admin/fleet", _h_admin_fleet),
             _aioweb.post("/api/admin/fleet/power", _h_admin_fleet_power),
+            _aioweb.get("/api/admin/changelog", _h_admin_changelog),
+            _aioweb.post("/api/admin/changelog", _h_admin_changelog),
             _aioweb.post("/api/admin/pool/add", _h_admin_pool_add),
             _aioweb.post("/api/admin/pool/action", _h_admin_pool_action),
             _aioweb.get("/api/admin/bans", _h_admin_bans),
