@@ -4984,9 +4984,9 @@ _ADMIN_HTML = r"""<!doctype html><html lang=en><head><meta charset=utf-8>
 <title>Gang Manager — Admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&family=Oswald:wght@500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#07070a;--card:rgba(20,20,26,.72);--line:rgba(255,255,255,.07);--text:#f2f2f6;--mute:#9a9aa8;--brand:#9a9aa8;--brand2:#c9c9d2;--ok:#22c55e;--bad:#ef4444;--warn:#f59e0b;--blue:#60a5fa;--purple:#a78bfa;--r:18px}
+:root{--bg:#07070a;--card:rgba(20,20,26,.72);--line:rgba(255,255,255,.07);--text:#f2f2f6;--mute:#9a9aa8;--brand:#2f6bff;--brand2:#5b93ff;--acc:#2f6bff;--ok:#22c55e;--bad:#ef4444;--warn:#f59e0b;--blue:#60a5fa;--purple:#a78bfa;--r:4px}
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--text);min-height:100vh;font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
@@ -5187,6 +5187,34 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
 .confirmbox p{margin:0 0 20px;color:var(--mute);font-size:13.5px;line-height:1.5}
 .confirmbtns{display:flex;gap:10px}.confirmbtns button{flex:1;padding:11px}
 .danger-solid{background:linear-gradient(135deg,#ef4444,#b91c1c) !important;border-color:transparent !important;color:#fff !important;box-shadow:0 8px 24px rgba(239,68,68,.25) !important}
+
+/* ===== tactical-blue system (matches the landing) ===== */
+@keyframes gridpan{to{background-position:0 46px}}
+body::before{display:block!important;background:transparent!important;background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px)!important;background-size:46px 46px!important;inset:0!important;filter:none!important;opacity:1!important;-webkit-mask:radial-gradient(135% 90% at 50% 0,#000 32%,transparent 80%);mask:radial-gradient(135% 90% at 50% 0,#000 32%,transparent 80%);animation:gridpan 60s linear infinite}
+body::after{content:""!important;position:fixed!important;inset:0!important;z-index:-1!important;pointer-events:none!important;background:radial-gradient(90% 55% at 50% -6%,rgba(47,107,255,.13),transparent 60%)!important;filter:none!important;opacity:1!important;animation:none!important;transform:none!important}
+.aura,.aurora{display:none!important}
+body{background:#09090a!important}
+h1,h2,h3,.hdr h1,.brandname,.logo-txt,.brand,.gatecard h2{font-family:'Oswald',Inter,sans-serif!important;text-transform:uppercase;letter-spacing:.5px;-webkit-text-fill-color:currentColor;background:none!important;color:var(--text)}
+.brand-btn,button.brand-btn{background:linear-gradient(180deg,var(--brand2),var(--brand))!important;border:1px solid var(--brand2)!important;color:#fff!important;border-radius:4px!important;font-family:'JetBrains Mono',ui-monospace,monospace!important;text-transform:uppercase;letter-spacing:.8px;font-size:12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 10px 26px rgba(47,107,255,.3)!important}
+.brand-btn:hover,button.brand-btn:hover{filter:brightness(1.08)}
+.tab{border-radius:4px!important;font-family:'JetBrains Mono',ui-monospace,monospace;text-transform:uppercase;letter-spacing:.6px;font-size:12px}
+.tab.active{background:var(--brand)!important;color:#fff!important;box-shadow:0 6px 18px rgba(47,107,255,.4)!important}
+.card,.gatecard,.stat,.statc{border-radius:4px!important}
+.card{border-color:rgba(255,255,255,.08)!important}
+.pill,.chip,.badge{border-radius:4px!important}
+input,textarea,select{border-radius:4px!important}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand)!important;box-shadow:0 0 0 3px rgba(47,107,255,.2)!important}
+button.ghost,.ghost{border-radius:4px!important}
+button.ghost:hover,.ghost:hover{border-color:var(--brand)!important;color:var(--text)}
+.hint,.sub,.mute,.toolbar .count,.kcap{font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:.3px}
+a.link,.link{color:var(--brand2)}
+::selection{background:var(--brand);color:#fff}
+::-webkit-scrollbar-thumb{background:rgba(47,107,255,.35)!important}
+/* login gate: kill silver gradient + rounded glow frame */
+#gate.gate,#gate{background:#09090a!important}
+#gate.gate::before,#gate.gate::after,.gatecard::before,.gatecard::after{display:none!important}
+.gatecard{border-radius:4px!important;border:1px solid rgba(255,255,255,.1)!important}
+
 </style></head><body>
 <div class="aura"><i></i><i></i><i></i></div>
 <header>
@@ -6297,11 +6325,11 @@ _PAGE_HTML = r"""
 <!--GM_HEAD-->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@700&family=Oswald:wght@500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#07070a; --card:rgba(20,20,26,.72); --cardsolid:#15151b; --line:rgba(255,255,255,.07);
-    --text:#f2f2f6; --mute:#9a9aa8; --brand:#9a9aa8; --brand2:#c9c9d2;
+    --text:#f2f2f6; --mute:#9a9aa8; --brand:#2f6bff; --brand2:#5b93ff; --acc:#2f6bff;
     --ok:#22c55e; --bad:#ef4444; --warn:#f59e0b; --blue:#60a5fa; --purple:#a78bfa; --r:18px;
   }
   *{box-sizing:border-box}
@@ -6755,6 +6783,34 @@ _PAGE_HTML = r"""
   .opctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px;padding-top:12px;border-top:1px dashed rgba(255,255,255,.12)}
   .opctl span{font-size:11px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--mute);margin-right:4px}
   .opctl button{padding:7px 12px;font-size:13px}
+
+/* ===== tactical-blue system (matches the landing) ===== */
+@keyframes gridpan{to{background-position:0 46px}}
+body::before{display:block!important;background:transparent!important;background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px)!important;background-size:46px 46px!important;inset:0!important;filter:none!important;opacity:1!important;-webkit-mask:radial-gradient(135% 90% at 50% 0,#000 32%,transparent 80%);mask:radial-gradient(135% 90% at 50% 0,#000 32%,transparent 80%);animation:gridpan 60s linear infinite}
+body::after{content:""!important;position:fixed!important;inset:0!important;z-index:-1!important;pointer-events:none!important;background:radial-gradient(90% 55% at 50% -6%,rgba(47,107,255,.13),transparent 60%)!important;filter:none!important;opacity:1!important;animation:none!important;transform:none!important}
+.aura,.aurora{display:none!important}
+body{background:#09090a!important}
+h1,h2,h3,.hdr h1,.brandname,.logo-txt,.brand,.gatecard h2{font-family:'Oswald',Inter,sans-serif!important;text-transform:uppercase;letter-spacing:.5px;-webkit-text-fill-color:currentColor;background:none!important;color:var(--text)}
+.brand-btn,button.brand-btn{background:linear-gradient(180deg,var(--brand2),var(--brand))!important;border:1px solid var(--brand2)!important;color:#fff!important;border-radius:4px!important;font-family:'JetBrains Mono',ui-monospace,monospace!important;text-transform:uppercase;letter-spacing:.8px;font-size:12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 10px 26px rgba(47,107,255,.3)!important}
+.brand-btn:hover,button.brand-btn:hover{filter:brightness(1.08)}
+.tab{border-radius:4px!important;font-family:'JetBrains Mono',ui-monospace,monospace;text-transform:uppercase;letter-spacing:.6px;font-size:12px}
+.tab.active{background:var(--brand)!important;color:#fff!important;box-shadow:0 6px 18px rgba(47,107,255,.4)!important}
+.card,.gatecard,.stat,.statc{border-radius:4px!important}
+.card{border-color:rgba(255,255,255,.08)!important}
+.pill,.chip,.badge{border-radius:4px!important}
+input,textarea,select{border-radius:4px!important}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand)!important;box-shadow:0 0 0 3px rgba(47,107,255,.2)!important}
+button.ghost,.ghost{border-radius:4px!important}
+button.ghost:hover,.ghost:hover{border-color:var(--brand)!important;color:var(--text)}
+.hint,.sub,.mute,.toolbar .count,.kcap{font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:.3px}
+a.link,.link{color:var(--brand2)}
+::selection{background:var(--brand);color:#fff}
+::-webkit-scrollbar-thumb{background:rgba(47,107,255,.35)!important}
+/* login gate: kill silver gradient + rounded glow frame */
+#gate.gate,#gate{background:#09090a!important}
+#gate.gate::before,#gate.gate::after,.gatecard::before,.gatecard::after{display:none!important}
+.gatecard{border-radius:4px!important;border:1px solid rgba(255,255,255,.1)!important}
+
 </style>
 </head>
 <body>
