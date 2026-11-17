@@ -16,7 +16,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-from .emojis import em, gmify
+from .emojis import em, gmify, customize_view
 
 # --------------------------------------------------------------------------- #
 # Configuration
@@ -643,6 +643,24 @@ def _v2_layout(
     return layout
 
 
+def _bot_of(dest):
+    """The bot/client that will post to `dest` (an interaction, channel or user)."""
+    cl = getattr(dest, "client", None)
+    if cl is not None:
+        return cl
+    g = getattr(dest, "guild", None)
+    if g is not None:
+        return designated_client(getattr(g, "id", 0))
+    return None
+
+
+def _make_custom_view(make_view, bot):
+    """Build a view and swap its button/select emojis for the bot's custom set."""
+    if make_view is None:
+        return None
+    return customize_view(make_view(), bot)
+
+
 async def _send_card(
     dest,
     embeds: "list[discord.Embed]",
@@ -658,8 +676,9 @@ async def _send_card(
     for interaction responses)."""
     am = allowed_mentions or discord.AllowedMentions.none()
     is_inter = isinstance(dest, discord.Interaction)
+    _bot = _bot_of(dest)
     try:
-        layout = _v2_layout(embeds, make_view() if make_view else None, header)
+        layout = _v2_layout(embeds, _make_custom_view(make_view, _bot), header)
         if is_inter:
             if dest.response.is_done():
                 return await dest.followup.send(
@@ -674,7 +693,7 @@ async def _send_card(
         log.warning("V2 send failed (%s) — falling back to classic", exc)
     kwargs = {"embeds": embeds, "allowed_mentions": am}
     if make_view:
-        kwargs["view"] = make_view()
+        kwargs["view"] = _make_custom_view(make_view, _bot)
     if header:
         kwargs["content"] = header
     if is_inter:
@@ -695,10 +714,11 @@ async def _edit_card(
 ) -> None:
     """Edit a card in whichever format it was posted in (V2 or classic).
     Uses the interaction response when it's still open, else edits the message."""
+    _bot = _bot_of(interaction or message)
     if _is_v2(message):
-        kwargs = {"view": _v2_layout(embeds, make_view() if make_view else None, header)}
+        kwargs = {"view": _v2_layout(embeds, _make_custom_view(make_view, _bot), header)}
     else:
-        kwargs = {"embeds": embeds, "view": make_view() if make_view else None}
+        kwargs = {"embeds": embeds, "view": _make_custom_view(make_view, _bot)}
     if interaction is not None and not interaction.response.is_done():
         await interaction.response.edit_message(**kwargs)
     else:

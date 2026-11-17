@@ -1,6 +1,7 @@
 """/role_menu, /radio, /eoi, /eoi_post and /help."""
 
 from .core import *  # noqa: F401,F403
+from .emojis import customize_view
 from .roster import *  # noqa: F401,F403
 from .kos import *  # noqa: F401,F403
 from .settings import *  # noqa: F401,F403
@@ -323,7 +324,7 @@ async def radio_panel(interaction: discord.Interaction) -> None:
 async def eoi(interaction: discord.Interaction) -> None:
     if await _block_if_already_member(interaction):
         return
-    await interaction.response.send_modal(EOIModal())
+    await interaction.response.send_modal(customize_view(EOIModal(), interaction.client))
 
 
 # ---- /eoi_post (leadership force-posts a blank EOI prompt) ------------------- #
@@ -397,7 +398,7 @@ class EOIPromptView(GatedView):
     ) -> None:
         if await _block_if_already_member(interaction):
             return
-        await interaction.response.send_modal(EOIModal())
+        await interaction.response.send_modal(customize_view(EOIModal(), interaction.client))
 
 
 # ---- /help ------------------------------------------------------------- #

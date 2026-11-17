@@ -62,6 +62,14 @@ EMOJI: dict[str, tuple[str, str]] = {
     "cart":    ("gm_cart",    "🛒"),
     "chart":   ("gm_chart",   "📊"),
     "wave":    ("gm_wave",    "👋"),
+    "edit":    ("gm_edit",    "📝"),
+    "party":   ("gm_party",   "🎉"),
+    "gun":     ("gm_gun",     "🔫"),
+    "tools":   ("gm_tools",   "🛠️"),
+    "puzzle":  ("gm_puzzle",  "🧩"),
+    "n1":      ("gm_n1",      "1️⃣"),
+    "n2":      ("gm_n2",      "2️⃣"),
+    "n3":      ("gm_n3",      "3️⃣"),
     # progress-bar segments (no unicode fallback — _vote_bar falls back to squares)
     "vbar_lf": ("vbar_lf", ""),
     "vbar_le": ("vbar_le", ""),
@@ -80,6 +88,13 @@ _CACHE: dict[int, dict[str, str]] = {}
 _UNICODE_EMOJI_MAP: dict[str, str] = {
     fb: key for key, (_name, fb) in EMOJI.items() if fb and not key.startswith("vbar")
 }
+# extra unicode variants that should resolve to an existing custom glyph
+_UNICODE_EMOJI_MAP.update({
+    "✉": "app", "✉️": "app",
+    "✖️": "no", "✖": "no", "✕": "no", "❎": "no",
+    "✓": "yes", "☑️": "yes", "✔️": "yes", "✔": "yes",
+    "🛠": "tools",
+})
 
 
 def gmify(text: str, client) -> str:
@@ -149,4 +164,47 @@ def em(client, key: str) -> str:
     return fallback
 
 
-__all__ = ["EMOJI", "sync_app_emojis", "em", "gmify"]
+def _key_for_emoji(e) -> "str | None":
+    if e is None:
+        return None
+    s = str(e)
+    return _UNICODE_EMOJI_MAP.get(s) or _UNICODE_EMOJI_MAP.get(s.rstrip("️"))
+
+
+def _swap_component_emoji(obj, client) -> None:
+    e = getattr(obj, "emoji", None)
+    if e is None or getattr(e, "id", None) is not None:  # empty or already custom
+        return
+    key = _key_for_emoji(e)
+    if not key:
+        return
+    cust = em(client, key)
+    if cust.startswith("<:"):
+        try:
+            obj.emoji = discord.PartialEmoji.from_str(cust)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def customize_view(view, client):
+    """Swap unicode emojis on a view/modal's buttons and select options for the
+    posting bot's custom ones. Handles modal Labels that wrap a Select too.
+    Best-effort; call it just before the view/modal is sent."""
+    if view is None or client is None:
+        return view
+    try:
+        for child in getattr(view, "children", []) or []:
+            _swap_component_emoji(child, client)
+            comp = getattr(child, "component", None)  # modal Label wraps a component
+            for target in (child, comp):
+                if target is None:
+                    continue
+                _swap_component_emoji(target, client)
+                for opt in getattr(target, "options", []) or []:
+                    _swap_component_emoji(opt, client)
+    except Exception:  # noqa: BLE001
+        pass
+    return view
+
+
+__all__ = ["EMOJI", "sync_app_emojis", "em", "gmify", "customize_view"]
