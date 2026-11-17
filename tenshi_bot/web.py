@@ -5324,14 +5324,17 @@ a.link,.link{color:var(--brand2)}
     .upbox .upt{font-weight:700;font-size:13.5px;color:#ececf1}
     .upbox .ups{font-size:12px;color:#9a9aa6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .brandrow{display:flex;align-items:center;gap:10px;margin-top:12px}
+    .upprev{display:none;object-fit:cover;border:1px solid rgba(47,107,255,.45);background:#000;margin-bottom:6px}
+    #avPrev{width:76px;height:76px;border-radius:50%}
+    #bnPrev{width:100%;height:88px;border-radius:6px}
     @media(max-width:560px){.brandgrid{grid-template-columns:1fr}}
     </style>
     <div class=card id=brandCard>
       <h3>🎨 Fleet branding</h3>
       <p class=hint>One avatar, banner and bio pushed to <b>every bot</b> — the main bot and all pool bots. Discord rate-limits avatar changes, so a large fleet rolls out gradually; re-apply later for any marked rate-limited.</p>
       <div class=brandgrid>
-        <label class=upbox><input type=file accept="image/png,image/jpeg,image/gif,image/webp" id=brandAvatar hidden><span class=upt>Avatar · pfp</span><span class=ups id=avName>Choose image…</span></label>
-        <label class=upbox><input type=file accept="image/png,image/jpeg,image/gif,image/webp" id=brandBanner hidden><span class=upt>Banner</span><span class=ups id=bnName>Choose image…</span></label>
+        <label class=upbox><input type=file accept="image/png,image/jpeg,image/gif,image/webp" id=brandAvatar hidden><img class=upprev id=avPrev alt=""><span class=upt>Avatar · pfp</span><span class=ups id=avName>Choose image…</span><span class=ups style="opacity:.6">preview as a circle</span></label>
+        <label class=upbox><input type=file accept="image/png,image/jpeg,image/gif,image/webp" id=brandBanner hidden><img class=upprev id=bnPrev alt=""><span class=upt>Banner</span><span class=ups id=bnName>Choose image…</span></label>
       </div>
       <textarea id=brandBio maxlength=400 rows=3 placeholder="Bio / About Me shown on every bot's profile…"></textarea>
       <div class=brandrow><span class=hint id=brandCount>0 / 400</span><span style=flex:1></span><button class=brand-btn id=brandApply>Apply to all bots</button></div>
@@ -5439,11 +5442,12 @@ a.link,.link{color:var(--brand2)}
    btn.disabled=true;btn.textContent='Applying…';
    fetch('/api/admin/bot_profile',{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){return r.json().catch(function(){return{ok:false,error:'bad response'}})}).then(function(j){
     btn.disabled=false;btn.textContent='Apply to all bots';
-    if(j.ok){toast(j.message||'Rolling out to the fleet');if(av)av.value='';if(bn)bn.value='';['avName','bnName'].forEach(function(id){var e=$('#'+id);if(e){e.textContent='Choose image…';e.parentNode.classList.remove('set')}});setTimeout(loadBrand,1500);setTimeout(loadBrand,9000)}
+    if(j.ok){toast(j.message||'Rolling out to the fleet');if(av)av.value='';if(bn)bn.value='';['avName','bnName'].forEach(function(id){var e=$('#'+id);if(e){e.textContent='Choose image…';e.parentNode.classList.remove('set')}});setPrev('avPrev',null);setPrev('bnPrev',null);setTimeout(loadBrand,1500);setTimeout(loadBrand,9000)}
     else toast(j.error||'Failed',true)
    }).catch(function(){btn.disabled=false;btn.textContent='Apply to all bots';toast('Network error',true)})
   }
-  document.addEventListener('change',function(e){var t=e.target;if(t.id==='brandAvatar'||t.id==='brandBanner'){var f=t.files&&t.files[0];var lbl=t.id==='brandAvatar'?$('#avName'):$('#bnName');if(lbl){lbl.textContent=f?f.name:'Choose image…';lbl.parentNode.classList.toggle('set',!!f)}}});
+  function setPrev(id,f){var p=$('#'+id);if(!p)return;if(f){try{if(p.dataset.u)URL.revokeObjectURL(p.dataset.u);var u=URL.createObjectURL(f);p.dataset.u=u;p.src=u;p.style.display='block'}catch(x){}}else{p.style.display='none';p.removeAttribute('src')}}
+  document.addEventListener('change',function(e){var t=e.target;if(t.id==='brandAvatar'||t.id==='brandBanner'){var f=t.files&&t.files[0];var isAv=t.id==='brandAvatar';var lbl=isAv?$('#avName'):$('#bnName');if(lbl){lbl.textContent=f?f.name:'Choose image…';lbl.parentNode.classList.toggle('set',!!f)}setPrev(isAv?'avPrev':'bnPrev',f)}});
   function loadBots(){loadBrand();var box=$('#poolList');if(!POOL)box.innerHTML='<div class=sk style=height:68px></div><div class=sk style=height:68px></div>';api('/api/admin/pool').then(function(d){if(!d||!d.ok){box.innerHTML='<div class=pad>'+esc((d&&d.error)||'Could not load.')+'</div>';return}POOL=d;renderPool()})}
   function renderPool(){var d=POOL;if(!d)return;var sw=$('#poolSwitch');sw.classList.toggle('on',!!d.enabled);$('#poolSwitchTxt').textContent=d.enabled?'Hand-outs on':'Hand-outs off';
     var c=d.counts||{};$('#poolStats').innerHTML=[['🤖',c.total,'Pool bots'],['🟢',c.online,'Online'],['🏴',c.serving,'Servers'],['⏳',c.reserved,'Reserved'],['🎟️',c.slots,'Open slots']].map(function(x){return '<div class=pst><span>'+x[0]+'</span><b>'+nf(x[1]||0)+'</b><small>'+x[2]+'</small></div>'}).join('');
