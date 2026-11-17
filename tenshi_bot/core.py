@@ -16,6 +16,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from .emojis import em
+
 # --------------------------------------------------------------------------- #
 # Configuration
 # --------------------------------------------------------------------------- #
@@ -976,6 +978,11 @@ def _eoi_card(store: dict, mid, guild, *, app=None, votes=None, timer=None, vouc
     activity = app.get("activity") or "—"
     act_emoji = app.get("act_emoji") or "🔥"
 
+    client = designated_client(getattr(guild, "id", 0))
+
+    def E(k: str) -> str:
+        return em(client, k)
+
     if closed:
         color = OK if passed else MUTED
         head = ("✅  ACCEPTED" if passed else "❌  DENIED") if passed is not None else "🔒  CLOSED"
@@ -997,54 +1004,57 @@ def _eoi_card(store: dict, mid, guild, *, app=None, votes=None, timer=None, vouc
     if app.get("avatar"):
         embed.set_thumbnail(url=app["avatar"])
 
-    embed.add_field(name="🎯 Role", value=f"{role_emoji} {role}", inline=True)
-    embed.add_field(name="⏱️ Active", value=f"{act_emoji} {activity}", inline=True)
-    if app.get("account_ts"):
-        embed.add_field(name="🗓️ Account", value=f"<t:{app['account_ts']}:R>", inline=True)
-    if app.get("joined_ts"):
-        embed.add_field(name="📥 Joined", value=f"<t:{app['joined_ts']}:R>", inline=True)
+    # Top row (3): who they are. Second row (2): the account dates.
+    embed.add_field(name=f"{E('role')} Role", value=f"{role_emoji} **{role}**", inline=True)
+    embed.add_field(name=f"{E('active')} Active", value=f"{act_emoji} {activity}", inline=True)
 
     vstatus = vouch.get("status")
     vmention = f"<@{vouch.get('voucher_id')}>" if vouch.get("voucher_id") else None
     if vstatus == "accepted":
-        vval = f"✅ Vouched by {vmention}"
+        vval = f"{E('yes')} Vouched by {vmention}"
     elif vstatus == "declined":
-        vval = f"✖️ Declined by {vmention}"
+        vval = f"{E('no')} Declined by {vmention}"
     elif vstatus == "pending":
-        vval = f"⏳ Pending — {vmention}"
+        vval = f"{E('clock')} Pending — {vmention}"
     else:
         vval = "—"
-    embed.add_field(name=_EOI_VOUCH_FIELD, value=vval, inline=True)
+    embed.add_field(name=f"{E('vouch')} Vouch", value=vval, inline=True)
+
+    if app.get("account_ts"):
+        embed.add_field(name=f"{E('account')} Account", value=f"<t:{app['account_ts']}:R>", inline=True)
+    if app.get("joined_ts"):
+        embed.add_field(name=f"{E('joined')} Joined", value=f"<t:{app['joined_ts']}:R>", inline=True)
 
     lines = app.get("montage_lines") or []
     if lines:
         embed.add_field(
-            name=f"🎬 Montage{'s' if app.get('montage_count', 1) > 1 else ''}",
+            name=f"{E('montage')} Montage{'s' if app.get('montage_count', 1) > 1 else ''}",
             value="\n".join(lines)[:1024], inline=False,
         )
     if app.get("montage_image"):
         embed.set_image(url=app["montage_image"])
         if not closed and app.get("montage_watch"):
-            embed.description += f"\n\n🎬 **[▶  Watch montage]({app['montage_watch']})**"
+            embed.description += f"\n\n{E('play')} **[Watch montage]({app['montage_watch']})**"
 
     total = yes + no
-    tally = f"✅ **{yes}**     ❌ **{no}**"
+    tally = f"{E('yes')} **{yes}**    ·    {E('no')} **{no}**"
     if total:
-        tally += f"\n{_vote_bar(yes, no)}  ·  {round(100 * yes / total)}% in favour"
-    embed.add_field(name="🗳️ Community vote", value=tally, inline=False)
+        tally += f"\n{_vote_bar(yes, no)}  ·  **{round(100 * yes / total)}%** in favour"
+    embed.add_field(name=f"{E('vote')} Community vote", value=tally, inline=False)
 
     if closed:
         when = app.get("closed_ts")
+        icon = E("accept") if passed else (E("deny") if passed is not None else E("clock"))
         embed.add_field(
-            name="🏁 Result",
-            value=(("✅ **Accepted**" if passed else "❌ **Denied**") if passed is not None else "🔒 **Closed**")
+            name=f"{icon} Result",
+            value=(("**Accepted** ✅" if passed else "**Denied** ❌") if passed is not None else "**Closed** 🔒")
             + (f" · <t:{when}:R>" if when else ""),
             inline=False,
         )
     elif timer.get("ends"):
         ends = timer["ends"]
         embed.add_field(
-            name=_EOI_TIMER_FIELD,
+            name=f"{E('clock')} Voting closes",
             value=f"<t:{ends}:R> · <t:{ends}:f>\n-# auto-closes — leadership can change below",
             inline=False,
         )

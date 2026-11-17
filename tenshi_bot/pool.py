@@ -23,6 +23,7 @@ import re
 
 from .core import *  # noqa: F401,F403
 from .billing import is_owner
+from .emojis import sync_app_emojis
 
 try:  # tokens are encrypted at rest (cryptography is in requirements.txt)
     from cryptography.fernet import Fernet, InvalidToken
@@ -554,6 +555,7 @@ def _wire(w) -> None:
                     await app.edit(description=_nd)
             except Exception:  # noqa: BLE001
                 pass
+            await sync_app_emojis(w)  # this bot's own copy of the GM emojis
         try:
             await w.change_presence(status=discord.Status.online, activity=discord.CustomActivity(name="🥷 /help"))
         except Exception:  # noqa: BLE001

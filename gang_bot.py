@@ -24,6 +24,7 @@ from tenshi_bot.gang import *  # noqa: F401,F403
 from tenshi_bot.billing import *  # noqa: F401,F403
 from tenshi_bot.web import *  # noqa: F401,F403
 from tenshi_bot.web import _gmlog, _fire  # underscore names aren't picked up by *
+from tenshi_bot.emojis import sync_app_emojis
 from tenshi_bot.pool import *  # noqa: F401,F403
 
 
@@ -148,6 +149,7 @@ async def on_ready() -> None:
     if first:
         bot._gm_ready_once = True
         register_persistent_views(bot)
+        await sync_app_emojis(bot)  # upload the GM custom emojis to this app
     if not status_loop.is_running():
         status_loop.start()
     if not ticket_autoclose_loop.is_running():
