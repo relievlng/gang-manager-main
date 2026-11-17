@@ -16,7 +16,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-from .emojis import em
+from .emojis import em, gmify
 
 # --------------------------------------------------------------------------- #
 # Configuration
@@ -382,6 +382,23 @@ def _leadership_role(
     return discord.utils.get(guild.roles, name=LEADERSHIP_ROLE_NAME)
 
 
+def _emojify_embed(embed: discord.Embed, client) -> None:
+    """Swap plain emojis for this bot's custom ones where Discord renders them
+    (description + field names/values; never the title/author/footer)."""
+    if client is None:
+        return
+    try:
+        if embed.description:
+            embed.description = gmify(embed.description, client)
+        for i, f in enumerate(embed.fields):
+            nn = gmify(f.name, client) if f.name else f.name
+            vv = gmify(f.value, client) if f.value else f.value
+            if nn != f.name or vv != f.value:
+                embed.set_field_at(i, name=nn, value=vv, inline=f.inline)
+    except Exception:  # noqa: BLE001 — cosmetics must never break an embed
+        pass
+
+
 def _brand(
     embed: discord.Embed, guild: discord.Guild | None, footer: str | None = None
 ) -> discord.Embed:
@@ -389,6 +406,7 @@ def _brand(
     existing footer text (prefixed to the server name)."""
     if guild is None:
         return embed
+    _emojify_embed(embed, designated_client(getattr(guild, "id", 0)))
     existing = embed.footer.text if embed.footer and embed.footer.text else None
     text = footer or existing
     text = f"{text} · {guild.name}" if text else guild.name

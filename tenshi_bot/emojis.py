@@ -43,6 +43,25 @@ EMOJI: dict[str, tuple[str, str]] = {
     "dot_on":  ("gm_dot_on",  "🟢"),
     "dot_off": ("gm_dot_off", "⚫"),
     "dot_down": ("gm_dot_down", "🔴"),
+    # general icons (auto-substituted into embeds by gmify)
+    "warn":    ("gm_warn",    "⚠️"),
+    "skull":   ("gm_skull",   "💀"),
+    "globe":   ("gm_globe",   "🌐"),
+    "card":    ("gm_card",    "💳"),
+    "radio":   ("gm_radio",   "📻"),
+    "list":    ("gm_list",    "📋"),
+    "trash":   ("gm_trash",   "🗑️"),
+    "refresh": ("gm_refresh", "🔄"),
+    "shield":  ("gm_shield",  "🛡️"),
+    "money":   ("gm_money",   "💰"),
+    "crown":   ("gm_crown",   "👑"),
+    "key":     ("gm_key",     "🔑"),
+    "home":    ("gm_home",    "🏠"),
+    "alert":   ("gm_alert",   "🚨"),
+    "hammer":  ("gm_hammer",  "🔨"),
+    "cart":    ("gm_cart",    "🛒"),
+    "chart":   ("gm_chart",   "📊"),
+    "wave":    ("gm_wave",    "👋"),
     # progress-bar segments (no unicode fallback — _vote_bar falls back to squares)
     "vbar_lf": ("vbar_lf", ""),
     "vbar_le": ("vbar_le", ""),
@@ -55,6 +74,26 @@ EMOJI: dict[str, tuple[str, str]] = {
 
 # app_id -> {key: "<:name:id>"}
 _CACHE: dict[int, dict[str, str]] = {}
+
+# unicode emoji -> key, built from the fallbacks (bar pieces excluded). Used by
+# gmify() to swap plain emojis for custom ones across every embed.
+_UNICODE_EMOJI_MAP: dict[str, str] = {
+    fb: key for key, (_name, fb) in EMOJI.items() if fb and not key.startswith("vbar")
+}
+
+
+def gmify(text: str, client) -> str:
+    """Swap known unicode emojis in `text` for the posting bot's custom ones.
+    A safe no-op before the bot has uploaded them (em returns the same glyph)."""
+    if not text or client is None:
+        return text
+    for uni, key in _UNICODE_EMOJI_MAP.items():
+        base = uni.rstrip("️")
+        if base in text:
+            cust = em(client, key)
+            if cust != uni:
+                text = text.replace(uni, cust).replace(base, cust)
+    return text
 
 
 def _app_id(client) -> int | None:
@@ -110,4 +149,4 @@ def em(client, key: str) -> str:
     return fallback
 
 
-__all__ = ["EMOJI", "sync_app_emojis", "em"]
+__all__ = ["EMOJI", "sync_app_emojis", "em", "gmify"]
