@@ -1039,7 +1039,7 @@ _CSP = (
     "script-src 'self' 'unsafe-inline'; "
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "font-src 'self' https://fonts.gstatic.com data:; "
-    "img-src 'self' data: https:; "
+    "img-src 'self' data: https: blob:; "
     "connect-src 'self'; "
     "object-src 'none'; "
     "base-uri 'self'; "
@@ -5315,29 +5315,70 @@ a.link,.link{color:var(--brand2)}
       <p class=hint style="margin:6px 0 0;opacity:.7">To get the ID: Discord → Settings → Advanced → turn on Developer Mode, then right-click your server → Copy Server ID.</p>
     </div>
     <style>
-    #brandCard textarea{width:100%;margin-top:12px;padding:11px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.28);color:#ececf1;font:inherit;line-height:1.5;resize:vertical;min-height:72px}
+    #brandCard .bwrap{display:grid;grid-template-columns:1fr 340px;gap:18px;margin-top:14px;align-items:start}
+    #brandCard textarea{width:100%;margin-top:10px;padding:11px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.28);color:#ececf1;font:inherit;line-height:1.5;resize:vertical;min-height:74px}
     #brandCard textarea:focus{outline:none;border-color:#2f6bff;box-shadow:0 0 0 3px rgba(47,107,255,.22)}
-    .brandgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
-    .upbox{display:flex;flex-direction:column;gap:5px;padding:16px;border:1px dashed rgba(255,255,255,.16);border-radius:12px;background:rgba(255,255,255,.02);cursor:pointer;transition:border-color .18s,background .18s}
-    .upbox:hover{border-color:#2f6bff;background:rgba(47,107,255,.06)}
-    .upbox.set{border-style:solid;border-color:#2f6bff;background:rgba(47,107,255,.09)}
-    .upbox .upt{font-weight:700;font-size:13.5px;color:#ececf1}
-    .upbox .ups{font-size:12px;color:#9a9aa6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .upzone{display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px dashed rgba(255,255,255,.18);border-radius:10px;background:rgba(255,255,255,.02);cursor:pointer;transition:.16s;margin-bottom:10px}
+    .upzone:hover,.upzone.drag{border-color:#2f6bff;background:rgba(47,107,255,.08)}
+    .upzone.set{border-style:solid;border-color:#2f6bff}
+    .upzone .uthumb{width:46px;height:46px;border-radius:8px;background:#000;border:1px solid rgba(255,255,255,.12);flex:none;display:grid;place-items:center;font-size:18px;color:#5b93ff;overflow:hidden}
+    .upzone .uthumb img{width:100%;height:100%;object-fit:cover}
+    .upzone .utxt{min-width:0;display:flex;flex-direction:column}
+    .upzone .utt{font-weight:700;font-size:13.5px;color:#ececf1}
+    .upzone .uts{font-size:12px;color:#9a9aa6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:'JetBrains Mono',ui-monospace,monospace}
     .brandrow{display:flex;align-items:center;gap:10px;margin-top:12px}
-    .upprev{display:none;object-fit:cover;border:1px solid rgba(47,107,255,.45);background:#000;margin-bottom:6px}
-    #avPrev{width:76px;height:76px;border-radius:50%}
-    #bnPrev{width:100%;height:88px;border-radius:6px}
-    @media(max-width:560px){.brandgrid{grid-template-columns:1fr}}
+    .plabel{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#9a9aa6;margin:0 0 7px}
+    .dprev{border-radius:10px;overflow:hidden;background:#232428;border:1px solid rgba(255,255,255,.08);box-shadow:0 14px 40px rgba(0,0,0,.45)}
+    .dprev .dbanner{height:94px;background:linear-gradient(135deg,#2f6bff,#0c0c10);background-size:cover;background-position:center}
+    .dprev .dbody{padding:0 16px 16px}
+    .dprev .dav{width:76px;height:76px;border-radius:50%;border:6px solid #232428;background:#000;margin-top:-40px;object-fit:cover}
+    .dprev .dav.ph{display:grid;place-items:center;color:#5b93ff;font-size:26px}
+    .dprev .dnm{font-weight:800;font-size:17px;margin-top:9px;display:flex;align-items:center;gap:7px;color:#f2f3f5}
+    .dprev .dapp{font-size:9px;font-weight:700;background:#5865f2;color:#fff;padding:1px 5px;border-radius:4px;letter-spacing:.3px}
+    .dprev .dsec{margin-top:13px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;letter-spacing:1px;color:#b5bac1;text-transform:uppercase}
+    .dprev .dbio{margin-top:5px;font-size:13px;color:#dbdee1;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+    .dprev .dbio.empty{color:#72767d}
+    .rollout{margin-top:14px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px;display:none}
+    .rollhead{display:flex;align-items:center;gap:10px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.5px;color:#9a9aa6;margin-bottom:9px}
+    .rollbar{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
+    .rollbar i{display:block;height:100%;background:#2f6bff;width:0;transition:width .4s}
+    .rolllist{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:6px;max-height:168px;overflow:auto}
+    .rollitem{display:flex;align-items:center;gap:7px;font-size:12px;padding:5px 9px;border-radius:6px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)}
+    .rollitem .rdot{width:7px;height:7px;border-radius:50%;flex:none}
+    .rdot.ok{background:#35c06b}.rdot.wait{background:#eaa12a}.rdot.bad{background:#e5362b}.rdot.pend{background:#5b93ff;animation:bpulse 1.2s infinite}
+    .rollitem b{flex:1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .rollitem em{font-style:normal;font-size:10px;color:#9a9aa6;font-family:'JetBrains Mono',ui-monospace,monospace}
+    @keyframes bpulse{50%{opacity:.35}}
+    @media(max-width:720px){#brandCard .bwrap{grid-template-columns:1fr}}
     </style>
     <div class=card id=brandCard>
       <h3>🎨 Fleet branding</h3>
-      <p class=hint>One avatar, banner and bio pushed to <b>every bot</b> — the main bot and all pool bots. Discord rate-limits avatar changes, so a large fleet rolls out gradually; re-apply later for any marked rate-limited.</p>
-      <div class=brandgrid>
-        <label class=upbox><input type=file accept="image/png,image/jpeg,image/gif,image/webp" id=brandAvatar hidden><img class=upprev id=avPrev alt=""><span class=upt>Avatar · pfp</span><span class=ups id=avName>Choose image…</span><span class=ups style="opacity:.6">preview as a circle</span></label>
-        <label class=upbox><input type=file accept="image/png,image/jpeg,image/gif,image/webp" id=brandBanner hidden><img class=upprev id=bnPrev alt=""><span class=upt>Banner</span><span class=ups id=bnName>Choose image…</span></label>
+      <p class=hint>One avatar, banner and bio pushed to <b>every bot</b> — main + all pool bots. Discord rate-limits avatar changes, so a big fleet rolls out gradually and some may need a re-apply.</p>
+      <div class=bwrap>
+        <div>
+          <label class=upzone id=zoneAvatar><input type=file accept="image/png,image/jpeg,image/gif,image/webp" id=brandAvatar hidden><span class=uthumb id=avThumb>🖼️</span><span class=utxt><span class=utt>Avatar · pfp</span><span class=uts id=avName>Click or drop an image</span></span></label>
+          <label class=upzone id=zoneBanner><input type=file accept="image/png,image/jpeg,image/gif,image/webp" id=brandBanner hidden><span class=uthumb id=bnThumb>🖼️</span><span class=utxt><span class=utt>Banner</span><span class=uts id=bnName>Click or drop an image</span></span></label>
+          <textarea id=brandBio maxlength=400 rows=3 placeholder="Bio / About Me shown on every bot's profile…"></textarea>
+          <div class=brandrow><span class=hint id=brandCount>0 / 400</span><span style=flex:1></span><button class=brand-btn id=brandApply>Apply to all bots</button></div>
+        </div>
+        <div>
+          <p class=plabel>Live preview</p>
+          <div class=dprev>
+            <div class=dbanner id=pvBanner></div>
+            <div class=dbody>
+              <img class=dav id=pvAvatar alt="" style=display:none>
+              <div class="dav ph" id=pvAvatarPh>🤖</div>
+              <div class=dnm><span id=pvName>Gang Manager</span><span class=dapp>APP</span></div>
+              <div class=dsec>About Me</div>
+              <div class="dbio empty" id=pvBio>Your bio shows here…</div>
+            </div>
+          </div>
+        </div>
       </div>
-      <textarea id=brandBio maxlength=400 rows=3 placeholder="Bio / About Me shown on every bot's profile…"></textarea>
-      <div class=brandrow><span class=hint id=brandCount>0 / 400</span><span style=flex:1></span><button class=brand-btn id=brandApply>Apply to all bots</button></div>
+      <div class=rollout id=rollout>
+        <div class=rollhead><span id=rollLabel>Rolling out…</span><span class=rollbar><i id=rollFill></i></span><span id=rollCount>0 / 0</span></div>
+        <div class=rolllist id=rollList></div>
+      </div>
       <p class=hint id=brandStatus style="margin:10px 0 0"></p>
     </div>
     <div class=card>
@@ -5422,17 +5463,64 @@ a.link,.link{color:var(--brand2)}
   function addStaff(){var id=$('#staffId').value.trim();if(!id){toast('Enter a Discord ID',true);return}api('/api/admin/staff_add','POST',{user_id:id}).then(function(r){if(r.ok){toast('Authorised');$('#staffId').value='';loadStaff();loadSubs()}else toast(r.error||'Failed',true)})}
   // ---- Bots (bot pool) ----
   var POOL=null,POOLQ='',AUDIT=[],AUDITQ='';
-  function brandCount(){var t=$('#brandBio');if(t&&$('#brandCount'))$('#brandCount').textContent=t.value.length+' / 400'}
+  var _objUrls={};
+  function setObjUrl(key,f){if(_objUrls[key]){try{URL.revokeObjectURL(_objUrls[key])}catch(x){}}if(f){var u=URL.createObjectURL(f);_objUrls[key]=u;return u}_objUrls[key]=null;return null}
+  function renderPreviewBio(){var t=$('#brandBio'),p=$('#pvBio');if(!p)return;var v=t?t.value.trim():'';if(v){p.textContent=v;p.classList.remove('empty')}else{p.textContent='Your bio shows here…';p.classList.add('empty')}}
+  function brandCount(){var t=$('#brandBio');if(t&&$('#brandCount'))$('#brandCount').textContent=t.value.length+' / 400';renderPreviewBio()}
+  function setPick(isAv,f){
+   var nameEl=$(isAv?'#avName':'#bnName'),th=$(isAv?'#avThumb':'#bnThumb'),zn=$(isAv?'#zoneAvatar':'#zoneBanner');
+   if(nameEl)nameEl.textContent=f?f.name:'Click or drop an image';
+   if(zn)zn.classList.toggle('set',!!f);
+   var u=setObjUrl(isAv?'av':'bn',f);
+   if(th)th.innerHTML=u?'<img src="'+u+'" alt="">':'🖼️';
+   if(isAv){var av=$('#pvAvatar'),ph=$('#pvAvatarPh');if(u){av.src=u;av.style.display='';if(ph)ph.style.display='none'}else{av.style.display='none';av.removeAttribute('src');if(ph)ph.style.display=''}}
+   else{var bnEl=$('#pvBanner');if(bnEl)bnEl.style.backgroundImage=u?'url("'+u+'")':''}
+  }
+  function botStatus(r){
+   if(!r)return['pend','queued…'];
+   var e=r.errors||[],ch=r.changed||[];
+   if(e.some(function(x){return /rate-limited/.test(x)}))return['wait','rate-limited'];
+   if(ch.length)return['ok',ch.join(' + ')];
+   if(e.length)return['bad',String(e[0]).slice(0,22)];
+   return['ok','updated'];
+  }
+  function renderRollout(d){
+   var ro=$('#rollout');if(!ro)return;
+   var prog=d.progress||null;
+   var results=(prog&&prog.results)||((d.last_run&&d.last_run.results))||[];
+   var running=!!(prog&&prog.running)||!!d.running;
+   if(!results.length&&!running){ro.style.display='none';return}
+   ro.style.display='';
+   var names=(d.fleet&&d.fleet.length)?d.fleet:results.map(function(r){return r.name});
+   var total=(prog&&prog.total)||names.length||results.length;
+   var done=results.length;
+   $('#rollFill').style.width=total?Math.round(done/total*100)+'%':'0';
+   $('#rollCount').textContent=done+' / '+total;
+   $('#rollLabel').textContent=running?'Rolling out…':'Done';
+   var byName={};results.forEach(function(r){byName[r.name]=r});
+   $('#rollList').innerHTML=names.map(function(nm){
+    var st=botStatus(byName[nm]||null);
+    return '<div class=rollitem><span class="rdot '+st[0]+'"></span><b>'+esc(nm)+'</b><em>'+esc(st[1])+'</em></div>';
+   }).join('');
+  }
   function brandStatusHtml(lr,running){
-   if(running)return '<span style="color:#5b93ff">● Rolling out to the fleet… refresh to update.</span>';
-   if(!lr)return 'Not pushed yet. Add an avatar, banner or bio and apply.';
+   if(running)return '<span style="color:#5b93ff">● Rolling out to the fleet…</span>';
+   if(!lr)return 'Nothing pushed yet. Add an avatar, banner or bio and apply.';
    var res=lr.results||[],ok=lr.applied||0,tot=lr.total||0;
-   var limited=res.filter(function(r){return (r.errors||[]).some(function(e){return /rate-limited/.test(e)})}).map(function(r){return r.name});
+   var limited=res.filter(function(r){return (r.errors||[]).some(function(e){return /rate-limited/.test(e)})}).length;
    var s='Last roll-out: <b>'+ok+' / '+tot+'</b> bot(s) updated';
-   if(limited.length)s+=' · <span style="color:#f0a92b">'+limited.length+' rate-limited'+(limited.length<=4?' ('+limited.map(esc).join(', ')+')':'')+' — re-apply later</span>';
+   if(limited)s+=' · <span style="color:#eaa12a">'+limited+' rate-limited — hit apply again later for those</span>';
    return s;
   }
-  function loadBrand(){api('/api/admin/bot_profile').then(function(d){if(!d||!d.ok)return;var b=$('#brandBio');if(b&&document.activeElement!==b){b.value=d.bio||'';brandCount()}var st=$('#brandStatus');if(st)st.innerHTML=brandStatusHtml(d.last_run,d.running)})}
+  function loadBrand(){api('/api/admin/bot_profile').then(function(d){if(!d||!d.ok)return;
+   var b=$('#brandBio');if(b&&document.activeElement!==b){b.value=d.bio||'';brandCount()}
+   var nm=$('#pvName');if(nm&&d.bot_name)nm.textContent=d.bot_name;
+   renderPreviewBio();renderRollout(d);
+   var st=$('#brandStatus');if(st)st.innerHTML=brandStatusHtml(d.last_run,d.running)})}
+  function pollRollout(){if(window._rollT)return;(function tick(){api('/api/admin/bot_profile').then(function(d){
+   if(d&&d.ok){renderRollout(d);var st=$('#brandStatus');if(st)st.innerHTML=brandStatusHtml(d.last_run,d.running)}
+   var run=d&&((d.progress&&d.progress.running)||d.running);
+   if(run){window._rollT=setTimeout(function(){window._rollT=null;tick()},2000)}else{window._rollT=null}})})()}
   function applyBrand(){
    var btn=$('#brandApply'),av=$('#brandAvatar'),bn=$('#brandBanner'),bio=$('#brandBio');
    var fd=new FormData();
@@ -5440,14 +5528,18 @@ a.link,.link{color:var(--brand2)}
    if(bn&&bn.files&&bn.files[0])fd.append('banner',bn.files[0]);
    fd.append('bio',bio?bio.value:'');
    btn.disabled=true;btn.textContent='Applying…';
-   fetch('/api/admin/bot_profile',{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){return r.json().catch(function(){return{ok:false,error:'bad response'}})}).then(function(j){
+   fetch('/api/admin/bot_profile',{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){return r.json().catch(function(){return{ok:false,error:'bad response ('+r.status+')'}})}).then(function(j){
     btn.disabled=false;btn.textContent='Apply to all bots';
-    if(j.ok){toast(j.message||'Rolling out to the fleet');if(av)av.value='';if(bn)bn.value='';['avName','bnName'].forEach(function(id){var e=$('#'+id);if(e){e.textContent='Choose image…';e.parentNode.classList.remove('set')}});setPrev('avPrev',null);setPrev('bnPrev',null);setTimeout(loadBrand,1500);setTimeout(loadBrand,9000)}
+    if(j.ok){toast(j.message||'Rolling out to the fleet');if(av)av.value='';if(bn)bn.value='';setPick(true,null);setPick(false,null);pollRollout()}
     else toast(j.error||'Failed',true)
    }).catch(function(){btn.disabled=false;btn.textContent='Apply to all bots';toast('Network error',true)})
   }
-  function setPrev(id,f){var p=$('#'+id);if(!p)return;if(f){try{if(p.dataset.u)URL.revokeObjectURL(p.dataset.u);var u=URL.createObjectURL(f);p.dataset.u=u;p.src=u;p.style.display='block'}catch(x){}}else{p.style.display='none';p.removeAttribute('src')}}
-  document.addEventListener('change',function(e){var t=e.target;if(t.id==='brandAvatar'||t.id==='brandBanner'){var f=t.files&&t.files[0];var isAv=t.id==='brandAvatar';var lbl=isAv?$('#avName'):$('#bnName');if(lbl){lbl.textContent=f?f.name:'Choose image…';lbl.parentNode.classList.toggle('set',!!f)}setPrev(isAv?'avPrev':'bnPrev',f)}});
+  document.addEventListener('change',function(e){var t=e.target;if(t.id==='brandAvatar'||t.id==='brandBanner'){setPick(t.id==='brandAvatar',t.files&&t.files[0])}});
+  ['zoneAvatar','zoneBanner'].forEach(function(zid){
+   document.addEventListener('dragover',function(e){var z=e.target.closest&&e.target.closest('#'+zid);if(z){e.preventDefault();z.classList.add('drag')}});
+   document.addEventListener('dragleave',function(e){var z=e.target.closest&&e.target.closest('#'+zid);if(z)z.classList.remove('drag')});
+   document.addEventListener('drop',function(e){var z=e.target.closest&&e.target.closest('#'+zid);if(!z)return;e.preventDefault();z.classList.remove('drag');var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];if(f&&/^image\//.test(f.type)){var inp=$(zid==='zoneAvatar'?'#brandAvatar':'#brandBanner');try{var dt=new DataTransfer();dt.items.add(f);inp.files=dt.files}catch(x){}setPick(zid==='zoneAvatar',f)}});
+  });
   function loadBots(){loadBrand();var box=$('#poolList');if(!POOL)box.innerHTML='<div class=sk style=height:68px></div><div class=sk style=height:68px></div>';api('/api/admin/pool').then(function(d){if(!d||!d.ok){box.innerHTML='<div class=pad>'+esc((d&&d.error)||'Could not load.')+'</div>';return}POOL=d;renderPool()})}
   function renderPool(){var d=POOL;if(!d)return;var sw=$('#poolSwitch');sw.classList.toggle('on',!!d.enabled);$('#poolSwitchTxt').textContent=d.enabled?'Hand-outs on':'Hand-outs off';
     var c=d.counts||{};$('#poolStats').innerHTML=[['🤖',c.total,'Pool bots'],['🟢',c.online,'Online'],['🏴',c.serving,'Servers'],['⏳',c.reserved,'Reserved'],['🎟️',c.slots,'Open slots']].map(function(x){return '<div class=pst><span>'+x[0]+'</span><b>'+nf(x[1]||0)+'</b><small>'+x[2]+'</small></div>'}).join('');
@@ -5789,8 +5881,9 @@ async def _apply_fleet_brand(avatar, banner, bio, by):
     import asyncio
     _FLEET_BRAND["running"] = True
     results = []
+    clients = [bot, *list(WORKERS)]
+    _FLEET_BRAND["progress"] = {"done": 0, "total": len(clients), "results": [], "running": True}
     try:
-        clients = [bot, *list(WORKERS)]
         for c in clients:
             user = getattr(c, "user", None)
             name = str(getattr(user, "name", "bot"))
@@ -5835,9 +5928,13 @@ async def _apply_fleet_brand(avatar, banner, bio, by):
                 except Exception as exc:  # noqa: BLE001
                     errs.append("bio: " + (str(getattr(exc, "text", "") or exc) or "")[:40])
             results.append({"name": name, "changed": changed, "errors": errs})
+            _FLEET_BRAND["progress"] = {"done": len(results), "total": len(clients),
+                                        "results": list(results), "running": True}
             await asyncio.sleep(1.0)
     finally:
         _FLEET_BRAND["running"] = False
+        _FLEET_BRAND["progress"] = {"done": len(results), "total": len(clients),
+                                    "results": results, "running": False}
         brand = DATA.setdefault("fleet_brand", {})
         brand["last_run"] = {
             "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -5857,6 +5954,13 @@ async def _h_admin_bot_profile(request):
         return err
     if request.method == "GET":
         brand = DATA.get("fleet_brand", {}) or {}
+        try:
+            bn = str(bot.user.name) if getattr(bot, "user", None) else ""
+        except Exception:  # noqa: BLE001
+            bn = ""
+        fleet_names = [bn or "Gang Manager"]
+        for b in pool_overview().get("bots", []):
+            fleet_names.append(b.get("name") or "bot")
         return _admin_json({
             "ok": True,
             "bio": brand.get("bio", ""),
@@ -5864,6 +5968,9 @@ async def _h_admin_bot_profile(request):
             "banner_at": brand.get("banner_at"),
             "last_run": brand.get("last_run"),
             "running": _FLEET_BRAND["running"],
+            "progress": _FLEET_BRAND.get("progress"),
+            "bot_name": bn or "Gang Manager",
+            "fleet": fleet_names,
         })
     if not _origin_ok(request):
         return _admin_json({"ok": False, "error": "Cross-site request blocked."}, 403)
@@ -6220,7 +6327,7 @@ async def start_web_server() -> None:
         _apply(resp.headers)
         return resp
 
-    app = _aioweb.Application(middlewares=[_security_headers])
+    app = _aioweb.Application(middlewares=[_security_headers], client_max_size=12 * 1024 * 1024)
     app.add_routes(
         [
             _aioweb.get("/", _h_landing),
