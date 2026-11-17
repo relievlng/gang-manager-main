@@ -45,7 +45,19 @@ bot.tree.add_command(subscription_group)
 
 # Paywall: block paid commands in a server whose subscription has lapsed.
 # No-op unless BILLING_ENABLED is set (see billing.py).
-bot.tree.interaction_check = subscription_gate
+async def _main_gate(interaction) -> bool:
+    # Maintenance switch first, then the paywall.
+    if MAIN_OFF["v"]:
+        try:
+            await interaction.response.send_message(
+                "🛠️ The bot is in maintenance right now — back shortly.", ephemeral=True)
+        except Exception:  # noqa: BLE001
+            pass
+        return False
+    return await subscription_gate(interaction)
+
+
+bot.tree.interaction_check = _main_gate
 
 
 # --------------------------------------------------------------------------- #
@@ -95,6 +107,8 @@ _status_i = 0
 @tasks.loop(seconds=30)
 async def status_loop() -> None:
     global _status_i
+    if MAIN_OFF["v"]:
+        return  # stay invisible while powered off
     try:
         acts = _status_activities()
         if not acts:
@@ -152,6 +166,11 @@ async def on_ready() -> None:
         await sync_app_emojis(bot)  # upload the GM custom emojis to this app
     if not status_loop.is_running():
         status_loop.start()
+    if MAIN_OFF["v"]:
+        try:
+            await bot.change_presence(status=discord.Status.invisible)
+        except Exception:  # noqa: BLE001
+            pass
     if not ticket_autoclose_loop.is_running():
         ticket_autoclose_loop.start()
     if not eoi_timer_loop.is_running():

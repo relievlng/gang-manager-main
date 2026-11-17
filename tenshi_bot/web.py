@@ -5280,6 +5280,43 @@ a.link,.link{color:var(--brand2)}
     <div class=card><div id=staffList></div></div>
   </div>
   <div id=pan-bots style=display:none>
+    <style>
+    .fleetgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+    .fbot{border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px;background:rgba(255,255,255,.02)}
+    .fbh{display:flex;align-items:center;gap:9px;margin-bottom:6px}
+    .fbh b{font-weight:700;font-size:14.5px}
+    .fdot{width:9px;height:9px;border-radius:50%;background:#555;flex:none}
+    .fdot.on{background:#35c06b;box-shadow:0 0 8px rgba(53,192,107,.6)}
+    .fdot.off{background:#e5362b}.fdot.unk{background:#eaa12a}
+    .ftag{margin-left:auto;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:#9a9aa6;border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:1px 7px}
+    .fbs{font-size:12px;color:#9a9aa6;margin-bottom:11px;font-family:'JetBrains Mono',ui-monospace,monospace}
+    .fbtns{display:flex;gap:7px;flex-wrap:wrap}
+    @media(max-width:560px){.fleetgrid{grid-template-columns:1fr}}
+    </style>
+    <div class=card id=fleetCard>
+      <h3>🛰️ Fleet</h3>
+      <p class=hint>Your two lead bots — the main bot (this service) and the staff bot (GM Support). The pool workers are the <b>sub-fleet</b> below.</p>
+      <div class=fleetgrid>
+        <div class=fbot>
+          <div class=fbh><span class=fdot id=fMainDot></span><b id=fMainName>Main bot</b><span class=ftag>Distributor</span></div>
+          <div class=fbs id=fMainState>…</div>
+          <div class=fbtns>
+            <button class="ghost sm" data-fleet=main data-act=off id=fMainOff>⏻ Turn off</button>
+            <button class="ghost sm" data-fleet=main data-act=on id=fMainOn style=display:none>▶ Turn on</button>
+            <button class="ghost sm" data-fleet=main data-act=restart>↻ Restart</button>
+          </div>
+        </div>
+        <div class=fbot>
+          <div class=fbh><span class=fdot id=fStaffDot></span><b id=fStaffName>Staff bot</b><span class=ftag>Support</span></div>
+          <div class=fbs id=fStaffState>…</div>
+          <div class=fbtns>
+            <button class="ghost sm" data-fleet=staff data-act=off id=fStaffOff>⏻ Turn off</button>
+            <button class="ghost sm" data-fleet=staff data-act=on id=fStaffOn style=display:none>▶ Turn on</button>
+            <button class="ghost sm" data-fleet=staff data-act=restart>↻ Restart</button>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class=card>
       <div class=poolhead>
         <div><h3 style=margin:0>Bot pool</h3><p class=hint style="margin:4px 0 0">Give every customer their own Gang Manager bot. Pool bots run the same code as your main bot, share the same data and website, and are managed right here.</p></div>
@@ -5382,6 +5419,7 @@ a.link,.link{color:var(--brand2)}
       <p class=hint id=brandStatus style="margin:10px 0 0"></p>
     </div>
     <div class=card>
+      <h3 style="margin:0 0 4px">🤖 Sub-fleet</h3><p class=hint style="margin:0 0 10px">The pool workers handed out to servers.</p>
       <div class=toolbar style=margin-bottom:8px><input id=poolSearch placeholder="Search bots or servers…" autocomplete=off><button class="ghost sm" id=poolRefresh>↻ Refresh</button><span style=flex:1></span><button class="ghost sm" id=poolAllRestart>🔄 Restart all</button><button class="ghost sm" id=poolAllOn>▶ Turn all on</button><button class="ghost sm" id=poolAllOff>⏻ Turn all off</button></div>
       <div id=poolList></div>
     </div>
@@ -5540,7 +5578,18 @@ a.link,.link{color:var(--brand2)}
    document.addEventListener('dragleave',function(e){var z=e.target.closest&&e.target.closest('#'+zid);if(z)z.classList.remove('drag')});
    document.addEventListener('drop',function(e){var z=e.target.closest&&e.target.closest('#'+zid);if(!z)return;e.preventDefault();z.classList.remove('drag');var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];if(f&&/^image\//.test(f.type)){var inp=$(zid==='zoneAvatar'?'#brandAvatar':'#brandBanner');try{var dt=new DataTransfer();dt.items.add(f);inp.files=dt.files}catch(x){}setPick(zid==='zoneAvatar',f)}});
   });
-  function loadBots(){loadBrand();var box=$('#poolList');if(!POOL)box.innerHTML='<div class=sk style=height:68px></div><div class=sk style=height:68px></div>';api('/api/admin/pool').then(function(d){if(!d||!d.ok){box.innerHTML='<div class=pad>'+esc((d&&d.error)||'Could not load.')+'</div>';return}POOL=d;renderPool()})}
+  function _fdotClass(o){return o.off?'off':(o.online?'on':(o.unreachable?'unk':'off'))}
+  function _fstate(o){if(o.unreachable)return 'Unreachable';if(o.off)return 'Turned off';if(o.online)return 'Online';return o.ready?'Online':'Connecting…'}
+  function renderFleetBot(pfx,o){o=o||{};var nm=$('#'+pfx+'Name');if(nm&&o.name)nm.textContent=o.name;var dot=$('#'+pfx+'Dot');if(dot)dot.className='fdot '+_fdotClass(o);var st=$('#'+pfx+'State');if(st)st.textContent=_fstate(o);var off=$('#'+pfx+'Off'),on=$('#'+pfx+'On');if(off)off.style.display=o.off?'none':'';if(on)on.style.display=o.off?'':'none'}
+  function loadFleet(){api('/api/admin/fleet').then(function(d){if(!d||!d.ok)return;renderFleetBot('fMain',d.main);renderFleetBot('fStaff',d.staff)})}
+  function fleetPower(target,action){
+   var label=target==='main'?'main':'staff';
+   if((action==='off'||action==='restart')&&!window.confirm((action==='off'?'Turn OFF':'Restart')+' the '+label+' bot?'+((target==='main'&&action==='off')?' Servers on the main bot stop responding until you turn it back on.':'')))return;
+   api('/api/admin/fleet/power','POST',{target:target,action:action}).then(function(r){
+    if(r&&r.ok){toast(label+' bot — '+action+' ✓');setTimeout(loadFleet,800);setTimeout(loadFleet,3500)}
+    else toast((r&&r.error)||'Failed',true)});
+  }
+  function loadBots(){loadFleet();loadBrand();var box=$('#poolList');if(!POOL)box.innerHTML='<div class=sk style=height:68px></div><div class=sk style=height:68px></div>';api('/api/admin/pool').then(function(d){if(!d||!d.ok){box.innerHTML='<div class=pad>'+esc((d&&d.error)||'Could not load.')+'</div>';return}POOL=d;renderPool()})}
   function renderPool(){var d=POOL;if(!d)return;var sw=$('#poolSwitch');sw.classList.toggle('on',!!d.enabled);$('#poolSwitchTxt').textContent=d.enabled?'Hand-outs on':'Hand-outs off';
     var c=d.counts||{};$('#poolStats').innerHTML=[['🤖',c.total,'Pool bots'],['🟢',c.online,'Online'],['🏴',c.serving,'Servers'],['⏳',c.reserved,'Reserved'],['🎟️',c.slots,'Open slots']].map(function(x){return '<div class=pst><span>'+x[0]+'</span><b>'+nf(x[1]||0)+'</b><small>'+x[2]+'</small></div>'}).join('');
     var hb=$('#poolHub');if(hb&&document.activeElement!==hb)hb.value=d.admin_guild||'';var hba=$('#poolHubAdd');if(hba)hba.style.display=(d.admin_guild&&(d.bots||[]).length)?'':'none';
@@ -5602,7 +5651,7 @@ a.link,.link{color:var(--brand2)}
   function cmdkBuild(q){q=(q||'').toLowerCase();var items=[];var nav=[['subs','📂','Subscriptions'],['bans','⛔','Bans'],['shop','🧾','Shop log'],['staff','🛡️','Staff access']];if(STATE.owner){nav.push(['bots','🤖','Bots']);nav.push(['audit','📜','Audit log'])}nav.forEach(function(n){if(!q||n[2].toLowerCase().indexOf(q)>=0)items.push({t:'tab',id:n[0],ic:n[1],label:n[2],sub:'Section'})});SERVERS.forEach(function(s){if(!q||(s.name||'').toLowerCase().indexOf(q)>=0||String(s.id).indexOf(q)>=0)items.push({t:'srv',id:s.id,ic:'🌐',label:s.name,sub:bucket(s)})});cmdkItems=items.slice(0,40);cmdkSel=0;cmdkRender()}
   function cmdkRender(){$('#cmdkList').innerHTML=cmdkItems.length?cmdkItems.map(function(it,i){return '<div class="ci'+(i===cmdkSel?' sel':'')+'" data-i="'+i+'"><span class=cig>'+it.ic+'</span><span>'+esc(it.label)+'</span><span class=cis>'+esc(it.sub)+'</span></div>'}).join(''):'<div class=pad>No matches</div>';$('#cmdkList').querySelectorAll('.ci').forEach(function(el){el.onclick=function(){cmdkSel=parseInt(el.getAttribute('data-i'),10);cmdkGo()}})}
   function cmdkGo(){var it=cmdkItems[cmdkSel];if(!it){return}closeCmdk();if(it.t==='tab'){selectTab(it.id)}else{selectTab('subs');SUBFILTER='all';SUBQ='';$('#subSearch').value=String(it.id);SUBQ=String(it.id);renderFilters();renderSubs();toast('Jumped to '+it.label)}}
-  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='brandApply')applyBrand();if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
+  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='brandApply')applyBrand();var _fb=t.closest&&t.closest('[data-fleet]');if(_fb){fleetPower(_fb.getAttribute('data-fleet'),_fb.getAttribute('data-act'))}if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
   document.addEventListener('input',function(e){var t=e.target;if(t.id==='subSearch'){SUBQ=t.value;renderSubs()}if(t.id==='shopSearch'){SHOPQ=t.value;renderShop()}if(t.id==='banSearch'){BANQ=t.value;renderBans()}if(t.id==='poolSearch'){POOLQ=t.value;renderPool()}if(t.id==='brandBio'){brandCount()}if(t.id==='auditSearch'){AUDITQ=t.value;renderAudit()}if(t.id==='cmdkInput'){cmdkBuild(t.value)}});
   document.addEventListener('change',function(e){if(e.target.id==='subSort'){SUBSORT=e.target.value;renderSubs()}});
   document.addEventListener('keydown',function(e){
@@ -6029,6 +6078,80 @@ async def _h_admin_bot_profile(request):
     })
 
 
+def _staff_base():
+    return (os.getenv("STAFF_BOT_URL") or "").strip().rstrip("/")
+
+
+async def _staff_power_call(method, action=None):
+    """Talk to the staff bot's /internal/power (GET status, or POST an action).
+    Authed with the shared secret. Returns None if the staff bot is unreachable."""
+    base = _staff_base()
+    secret = (os.getenv("MFA_SECRET") or os.getenv("WEBHOOK_SECRET") or "").strip()
+    if not base or not secret or _aiohttp is None:
+        return None
+    url = base + "/internal/power"
+    headers = {"X-Guard-Token": secret}
+    try:
+        timeout = _aiohttp.ClientTimeout(total=8)
+        async with _aiohttp.ClientSession(timeout=timeout) as s:
+            if method == "GET":
+                async with s.get(url, headers=headers) as r:
+                    return await r.json(content_type=None) if r.status == 200 else None
+            async with s.post(url, headers=headers, json={"action": action}) as r:
+                if r.status == 200:
+                    return await r.json(content_type=None)
+                return {"ok": False, "error": "staff bot returned " + str(r.status)}
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def _h_admin_fleet(request):
+    """Owner-only. Status of the two lead bots — the main bot (this service) and
+    the staff bot (separate service, fetched live)."""
+    uid, err = _admin_owner_only(request)
+    if err is not None:
+        return err
+    try:
+        main_name = str(bot.user.name) if getattr(bot, "user", None) else "Gang Manager"
+    except Exception:  # noqa: BLE001
+        main_name = "Gang Manager"
+    main = {"name": main_name or "Gang Manager",
+            "online": bool(bot.is_ready()) and not MAIN_OFF["v"],
+            "off": MAIN_OFF["v"], "ready": bool(bot.is_ready())}
+    staff = await _staff_power_call("GET")
+    if staff is None:
+        staff = {"name": "Gang Manager Staff", "online": False, "off": False, "unreachable": True}
+    return _admin_json({"ok": True, "main": main, "staff": staff})
+
+
+async def _h_admin_fleet_power(request):
+    """Owner-only. Turn the main or staff bot off/on, or restart it."""
+    uid, err = _admin_owner_only(request)
+    if err is not None:
+        return err
+    if not _origin_ok(request):
+        return _admin_json({"ok": False, "error": "Cross-site request blocked."}, 403)
+    body = await _admin_body(request)
+    target = str(body.get("target") or "")
+    action = str(body.get("action") or "").lower()
+    if action not in ("off", "on", "restart"):
+        return _admin_json({"ok": False, "error": "bad action"}, 400)
+    if target == "main":
+        # The main bot shares this process with the web panel, so a true
+        # process restart isn't safe here — "restart" just brings it back online
+        # (clears maintenance + restores presence). "off" goes invisible + gated.
+        await set_main_power(action == "off")
+        _audit(request, uid, "main_power", "", action)
+        return _admin_json({"ok": True, "main_off": MAIN_OFF["v"]})
+    if target == "staff":
+        res = await _staff_power_call("POST", action)
+        if res is None:
+            return _admin_json({"ok": False, "error": "Couldn't reach the staff bot."}, 502)
+        _audit(request, uid, "staff_power", "", action)
+        return _admin_json(res if isinstance(res, dict) else {"ok": True})
+    return _admin_json({"ok": False, "error": "bad target"}, 400)
+
+
 async def _h_admin_pool(request):
     uid, err = _admin_owner_only(request)
     if err is not None:
@@ -6397,6 +6520,8 @@ async def start_web_server() -> None:
             _aioweb.get("/api/admin/pool", _h_admin_pool),
             _aioweb.get("/api/admin/bot_profile", _h_admin_bot_profile),
             _aioweb.post("/api/admin/bot_profile", _h_admin_bot_profile),
+            _aioweb.get("/api/admin/fleet", _h_admin_fleet),
+            _aioweb.post("/api/admin/fleet/power", _h_admin_fleet_power),
             _aioweb.post("/api/admin/pool/add", _h_admin_pool_add),
             _aioweb.post("/api/admin/pool/action", _h_admin_pool_action),
             _aioweb.get("/api/admin/bans", _h_admin_bans),

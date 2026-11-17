@@ -225,6 +225,28 @@ intents.members = MEMBERS_INTENT
 bot = commands.Bot(command_prefix="!", intents=intents)
 DATA = load_data()
 
+# Main-bot power switch (admin "Turn off"). Off = go invisible and decline
+# slash commands with a maintenance notice; the process (and the web panel)
+# keeps running, so this is safe and reversible. The status loop and the
+# interaction gate both honour this flag (see gang_bot.py).
+MAIN_OFF = {"v": bool((DATA.get("fleet_power") or {}).get("main_off"))}
+
+
+async def set_main_power(off: bool) -> None:
+    """Flip the main bot on/off: invisible presence when off, online when on.
+    Persisted so it survives a restart."""
+    MAIN_OFF["v"] = bool(off)
+    DATA.setdefault("fleet_power", {})["main_off"] = bool(off)
+    try:
+        save_data(DATA)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        await bot.change_presence(
+            status=discord.Status.invisible if off else discord.Status.online)
+    except Exception:  # noqa: BLE001
+        pass
+
 
 # --------------------------------------------------------------------------- #
 # Bot pool lookups (see pool.py). WORKERS holds any extra pool bots running in
