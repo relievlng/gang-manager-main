@@ -1111,6 +1111,39 @@ def _support_invite() -> str:
     return ""
 
 
+_SUPPORT_INVITE_CACHE: dict = {"url": "", "exp": 0.0}
+
+
+async def _support_invite_resolved() -> str:
+    """The invite for the 2FA 'Join GM Support' button. A configured
+    SUPPORT_INVITE_URL always wins; otherwise GM Support mints its own permanent
+    invite and we cache it, so nothing has to be set up by hand. Returns '' if
+    neither is available (the screen then shows the steps without a button)."""
+    env = _support_invite()
+    if env:
+        return env
+    now = time.time()
+    c = _SUPPORT_INVITE_CACHE
+    if c["url"] and now < c["exp"]:
+        return c["url"]
+    base = (os.getenv("STAFF_BOT_URL") or "").strip().rstrip("/")
+    secret = (os.getenv("MFA_SECRET") or os.getenv("WEBHOOK_SECRET") or "").strip()
+    inv = ""
+    if base and secret and _aiohttp is not None:
+        try:
+            async with _aiohttp.ClientSession(timeout=_aiohttp.ClientTimeout(total=6)) as s:
+                async with s.post(base + "/internal/invite",
+                                  headers={"X-Guard-Token": secret}) as r:
+                    if r.status == 200:
+                        data = await r.json(content_type=None)
+                        inv = str((data or {}).get("invite") or "")
+        except Exception as exc:  # noqa: BLE001
+            log.info("support invite fetch skipped: %s", exc)
+    # Cache a hit for an hour; cache a miss briefly so we retry soon, not never.
+    c.update(url=inv, exp=now + (3600 if inv else 120))
+    return inv
+
+
 async def _mfa_send_code(uid) -> tuple[bool, str]:
     """Generate (or reuse) a code and ask the GM Support bot to DM it. (ok, error)."""
     import secrets
@@ -5445,7 +5478,7 @@ async def _h_admin_me(request):
         return _admin_json({"authed": True, "access": False, "user": prof, "brand": brand})
     if not _mfa_ok(request, uid):
         return _admin_json({"authed": True, "access": True, "owner": is_owner(uid),
-                            "mfa": True, "support_invite": _support_invite(),
+                            "mfa": True, "support_invite": await _support_invite_resolved(),
                             "user": prof, "brand": brand})
     return _admin_json({"authed": True, "access": True, "owner": is_owner(uid),
                         "user": prof, "brand": brand})
