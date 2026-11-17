@@ -20,6 +20,7 @@ import hashlib
 import os
 import pathlib
 import re
+from collections import deque
 
 from .core import *  # noqa: F401,F403
 from .billing import is_owner
@@ -907,6 +908,61 @@ async def restart_all_bots() -> dict:
     return {"ok": True, "count": done, "total": len(ids)}
 
 
+# --------------------------------------------------------------------------- #
+# Ping smoothing
+#
+# discord.py's ``client.latency`` is the *last* heartbeat round-trip — a single
+# sample that jumps whenever a heartbeat lands on a busy moment of the event
+# loop. Reporting that raw number makes a healthy bot look laggy. We keep a
+# short rolling history per bot and report its floor instead: the true network
+# round-trip to Discord, with event-loop jitter spikes trimmed off. Same path
+# for every bot (main + pool), so the whole fleet reads consistently.
+# --------------------------------------------------------------------------- #
+_LAT_HIST: "dict[int, deque]" = {}
+_LAT_MAX = 16  # heartbeat samples kept per bot
+
+
+def _lat_key(client) -> "int | None":
+    u = getattr(client, "user", None)
+    if u is not None:
+        return int(u.id)
+    aid = getattr(client, "application_id", None)
+    return int(aid) if aid else None
+
+
+def record_latency(client) -> None:
+    """Fold a bot's current heartbeat latency into its rolling history. Cheap
+    and safe to call from any poll; ignores NaN (no heartbeat yet) and absurd
+    values."""
+    key = _lat_key(client)
+    if key is None:
+        return
+    try:
+        v = float(getattr(client, "latency", float("nan"))) * 1000.0
+    except Exception:  # noqa: BLE001
+        return
+    if v != v or not (0 <= v < 600000):  # nan rejects itself; cap runaway values
+        return
+    hist = _LAT_HIST.get(key)
+    if hist is None:
+        hist = _LAT_HIST[key] = deque(maxlen=_LAT_MAX)
+    hist.append(v)
+
+
+def smoothed_latency_ms(client) -> "int | None":
+    """A bot's ping as the floor of its recent heartbeats. Records the live
+    sample first, then returns the lowest sane reading (dropping a single
+    fluke once there's enough history) — the real round-trip, not a spike."""
+    record_latency(client)
+    key = _lat_key(client)
+    hist = _LAT_HIST.get(key) if key is not None else None
+    if not hist:
+        return None
+    vals = sorted(hist)
+    floor = vals[1] if len(vals) >= 4 else vals[0]
+    return int(round(floor))
+
+
 def pool_overview() -> dict:
     """Everything Admin → Bots shows. Never includes tokens."""
     rows = []
@@ -936,12 +992,7 @@ def pool_overview() -> dict:
                 avatar = str(w.user.display_avatar.url)
             except Exception:  # noqa: BLE001
                 pass
-            try:
-                v = float(w.latency) * 1000.0
-                if v == v and 0 <= v < 600000:   # finite, sane (v==v rejects nan)
-                    lat = int(v)
-            except Exception:  # noqa: BLE001
-                lat = None
+            lat = smoothed_latency_ms(w)
         rows.append({
             "id": str(b),
             "name": r.get("name") or str(b),

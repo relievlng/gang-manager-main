@@ -60,6 +60,7 @@ from .settings import CONFIG_SETTINGS, _SETTING_EMOJI, _LOG_KEYS, ensure_log_cha
 from .pool import (
     assign_bot_for_guild,
     pool_overview,
+    smoothed_latency_ms,
     add_tokens,
     free_bot,
     remove_bot,
@@ -4029,6 +4030,96 @@ async def _h_sub_check(request):
     return _aioweb.json_response({"active": peek_active(gid), "bot_in": get_guild_any(int(gid)) is not None})
 
 
+async def _h_support_lookup(request):
+    """Staff-bot lookup: one Discord user's Gang Manager billing, matched by the
+    purchaser recorded at checkout (or by server ownership). Authed with the
+    shared secret — it returns a single customer's subscription status so the
+    support bot can show it in a ticket. Never public (names, Stripe ids)."""
+    secret = (os.getenv("MFA_SECRET") or os.getenv("WEBHOOK_SECRET") or "").strip()
+    if not secret or request.headers.get("X-Guard-Token", "") != secret:
+        return _aioweb.json_response({"error": "unauthorized"}, status=401)
+    uid = (request.query.get("user") or "").strip()
+    if not uid.isdigit():
+        return _aioweb.json_response({"error": "bad user"}, status=400)
+    uid_i = int(uid)
+
+    subs = []
+    for gid, store in (DATA.get("guilds") or {}).items():
+        if not isinstance(store, dict):
+            continue
+        sub = store.get("subscription")
+        if not isinstance(sub, dict):
+            continue
+        pid = str(sub.get("purchaser_id") or "")
+        g = get_guild_any(gid)
+        owner_id = getattr(g, "owner_id", None) if g is not None else None
+        paid_by_user = pid == uid
+        if not paid_by_user and owner_id != uid_i:
+            continue
+        try:
+            st = subscription_state(int(gid))
+        except Exception:  # noqa: BLE001
+            continue
+        # owner-only matches with no real subscription aren't this user's billing
+        if not paid_by_user and st.get("status") in ("none", None) and not st.get("active"):
+            continue
+        subs.append({
+            "guild_id": str(gid),
+            "guild_name": (g.name if g is not None else store.get("name") or ""),
+            "active": bool(st.get("active")),
+            "status": st.get("status"),
+            "plan": st.get("plan"),
+            "expires_at": st.get("expires_at"),
+            "days_left": st.get("days_left"),
+            "lifetime": bool(st.get("lifetime")),
+            "sub_id": st.get("sub_id"),
+            "customer_id": st.get("customer_id"),
+            "purchased": paid_by_user,
+        })
+
+    # Best = an active one first (lifetime, then most days left), else anything.
+    subs.sort(key=lambda s: (not s["active"], not s["lifetime"], -(s["days_left"] or 0)))
+    best = subs[0] if subs else None
+
+    purchases = []
+    try:
+        for e in shop_log_list(400):
+            if str(e.get("purchaser_id") or "") != uid:
+                continue
+            purchases.append({
+                "ts": e.get("ts"),
+                "kind": e.get("kind"),
+                "guild_id": e.get("guild_id"),
+                "amount": e.get("amount"),
+                "currency": e.get("currency"),
+                "session_id": e.get("session_id"),
+                "customer_id": e.get("customer_id"),
+            })
+        purchases.sort(key=lambda p: p.get("ts") or 0, reverse=True)
+        purchases = purchases[:8]
+    except Exception:  # noqa: BLE001
+        pass
+
+    payload = {
+        "user": uid,
+        "active": bool(best and best["active"]),
+        "sub_count": len(subs),
+        "subscriptions": subs,
+        "purchases": purchases,
+    }
+    if best:
+        payload.update({
+            "plan": best["plan"], "status": best["status"],
+            "expires_at": best["expires_at"], "days_left": best["days_left"],
+            "lifetime": best["lifetime"], "sub_id": best["sub_id"],
+            "customer_id": best["customer_id"],
+            "guild_id": best["guild_id"], "guild_name": best["guild_name"],
+        })
+    resp = _aioweb.json_response(payload)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 async def _h_sub_move(request):
     """Move the user's active subscription onto another server they manage — no
     new charge. Releases the old server and repoints the live Stripe sub so
@@ -4811,6 +4902,7 @@ async def _h_stats(request):
                 "name": (str(bot.user.name) if getattr(bot, "user", None) else "Gang Manager"),
                 "role": "distributor",
                 "online": True, "off": False, "off_reason": "",
+                "ping": smoothed_latency_ms(bot),
             }]
             for b in pool_overview().get("bots", []):
                 fleet.append({
@@ -4819,6 +4911,7 @@ async def _h_stats(request):
                     "online": bool(b.get("online")),
                     "off": bool(b.get("off")),
                     "off_reason": b.get("off_reason") or "",
+                    "ping": b.get("latency_ms"),
                 })
             payload["fleet"] = fleet
         except Exception:  # noqa: BLE001 — never 500 the status endpoint
@@ -5867,6 +5960,7 @@ async def start_web_server() -> None:
             _aioweb.get("/billing/success", _h_billing_success),
             _aioweb.get("/billing/portal", _h_billing_portal),
             _aioweb.get("/api/sub_check", _h_sub_check),
+            _aioweb.get("/api/support_lookup", _h_support_lookup),
             _aioweb.post("/api/sub_move", _h_sub_move),
             _aioweb.post("/billing/webhook", _h_billing_webhook),
             _aioweb.get("/login", _h_login),
