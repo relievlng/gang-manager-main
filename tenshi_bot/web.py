@@ -4808,7 +4808,7 @@ async def _h_stats(request):
     if secret and request.headers.get("X-Guard-Token", "") == secret:
         try:
             fleet = [{
-                "name": "Gang Manager",
+                "name": (str(bot.user.name) if getattr(bot, "user", None) else "Gang Manager"),
                 "role": "distributor",
                 "online": True, "off": False, "off_reason": "",
             }]
