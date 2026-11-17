@@ -4790,7 +4790,7 @@ async def _h_stats(request):
         _pc = pool_overview().get("counts", {})
     except Exception:  # never let the public status endpoint 500 over pool stats
         _pc = {}
-    resp = _aioweb.json_response({
+    payload = {
         "online": True,
         "name": "Gang Manager",
         "servers": len(active),
@@ -4801,7 +4801,29 @@ async def _h_stats(request):
         "bots_total": 1 + int(_pc.get("total", 0)),
         "fleet_servers": int(_pc.get("serving", 0)),  # servers the pool bots serve
         "ts": int(time.time()),
-    })
+    }
+    # Per-bot detail (names + off-reasons) only for the staff bot, which signs its
+    # poll with the shared secret — the public endpoint still exposes counts only.
+    secret = (os.getenv("MFA_SECRET") or os.getenv("WEBHOOK_SECRET") or "").strip()
+    if secret and request.headers.get("X-Guard-Token", "") == secret:
+        try:
+            fleet = [{
+                "name": "Gang Manager",
+                "role": "distributor",
+                "online": True, "off": False, "off_reason": "",
+            }]
+            for b in pool_overview().get("bots", []):
+                fleet.append({
+                    "name": b.get("name") or "bot",
+                    "role": "pool",
+                    "online": bool(b.get("online")),
+                    "off": bool(b.get("off")),
+                    "off_reason": b.get("off_reason") or "",
+                })
+            payload["fleet"] = fleet
+        except Exception:  # noqa: BLE001 — never 500 the status endpoint
+            pass
+    resp = _aioweb.json_response(payload)
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
@@ -5132,7 +5154,7 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
   </div>
 </div>
 <div class=cmdk id=cmdk><div class=cmdkbox><input id=cmdkInput placeholder="Jump to a server or section…" autocomplete=off><div class=cmdkList id=cmdkList></div><div class=cmdkFoot><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span></div></div></div>
-<div class=confirm id=confirmModal><div class=confirmbox><div class=ci2 id=confirmIcon>⚠️</div><h4 id=confirmTitle>Are you sure?</h4><p id=confirmMsg></p><div class=confirmbtns><button class=ghost id=confirmCancel>Cancel</button><button class="brand-btn" id=confirmOk>Confirm</button></div></div></div>
+<div class=confirm id=confirmModal><div class=confirmbox><div class=ci2 id=confirmIcon>⚠️</div><h4 id=confirmTitle>Are you sure?</h4><p id=confirmMsg></p><div id=confirmInputWrap style="display:none;margin:2px 0 4px"><input id=confirmInput autocomplete=off maxlength=300 style="width:100%;box-sizing:border-box;padding:9px 11px;border-radius:9px;border:1px solid var(--line,#2a2c36);background:#141520;color:#e8e8ee;font-size:14px"></div><div class=confirmbtns><button class=ghost id=confirmCancel>Cancel</button><button class="brand-btn" id=confirmOk>Confirm</button></div></div></div>
 <div class=toast id=toast></div>
 <script>
 (function(){
@@ -5151,8 +5173,10 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
   var SUBFILTER='all',SUBSORT='members',SUBQ='',SHOPQ='',BANQ='';
   function api(path,method,body,ms){var ctrl=new AbortController(),to=setTimeout(function(){ctrl.abort()},ms||12000);return fetch(path,{method:method||'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,credentials:'same-origin',signal:ctrl.signal}).then(function(r){return r.json().catch(function(){return {ok:false,error:'bad response'}})}).catch(function(){return {ok:false,error:'network'}}).then(function(j){clearTimeout(to);return j})}
   function toast(msg,bad){var t=$('#toast');t.innerHTML='<span>'+(bad?'⚠️':'✓')+'</span>'+esc(msg);t.className='toast show'+(bad?' bad':'');setTimeout(function(){t.className='toast'},2400)}
-  function confirmBox(o){o=o||{};var m=$('#confirmModal');$('#confirmIcon').textContent=o.icon||'⚠️';$('#confirmTitle').textContent=o.title||'Are you sure?';$('#confirmMsg').textContent=o.message||'';var ok=$('#confirmOk');ok.textContent=o.confirmText||'Confirm';ok.className=o.danger?'brand-btn danger-solid':'brand-btn';m.classList.add('show');setTimeout(function(){ok.focus()},30);
-    return new Promise(function(resolve){function done(v){m.classList.remove('show');ok.onclick=null;$('#confirmCancel').onclick=null;m.onclick=null;document.removeEventListener('keydown',key,true);resolve(v)}ok.onclick=function(){done(true)};$('#confirmCancel').onclick=function(){done(false)};m.onclick=function(e){if(e.target===m)done(false)};function key(e){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();done(false)}else if(e.key==='Enter'){e.preventDefault();e.stopPropagation();done(true)}}document.addEventListener('keydown',key,true)});}
+  function confirmBox(o){o=o||{};var m=$('#confirmModal');$('#confirmIcon').textContent=o.icon||'⚠️';$('#confirmTitle').textContent=o.title||'Are you sure?';$('#confirmMsg').textContent=o.message||'';var ok=$('#confirmOk');ok.textContent=o.confirmText||'Confirm';ok.className=o.danger?'brand-btn danger-solid':'brand-btn';
+    var wrap=$('#confirmInputWrap'),inp=$('#confirmInput');if(o.input){inp.placeholder=o.input;inp.value='';wrap.style.display='';setTimeout(function(){inp.focus()},40)}else{wrap.style.display='none';setTimeout(function(){ok.focus()},30)}
+    m.classList.add('show');
+    return new Promise(function(resolve){function done(v){m.classList.remove('show');ok.onclick=null;$('#confirmCancel').onclick=null;m.onclick=null;document.removeEventListener('keydown',key,true);resolve(v)}ok.onclick=function(){done(o.input?inp.value:true)};$('#confirmCancel').onclick=function(){done(o.input?null:false)};m.onclick=function(e){if(e.target===m)done(o.input?null:false)};function key(e){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();done(o.input?null:false)}else if(e.key==='Enter'){e.preventDefault();e.stopPropagation();done(o.input?inp.value:true)}}document.addEventListener('keydown',key,true)});}
   function boot(){api('/api/admin/me').then(function(me){if(!me||!me.authed){showGate('login');return}if(!me.access){showGate('denied');return}if(me.mfa){showMfaGate();return}STATE.owner=!!me.owner;var tbb=$('#tab-bots');if(tbb)tbb.style.display=STATE.owner?'':'none';var tba=$('#tab-audit');if(tba)tba.style.display=STATE.owner?'':'none';var u=me.user||{};$('#uname').textContent=u.name||'Account';$('#uinitial').textContent=initial(u.name);var av=$('#uav');if(u.avatar){av.src=u.avatar;av.onerror=function(){av.style.display='none'}}else{av.style.display='none'}var role=$('#urole');role.textContent=STATE.owner?'Owner':'Staff';role.classList.toggle('owner',STATE.owner);$('#uchip').style.display='';$('#gate').style.display='none';$('#app').style.display='';selectTab('subs');loadSubs()}).catch(function(){showGate('error')})}
   function showGate(kind){$('#app').style.display='none';var g=$('#gate');g.style.display='';if(kind==='login')g.innerHTML='<div class=card><div class=big>🔐</div><h2>Admin sign-in</h2><p class=mute>Log in with a Discord account that owns or is authorised for the bot.</p><a href="/login?next=/admin"><button class="brand-btn" style=margin-top:12px>Log in with Discord</button></a></div>';else if(kind==='denied')g.innerHTML='<div class=card><div class=big>⛔</div><h2>Not authorised</h2><p class=mute>This account isn\'t on the admin list. Ask the owner to authorise your Discord ID.</p><a href="/logout"><button class=ghost style=margin-top:12px>Switch account</button></a></div>';else g.innerHTML='<div class=card><div class=big>⚠️</div><h2>Couldn\'t load</h2><p class=mute>Something went wrong. Refresh to try again.</p><a href="/admin"><button class=ghost style=margin-top:12px>Refresh</button></a></div>'}
   function showMfaGate(){$('#app').style.display='none';var g=$('#gate');g.style.display='';g.innerHTML='<div class=card><div class=big>🔐</div><h2>Verify it\'s you</h2><p class=mute>Confirm this sign-in with a one-time code — GM Support will DM it to your Discord.</p><div id=mfa1><button class="brand-btn" id=mfaSend style=margin-top:12px>Send my code</button></div><div id=mfa2 style="display:none;margin-top:12px"><input id=mfaCode placeholder="6-digit code" inputmode=numeric maxlength=6 autocomplete=one-time-code style="text-align:center;letter-spacing:6px;font-size:18px"><button class="brand-btn" id=mfaVerify style=margin-top:10px>Verify</button><div class=mute style=margin-top:8px><a href=# id=mfaResend>Resend code</a></div></div><div class=mute id=mfaMsg style=margin-top:10px></div><div style=margin-top:14px><a href="/logout"><button class=ghost>Switch account</button></a></div></div>';function send(){$('#mfaMsg').textContent='Sending…';api('/api/admin/mfa/send','POST',{}).then(function(r){if(r&&r.ok){$('#mfa1').style.display='none';$('#mfa2').style.display='';$('#mfaMsg').textContent='Code sent to your Discord DMs from GM Support.';var c=$('#mfaCode');if(c)setTimeout(function(){c.focus()},40)}else{$('#mfaMsg').textContent=(r&&r.error)||'Could not send the code.'}})}function verify(){var c=($('#mfaCode').value||'').trim();if(!c){$('#mfaMsg').textContent='Enter the code.';return}$('#mfaMsg').textContent='Checking…';api('/api/admin/mfa/verify','POST',{code:c}).then(function(r){if(r&&r.ok){boot()}else{$('#mfaMsg').textContent=(r&&r.error)||'Wrong code.'}})}$('#mfaSend').onclick=send;$('#mfaVerify').onclick=verify;$('#mfaResend').onclick=function(e){e.preventDefault();send()};$('#mfaCode').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();verify()}})}
@@ -5224,24 +5248,25 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
       var w=[];if(!b.public)w.push('Public Bot is off — customers can’t add it. Turn it on in its Developer Portal → Bot page, then Restart.');if(b.code_grant)w.push('“Requires OAuth2 Code Grant” is on — turn it off or invites fail.');if(b.online&&!b.members_intent)w.push('Server Members Intent is off — no welcome messages or full member lists. Turn it on in its Developer Portal → Bot page, then Restart.');if(b.status==='bad_token')w.push('Discord rejected its token — reset the token and paste the new one above.');if(b.status==='locked')w.push('Its saved token can’t be decrypted (the encryption key changed) — paste the token again above.');
       return '<div class="bcard'+(b.off?' boff':'')+'"><div class=bhead><div class=bav>'+(b.avatar?'<img src="'+esc(b.avatar)+'" alt="">':'🤖')+'<span class="bdot '+dot+'"></span></div><div class=bmain><div class=bname>'+esc(b.name)+' <span class=bnum>#'+n+'</span> '+capb+'</div><div class=mt>'+copyspan(b.id,'mono')+' · '+esc(LBL[b.status]||b.status||'')+(b.added_at?' · added '+fmtIso(b.added_at):'')+'</div></div></div>'
         +'<div class=bservers>'+serveRow+'</div>'+strain
+        +(b.off&&b.off_reason?'<div class=bwarn style="border-color:rgba(107,114,128,.35);color:#9aa0ab"><div>⏻ '+esc(b.off_reason)+(b.off_at?' · '+fmtTs(b.off_at):'')+'</div></div>':'')
         +(w.length?'<div class=bwarn>'+w.map(function(x){return '<div>⚠ '+esc(x)+'</div>'}).join('')+'</div>':'')
         +'<div class=bacts>'+hub+(b.off?'<button class="sm ghost" data-pa=enable data-b="'+esc(b.id)+'">▶ Turn on</button>':'<button class="sm ghost" data-pa=disable data-b="'+esc(b.id)+'" data-g="'+(b.in_count?'1':'')+'">⏻ Turn off</button><button class="sm ghost" data-pa=restart data-b="'+esc(b.id)+'">⟳ Restart</button>')+'<button class="sm danger" data-pa=remove data-b="'+esc(b.id)+'" data-g="'+(b.count?'1':'')+'">🗑 Remove</button></div></div>'}).join('');
     box.querySelectorAll('[data-pa]').forEach(function(x){x.onclick=function(){poolAct(x)}})}
   function poolAct(x){var a=x.getAttribute('data-pa'),b=x.getAttribute('data-b');
     if(a==='copy'){var v=x.getAttribute('data-v');try{navigator.clipboard.writeText(v);toast('Invite link copied')}catch(e){toast('Copy failed',true)}return}
     if(a==='restart'){x.disabled=true;api('/api/admin/pool/action','POST',{action:'restart',bot_id:b}).then(function(r){x.disabled=false;if(r.ok){toast('Restarting…');setTimeout(loadBots,3000)}else toast(r.error||'Failed',true)});return}
-    if(a==='disable'){var g=x.getAttribute('data-g');confirmBox({icon:'⏻',title:'Turn this bot off?',message:g?'This bot is serving a server — turning it off takes that server offline until you turn it back on. Its token and assignments are kept.':'The bot goes offline and stays off across restarts. Its token and assignments are kept — turn it back on anytime.',confirmText:'Turn off',danger:true}).then(function(ok){if(!ok)return;x.disabled=true;api('/api/admin/pool/action','POST',{action:'disable',bot_id:b}).then(function(r){x.disabled=false;if(r.ok){toast('Bot turned off');loadBots();loadSubs()}else toast(r.error||'Failed',true)})});return}
+    if(a==='disable'){var g=x.getAttribute('data-g');confirmBox({icon:'⏻',title:'Turn this bot off?',message:g?'This bot is serving a server — turning it off takes that server offline until you turn it back on. Its token and assignments are kept.':'The bot goes offline and stays off across restarts. Its token and assignments are kept — turn it back on anytime.',confirmText:'Turn off',danger:true,input:'Reason (optional) — shows on the status card'}).then(function(reason){if(reason===null)return;x.disabled=true;api('/api/admin/pool/action','POST',{action:'disable',bot_id:b,reason:reason}).then(function(r){x.disabled=false;if(r.ok){toast('Bot turned off');loadBots();loadSubs()}else toast(r.error||'Failed',true)})});return}
     if(a==='enable'){x.disabled=true;api('/api/admin/pool/action','POST',{action:'enable',bot_id:b}).then(function(r){x.disabled=false;if(r.ok){toast('Turning on…');setTimeout(loadBots,3000)}else toast(r.error||'Failed',true)});return}
     if(a==='free'){var g=x.getAttribute('data-g');confirmBox({icon:'↩️',title:'Remove from this server?',message:'The bot leaves this server and that slot frees up. The server can add a bot again from the panel — its subscription isn’t touched.',confirmText:'Remove bot',danger:true}).then(function(ok){if(!ok)return;x.disabled=true;api('/api/admin/pool/action','POST',{action:'free',bot_id:b,guild:g}).then(function(r){x.disabled=false;if(r.ok){toast('Removed from the server');loadBots();loadSubs()}else toast(r.error||'Failed',true)})});return}
     if(a==='remove'){var g=x.getAttribute('data-g');confirmBox({icon:'🗑️',title:'Remove from the pool?',message:g?'This bot is serving a server — removing it makes it leave that server and forgets its token.':'Its token is forgotten. You can add it back any time.',confirmText:'Remove',danger:true}).then(function(ok){if(!ok)return;x.disabled=true;api('/api/admin/pool/action','POST',{action:'remove',bot_id:b,force:!!g}).then(function(r){x.disabled=false;if(r.ok){toast('Removed');loadBots();loadSubs()}else toast(r.error||'Failed',true)})})}}
-  function poolAll(a){var conf=null;
-    if(a==='all_off')conf={icon:'⏻',title:'Turn off every bot?',message:'All pool bots go offline and stay off across restarts. Any server a bot is serving goes offline until you turn the fleet back on — tokens and server assignments are kept.',confirmText:'Turn all off',danger:true};
-    else if(a==='all_restart')conf={icon:'🔄',title:'Restart every bot?',message:'Every enabled bot reconnects. Servers blip offline for a few seconds while they come back.',confirmText:'Restart all'};
-    function go(){var ids=['poolAllRestart','poolAllOn','poolAllOff'];ids.forEach(function(id){var b=$('#'+id);if(b)b.disabled=true});
-      api('/api/admin/pool/action','POST',{action:a}).then(function(r){ids.forEach(function(id){var b=$('#'+id);if(b)b.disabled=false});
+  function poolAll(a){
+    function go(reason){var ids=['poolAllRestart','poolAllOn','poolAllOff'];ids.forEach(function(id){var b=$('#'+id);if(b)b.disabled=true});
+      api('/api/admin/pool/action','POST',{action:a,reason:reason||''}).then(function(r){ids.forEach(function(id){var b=$('#'+id);if(b)b.disabled=false});
         if(r.ok){toast((a==='all_off'?'Turned off ':a==='all_on'?'Turning on ':'Restarting ')+(r.count||0)+'/'+(r.total||0)+' bots');setTimeout(function(){loadBots();loadSubs()},a==='all_off'?600:3000)}
         else toast(r.error||'Failed',true)})}
-    if(conf)confirmBox(conf).then(function(ok){if(ok)go()});else go()}
+    if(a==='all_off'){confirmBox({icon:'⏻',title:'Turn off every bot?',message:'All pool bots go offline and stay off across restarts. Any server a bot is serving goes offline until you turn the fleet back on — tokens and server assignments are kept.',confirmText:'Turn all off',danger:true,input:'Reason (optional) — shows on the status card'}).then(function(v){if(v!==null)go(v)});return}
+    if(a==='all_restart'){confirmBox({icon:'🔄',title:'Restart every bot?',message:'Every enabled bot reconnects. Servers blip offline for a few seconds while they come back.',confirmText:'Restart all'}).then(function(ok){if(ok)go()});return}
+    go()}
   function togglePool(){if(!POOL)return;var on=!POOL.enabled;function go(){api('/api/admin/pool/action','POST',{action:'toggle',enabled:on}).then(function(r){if(r.ok){POOL.enabled=r.enabled;renderPool();toast(r.enabled?'Hand-outs on — new servers get their own bot':'Hand-outs off — new servers get the main bot')}else toast(r.error||'Failed',true)})}
     if(on&&!((POOL.counts||{}).free>0)){confirmBox({icon:'🤖',title:'Turn hand-outs on?',message:'No pool bot is online and free right now, so new servers will keep getting the main bot until one is.',confirmText:'Turn on'}).then(function(ok){if(ok)go()})}else go()}
   function saveHub(){var v=(($('#poolHub').value)||'').replace(/[^0-9]/g,'');api('/api/admin/pool/action','POST',{action:'hub',guild:v}).then(function(r){if(r.ok){if(POOL){POOL.admin_guild=r.admin_guild;POOL.main_hub_invite=r.main_hub_invite}$('#poolHubMsg').textContent=r.admin_guild?'Hub saved. Add the bots with the button, or the 🏠 link on each bot.':'Hub server cleared.';loadBots()}else toast(r.error||'Failed',true)})}
@@ -5578,7 +5603,7 @@ async def _h_admin_pool_action(request):
                             "main_hub_invite": _invite_url(g) if g else ""})
     if action in ("all_off", "all_on", "all_restart"):
         if action == "all_off":
-            res = await disable_all_bots()
+            res = await disable_all_bots(reason=str(body.get("reason") or ""), by=uid)
         elif action == "all_on":
             res = await enable_all_bots()
         else:
@@ -5597,7 +5622,7 @@ async def _h_admin_pool_action(request):
         elif action == "restart":
             res = await restart_bot(bid)
         elif action == "disable":
-            res = await disable_bot(bid)
+            res = await disable_bot(bid, reason=str(body.get("reason") or ""), by=uid)
         elif action == "enable":
             res = await enable_bot(bid)
         else:

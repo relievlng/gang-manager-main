@@ -833,38 +833,45 @@ async def restart_bot(bid) -> dict:
     return {"ok": ok}
 
 
-async def disable_bot(bid) -> dict:
+async def disable_bot(bid, reason: str = "", by=None) -> dict:
     """Turn a pool bot off: stop it and keep it off across restarts. Its token and
-    its server assignments are kept, so turning it back on resumes them."""
+    its server assignments are kept, so turning it back on resumes them. An
+    optional reason is stored and surfaced wherever the bot is listed."""
     rec = _rec(bid)
     if rec is None:
         raise KeyError(bid)
     rec["disabled"] = True
+    rec["off_reason"] = str(reason or "").strip()[:300]
+    rec["off_at"] = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+    if by is not None:
+        rec["off_by"] = str(by)
+    else:
+        rec.pop("off_by", None)
     save_data(DATA)
     await stop_worker(bid)
-    log.info("Bot pool: pool bot %s turned off.", bid)
-    return {"ok": True, "off": True}
+    log.info("Bot pool: pool bot %s turned off%s.", bid, f" ({reason})" if reason else "")
+    return {"ok": True, "off": True, "off_reason": rec["off_reason"]}
 
 
 async def enable_bot(bid) -> dict:
-    """Turn a pool bot back on and bring it online."""
+    """Turn a pool bot back on and bring it online (clears the off reason)."""
     rec = _rec(bid)
     if rec is None:
         raise KeyError(bid)
-    rec.pop("disabled", None)
-    rec.pop("status", None)
+    for k in ("disabled", "status", "off_reason", "off_at", "off_by"):
+        rec.pop(k, None)
     save_data(DATA)
     ok = await _launch(int(bid))
     return {"ok": bool(ok), "off": False}
 
 
-async def disable_all_bots() -> dict:
+async def disable_all_bots(reason: str = "", by=None) -> dict:
     """Turn every pool bot off at once (each stays off across restarts)."""
     ids = list(pool_state()["bots"].keys())
     done = 0
     for b in ids:
         try:
-            await disable_bot(b)
+            await disable_bot(b, reason=reason, by=by)
             done += 1
         except Exception as exc:  # noqa: BLE001
             log.warning("disable_all: bot %s failed: %s", b, exc)
@@ -941,6 +948,8 @@ def pool_overview() -> dict:
             "avatar": avatar,
             "online": online,
             "off": bool(r.get("disabled")),
+            "off_reason": r.get("off_reason") or "",
+            "off_at": r.get("off_at"),
             "status": ("off" if r.get("disabled")
                        else "online" if online
                        else (r.get("status") or st.get("status") or "offline")),

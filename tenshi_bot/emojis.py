@@ -34,6 +34,23 @@ EMOJI: dict[str, tuple[str, str]] = {
     "clock":   ("gm_clock",   "⏱️"),
     "accept":  ("gm_accept",  "🏆"),
     "deny":    ("gm_deny",    "🔒"),
+    # status-card icons
+    "members": ("gm_members", "👥"),
+    "servers": ("gm_servers", "🏴"),
+    "wars":    ("gm_wars",    "⚔️"),
+    "tickets": ("gm_tickets", "🎫"),
+    "bots":    ("gm_bots",    "🤖"),
+    "dot_on":  ("gm_dot_on",  "🟢"),
+    "dot_off": ("gm_dot_off", "⚫"),
+    "dot_down": ("gm_dot_down", "🔴"),
+    # progress-bar segments (no unicode fallback — _vote_bar falls back to squares)
+    "vbar_lf": ("vbar_lf", ""),
+    "vbar_le": ("vbar_le", ""),
+    "vbar_mf": ("vbar_mf", ""),
+    "vbar_me": ("vbar_me", ""),
+    "vbar_rf": ("vbar_rf", ""),
+    "vbar_re": ("vbar_re", ""),
+    "vbar_tip": ("vbar_tip", ""),
 }
 
 # app_id -> {key: "<:name:id>"}

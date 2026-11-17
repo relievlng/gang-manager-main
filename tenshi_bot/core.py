@@ -726,9 +726,29 @@ def _bar(n: float, total: float, width: int = 12) -> str:
     return "█" * k + "░" * (width - k)
 
 
-def _vote_bar(yes: int, no: int, width: int = 10) -> str:
-    """Green/red split bar for a yes/no vote, e.g. 🟩🟩🟩🟩🟩🟩🟥🟥🟥🟥."""
+_VBAR_SEGS = 8
+
+
+def _vote_bar(yes: int, no: int, width: int = 10, client=None) -> str:
+    """A yes/no vote as a bar. When the posting bot has the custom capsule-bar
+    emojis it renders a sleek rounded progress bar (green fill + glowing tip on a
+    dark track); otherwise it falls back to a plain green/red square bar."""
     total = yes + no
+    if client is not None and em(client, "vbar_mf").startswith("<:"):
+        n = _VBAR_SEGS
+        filled = 0 if total <= 0 else max(0, min(n, round(n * yes / total)))
+        out = []
+        for i in range(n):
+            on = i < filled
+            if i == 0:
+                out.append(em(client, "vbar_lf" if on else "vbar_le"))
+            elif i == n - 1:
+                out.append(em(client, "vbar_rf" if on else "vbar_re"))
+            elif on and i == filled - 1:
+                out.append(em(client, "vbar_tip"))   # glowing leading edge
+            else:
+                out.append(em(client, "vbar_mf" if on else "vbar_me"))
+        return "".join(out)
     if total <= 0:
         return "⬜" * width
     g = max(0, min(width, round(width * yes / total)))
@@ -1039,7 +1059,7 @@ def _eoi_card(store: dict, mid, guild, *, app=None, votes=None, timer=None, vouc
     total = yes + no
     tally = f"{E('yes')} **{yes}**    ·    {E('no')} **{no}**"
     if total:
-        tally += f"\n{_vote_bar(yes, no)}  ·  **{round(100 * yes / total)}%** in favour"
+        tally += f"\n{_vote_bar(yes, no, client=client)}  ·  **{round(100 * yes / total)}%** in favour"
     embed.add_field(name=f"{E('vote')} Community vote", value=tally, inline=False)
 
     if closed:
