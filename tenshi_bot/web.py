@@ -5286,6 +5286,29 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
       <p class=hint id=poolHubMsg style="margin:8px 0 0"></p>
       <p class=hint style="margin:6px 0 0;opacity:.7">To get the ID: Discord → Settings → Advanced → turn on Developer Mode, then right-click your server → Copy Server ID.</p>
     </div>
+    <style>
+    #brandCard textarea{width:100%;margin-top:12px;padding:11px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.28);color:#ececf1;font:inherit;line-height:1.5;resize:vertical;min-height:72px}
+    #brandCard textarea:focus{outline:none;border-color:#2f6bff;box-shadow:0 0 0 3px rgba(47,107,255,.22)}
+    .brandgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+    .upbox{display:flex;flex-direction:column;gap:5px;padding:16px;border:1px dashed rgba(255,255,255,.16);border-radius:12px;background:rgba(255,255,255,.02);cursor:pointer;transition:border-color .18s,background .18s}
+    .upbox:hover{border-color:#2f6bff;background:rgba(47,107,255,.06)}
+    .upbox.set{border-style:solid;border-color:#2f6bff;background:rgba(47,107,255,.09)}
+    .upbox .upt{font-weight:700;font-size:13.5px;color:#ececf1}
+    .upbox .ups{font-size:12px;color:#9a9aa6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .brandrow{display:flex;align-items:center;gap:10px;margin-top:12px}
+    @media(max-width:560px){.brandgrid{grid-template-columns:1fr}}
+    </style>
+    <div class=card id=brandCard>
+      <h3>🎨 Fleet branding</h3>
+      <p class=hint>One avatar, banner and bio pushed to <b>every bot</b> — the main bot and all pool bots. Discord rate-limits avatar changes, so a large fleet rolls out gradually; re-apply later for any marked rate-limited.</p>
+      <div class=brandgrid>
+        <label class=upbox><input type=file accept="image/png,image/jpeg,image/gif,image/webp" id=brandAvatar hidden><span class=upt>Avatar · pfp</span><span class=ups id=avName>Choose image…</span></label>
+        <label class=upbox><input type=file accept="image/png,image/jpeg,image/gif,image/webp" id=brandBanner hidden><span class=upt>Banner</span><span class=ups id=bnName>Choose image…</span></label>
+      </div>
+      <textarea id=brandBio maxlength=400 rows=3 placeholder="Bio / About Me shown on every bot's profile…"></textarea>
+      <div class=brandrow><span class=hint id=brandCount>0 / 400</span><span style=flex:1></span><button class=brand-btn id=brandApply>Apply to all bots</button></div>
+      <p class=hint id=brandStatus style="margin:10px 0 0"></p>
+    </div>
     <div class=card>
       <div class=toolbar style=margin-bottom:8px><input id=poolSearch placeholder="Search bots or servers…" autocomplete=off><button class="ghost sm" id=poolRefresh>↻ Refresh</button><span style=flex:1></span><button class="ghost sm" id=poolAllRestart>🔄 Restart all</button><button class="ghost sm" id=poolAllOn>▶ Turn all on</button><button class="ghost sm" id=poolAllOff>⏻ Turn all off</button></div>
       <div id=poolList></div>
@@ -5368,7 +5391,32 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
   function addStaff(){var id=$('#staffId').value.trim();if(!id){toast('Enter a Discord ID',true);return}api('/api/admin/staff_add','POST',{user_id:id}).then(function(r){if(r.ok){toast('Authorised');$('#staffId').value='';loadStaff();loadSubs()}else toast(r.error||'Failed',true)})}
   // ---- Bots (bot pool) ----
   var POOL=null,POOLQ='',AUDIT=[],AUDITQ='';
-  function loadBots(){var box=$('#poolList');if(!POOL)box.innerHTML='<div class=sk style=height:68px></div><div class=sk style=height:68px></div>';api('/api/admin/pool').then(function(d){if(!d||!d.ok){box.innerHTML='<div class=pad>'+esc((d&&d.error)||'Could not load.')+'</div>';return}POOL=d;renderPool()})}
+  function brandCount(){var t=$('#brandBio');if(t&&$('#brandCount'))$('#brandCount').textContent=t.value.length+' / 400'}
+  function brandStatusHtml(lr,running){
+   if(running)return '<span style="color:#5b93ff">● Rolling out to the fleet… refresh to update.</span>';
+   if(!lr)return 'Not pushed yet. Add an avatar, banner or bio and apply.';
+   var res=lr.results||[],ok=lr.applied||0,tot=lr.total||0;
+   var limited=res.filter(function(r){return (r.errors||[]).some(function(e){return /rate-limited/.test(e)})}).map(function(r){return r.name});
+   var s='Last roll-out: <b>'+ok+' / '+tot+'</b> bot(s) updated';
+   if(limited.length)s+=' · <span style="color:#f0a92b">'+limited.length+' rate-limited'+(limited.length<=4?' ('+limited.map(esc).join(', ')+')':'')+' — re-apply later</span>';
+   return s;
+  }
+  function loadBrand(){api('/api/admin/bot_profile').then(function(d){if(!d||!d.ok)return;var b=$('#brandBio');if(b&&document.activeElement!==b){b.value=d.bio||'';brandCount()}var st=$('#brandStatus');if(st)st.innerHTML=brandStatusHtml(d.last_run,d.running)})}
+  function applyBrand(){
+   var btn=$('#brandApply'),av=$('#brandAvatar'),bn=$('#brandBanner'),bio=$('#brandBio');
+   var fd=new FormData();
+   if(av&&av.files&&av.files[0])fd.append('avatar',av.files[0]);
+   if(bn&&bn.files&&bn.files[0])fd.append('banner',bn.files[0]);
+   fd.append('bio',bio?bio.value:'');
+   btn.disabled=true;btn.textContent='Applying…';
+   fetch('/api/admin/bot_profile',{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){return r.json().catch(function(){return{ok:false,error:'bad response'}})}).then(function(j){
+    btn.disabled=false;btn.textContent='Apply to all bots';
+    if(j.ok){toast(j.message||'Rolling out to the fleet');if(av)av.value='';if(bn)bn.value='';['avName','bnName'].forEach(function(id){var e=$('#'+id);if(e){e.textContent='Choose image…';e.parentNode.classList.remove('set')}});setTimeout(loadBrand,1500);setTimeout(loadBrand,9000)}
+    else toast(j.error||'Failed',true)
+   }).catch(function(){btn.disabled=false;btn.textContent='Apply to all bots';toast('Network error',true)})
+  }
+  document.addEventListener('change',function(e){var t=e.target;if(t.id==='brandAvatar'||t.id==='brandBanner'){var f=t.files&&t.files[0];var lbl=t.id==='brandAvatar'?$('#avName'):$('#bnName');if(lbl){lbl.textContent=f?f.name:'Choose image…';lbl.parentNode.classList.toggle('set',!!f)}}});
+  function loadBots(){loadBrand();var box=$('#poolList');if(!POOL)box.innerHTML='<div class=sk style=height:68px></div><div class=sk style=height:68px></div>';api('/api/admin/pool').then(function(d){if(!d||!d.ok){box.innerHTML='<div class=pad>'+esc((d&&d.error)||'Could not load.')+'</div>';return}POOL=d;renderPool()})}
   function renderPool(){var d=POOL;if(!d)return;var sw=$('#poolSwitch');sw.classList.toggle('on',!!d.enabled);$('#poolSwitchTxt').textContent=d.enabled?'Hand-outs on':'Hand-outs off';
     var c=d.counts||{};$('#poolStats').innerHTML=[['🤖',c.total,'Pool bots'],['🟢',c.online,'Online'],['🏴',c.serving,'Servers'],['⏳',c.reserved,'Reserved'],['🎟️',c.slots,'Open slots']].map(function(x){return '<div class=pst><span>'+x[0]+'</span><b>'+nf(x[1]||0)+'</b><small>'+x[2]+'</small></div>'}).join('');
     var hb=$('#poolHub');if(hb&&document.activeElement!==hb)hb.value=d.admin_guild||'';var hba=$('#poolHubAdd');if(hba)hba.style.display=(d.admin_guild&&(d.bots||[]).length)?'':'none';
@@ -5430,8 +5478,8 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
   function cmdkBuild(q){q=(q||'').toLowerCase();var items=[];var nav=[['subs','📂','Subscriptions'],['bans','⛔','Bans'],['shop','🧾','Shop log'],['staff','🛡️','Staff access']];if(STATE.owner){nav.push(['bots','🤖','Bots']);nav.push(['audit','📜','Audit log'])}nav.forEach(function(n){if(!q||n[2].toLowerCase().indexOf(q)>=0)items.push({t:'tab',id:n[0],ic:n[1],label:n[2],sub:'Section'})});SERVERS.forEach(function(s){if(!q||(s.name||'').toLowerCase().indexOf(q)>=0||String(s.id).indexOf(q)>=0)items.push({t:'srv',id:s.id,ic:'🌐',label:s.name,sub:bucket(s)})});cmdkItems=items.slice(0,40);cmdkSel=0;cmdkRender()}
   function cmdkRender(){$('#cmdkList').innerHTML=cmdkItems.length?cmdkItems.map(function(it,i){return '<div class="ci'+(i===cmdkSel?' sel':'')+'" data-i="'+i+'"><span class=cig>'+it.ic+'</span><span>'+esc(it.label)+'</span><span class=cis>'+esc(it.sub)+'</span></div>'}).join(''):'<div class=pad>No matches</div>';$('#cmdkList').querySelectorAll('.ci').forEach(function(el){el.onclick=function(){cmdkSel=parseInt(el.getAttribute('data-i'),10);cmdkGo()}})}
   function cmdkGo(){var it=cmdkItems[cmdkSel];if(!it){return}closeCmdk();if(it.t==='tab'){selectTab(it.id)}else{selectTab('subs');SUBFILTER='all';SUBQ='';$('#subSearch').value=String(it.id);SUBQ=String(it.id);renderFilters();renderSubs();toast('Jumped to '+it.label)}}
-  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
-  document.addEventListener('input',function(e){var t=e.target;if(t.id==='subSearch'){SUBQ=t.value;renderSubs()}if(t.id==='shopSearch'){SHOPQ=t.value;renderShop()}if(t.id==='banSearch'){BANQ=t.value;renderBans()}if(t.id==='poolSearch'){POOLQ=t.value;renderPool()}if(t.id==='auditSearch'){AUDITQ=t.value;renderAudit()}if(t.id==='cmdkInput'){cmdkBuild(t.value)}});
+  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='brandApply')applyBrand();if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
+  document.addEventListener('input',function(e){var t=e.target;if(t.id==='subSearch'){SUBQ=t.value;renderSubs()}if(t.id==='shopSearch'){SHOPQ=t.value;renderShop()}if(t.id==='banSearch'){BANQ=t.value;renderBans()}if(t.id==='poolSearch'){POOLQ=t.value;renderPool()}if(t.id==='brandBio'){brandCount()}if(t.id==='auditSearch'){AUDITQ=t.value;renderAudit()}if(t.id==='cmdkInput'){cmdkBuild(t.value)}});
   document.addEventListener('change',function(e){if(e.target.id==='subSort'){SUBSORT=e.target.value;renderSubs()}});
   document.addEventListener('keydown',function(e){
     if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){e.preventDefault();openCmdk();return}
@@ -5696,6 +5744,150 @@ async def _admin_body(request) -> dict:
     except Exception:  # noqa: BLE001
         return {}
     return body if isinstance(body, dict) else {}
+
+
+_FLEET_BRAND = {"running": False}
+
+
+async def _apply_fleet_brand(avatar, banner, bio, by):
+    """Push one look to every bot — main + pool. Sequential and gentle; Discord
+    rate-limits avatar/banner edits hard, so each bot gets a timeout and the
+    per-bot outcome is recorded for the admin to read back. Runs in the
+    background so the request returns straight away."""
+    import asyncio
+    _FLEET_BRAND["running"] = True
+    results = []
+    try:
+        clients = [bot, *list(WORKERS)]
+        for c in clients:
+            user = getattr(c, "user", None)
+            name = str(getattr(user, "name", "bot"))
+            changed, errs = [], []
+            ue = {}
+            if avatar is not None:
+                ue["avatar"] = avatar
+            if banner is not None:
+                ue["banner"] = banner
+            if ue and user is not None:
+                try:
+                    await asyncio.wait_for(user.edit(**ue), timeout=30)
+                    changed += list(ue.keys())
+                except asyncio.TimeoutError:
+                    errs.append("rate-limited")
+                except TypeError:
+                    # older discord.py: no banner kwarg — set the avatar alone
+                    if "avatar" in ue:
+                        try:
+                            await asyncio.wait_for(user.edit(avatar=avatar), timeout=30)
+                            changed.append("avatar")
+                        except Exception:  # noqa: BLE001
+                            errs.append("avatar failed")
+                    if "banner" in ue:
+                        errs.append("banner unsupported")
+                except Exception as exc:  # noqa: BLE001
+                    errs.append((str(getattr(exc, "text", "") or exc) or "failed")[:50])
+            if bio is not None or avatar is not None:
+                try:
+                    app = getattr(c, "application", None) or await c.application_info()
+                    ch = {}
+                    if bio is not None:
+                        ch["description"] = bio
+                    if avatar is not None:
+                        ch["icon"] = avatar
+                    if ch and hasattr(app, "edit"):
+                        await asyncio.wait_for(app.edit(**ch), timeout=30)
+                        if "description" in ch:
+                            changed.append("bio")
+                except asyncio.TimeoutError:
+                    errs.append("bio rate-limited")
+                except Exception as exc:  # noqa: BLE001
+                    errs.append("bio: " + (str(getattr(exc, "text", "") or exc) or "")[:40])
+            results.append({"name": name, "changed": changed, "errors": errs})
+            await asyncio.sleep(1.0)
+    finally:
+        _FLEET_BRAND["running"] = False
+        brand = DATA.setdefault("fleet_brand", {})
+        brand["last_run"] = {
+            "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "by": str(by),
+            "applied": sum(1 for r in results if r["changed"]),
+            "total": len(results),
+            "results": results,
+        }
+        save_data(DATA)
+
+
+async def _h_admin_bot_profile(request):
+    """Owner-only. GET returns the saved fleet look + last roll-out; POST takes an
+    avatar, a banner and/or a bio (multipart) and pushes them to every bot."""
+    uid, err = _admin_owner_only(request)
+    if err is not None:
+        return err
+    if request.method == "GET":
+        brand = DATA.get("fleet_brand", {}) or {}
+        return _admin_json({
+            "ok": True,
+            "bio": brand.get("bio", ""),
+            "avatar_at": brand.get("avatar_at"),
+            "banner_at": brand.get("banner_at"),
+            "last_run": brand.get("last_run"),
+            "running": _FLEET_BRAND["running"],
+        })
+    if not _origin_ok(request):
+        return _admin_json({"ok": False, "error": "Cross-site request blocked."}, 403)
+    if _FLEET_BRAND["running"]:
+        return _admin_json({"ok": False, "error": "A fleet update is still running — give it a moment."}, 409)
+    import asyncio
+    import io as _io
+    from PIL import Image
+    try:
+        post = await request.post()
+    except Exception:  # noqa: BLE001
+        return _admin_json({"ok": False, "error": "Couldn't read the upload."}, 400)
+
+    def _read(field):
+        f = post.get(field)
+        if f is None:
+            return None
+        try:
+            return f.file.read() if hasattr(f, "file") else (
+                bytes(f) if isinstance(f, (bytes, bytearray)) else None)
+        except Exception:  # noqa: BLE001
+            return None
+
+    avatar = _read("avatar") or None
+    banner = _read("banner") or None
+    bio_raw = post.get("bio")
+    bio = None if bio_raw is None else str(bio_raw).strip()[:400]
+    if not avatar and not banner and bio is None:
+        return _admin_json({"ok": False, "error": "Add an avatar, banner or bio first."}, 400)
+    for label, data in (("avatar", avatar), ("banner", banner)):
+        if data:
+            if len(data) > 8 * 1024 * 1024:
+                return _admin_json({"ok": False, "error": f"The {label} is over 8 MB."}, 400)
+            try:
+                Image.open(_io.BytesIO(data)).verify()
+            except Exception:  # noqa: BLE001
+                return _admin_json({"ok": False, "error": f"That {label} isn't a readable image."}, 400)
+
+    brand = DATA.setdefault("fleet_brand", {})
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    if bio is not None:
+        brand["bio"] = bio
+    if avatar:
+        brand["avatar_at"] = now_iso
+    if banner:
+        brand["banner_at"] = now_iso
+    save_data(DATA)
+
+    n = 1 + len(WORKERS)
+    _audit(request, uid, "fleet_brand", "", f"avatar={bool(avatar)} banner={bool(banner)} bio={bio is not None}")
+    asyncio.create_task(_apply_fleet_brand(avatar, banner, bio, uid))
+    return _admin_json({
+        "ok": True, "applying": n,
+        "message": f"Rolling out to {n} bot(s). Discord rate-limits avatar changes, "
+                   "so a big fleet can take a while — refresh to watch progress.",
+    })
 
 
 async def _h_admin_pool(request):
@@ -6064,6 +6256,8 @@ async def start_web_server() -> None:
             _aioweb.post("/api/admin/sub", _h_admin_sub),
             _aioweb.post("/api/admin/leave", _h_admin_leave),
             _aioweb.get("/api/admin/pool", _h_admin_pool),
+            _aioweb.get("/api/admin/bot_profile", _h_admin_bot_profile),
+            _aioweb.post("/api/admin/bot_profile", _h_admin_bot_profile),
             _aioweb.post("/api/admin/pool/add", _h_admin_pool_add),
             _aioweb.post("/api/admin/pool/action", _h_admin_pool_action),
             _aioweb.get("/api/admin/bans", _h_admin_bans),
