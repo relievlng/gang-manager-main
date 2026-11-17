@@ -5009,7 +5009,7 @@ a{text-decoration:none;color:inherit}
 ::selection{background:rgba(255,255,255,.35)}
 ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:8px}
 header{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;padding:16px 22px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(7,7,10,.92),rgba(7,7,10,.72));backdrop-filter:blur(12px)}
-.logo{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;overflow:hidden;background:#0d0d12;border:1px solid rgba(255,255,255,.3);box-shadow:0 0 22px rgba(255,255,255,.22);padding:5px}
+.logo{width:48px;height:48px;border-radius:10px;display:grid;place-items:center;overflow:visible;background:transparent;border:none;box-shadow:none;padding:0}
 .logo img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;display:block}
 .brand{font-family:"Space Grotesk",sans-serif;font-size:19px;font-weight:700;letter-spacing:.5px;background:linear-gradient(90deg,#fff,#e8e8ee 40%,#b9b9c4 70%,#fff);background-size:200% auto;-webkit-background-clip:text;background-clip:text;color:transparent;flex:1;animation:sheen 6s linear infinite}
 @keyframes sheen{to{background-position:200% center}}
@@ -5319,11 +5319,16 @@ a.link,.link{color:var(--brand2)}
     </div>
     <div class=card>
       <div class=poolhead>
-        <div><h3 style=margin:0>Bot pool</h3><p class=hint style="margin:4px 0 0">Give every customer their own Gang Manager bot. Pool bots run the same code as your main bot, share the same data and website, and are managed right here.</p></div>
+        <div><h3 style=margin:0>🤖 Pool overview</h3><p class=hint style="margin:4px 0 0">Give every customer their own Gang Manager bot. Pool bots run the same code as your main bot, share the same data and website, and are managed right here.</p></div>
         <button class=poolsw id=poolSwitch title="When on, a newly subscribed server is given its own free pool bot instead of the main bot"><span class=knob></span><span id=poolSwitchTxt>Hand-outs off</span></button>
       </div>
       <div class=poolstats id=poolStats></div>
       <div class=poolwarn id=poolCrypto style=display:none></div>
+    </div>
+    <div class=card>
+      <h3 style="margin:0 0 4px">🤖 Sub-fleet</h3><p class=hint style="margin:0 0 10px">The pool workers handed out to servers.</p>
+      <div class=toolbar style=margin-bottom:8px><input id=poolSearch placeholder="Search bots or servers…" autocomplete=off><button class="ghost sm" id=poolRefresh>↻ Refresh</button><span style=flex:1></span><button class="ghost sm" id=poolAllRestart>🔄 Restart all</button><button class="ghost sm" id=poolAllOn>▶ Turn all on</button><button class="ghost sm" id=poolAllOff>⏻ Turn all off</button></div>
+      <div id=poolList></div>
     </div>
     <div class=card>
       <h3>Add bots</h3>
@@ -5417,11 +5422,6 @@ a.link,.link{color:var(--brand2)}
         <div class=rolllist id=rollList></div>
       </div>
       <p class=hint id=brandStatus style="margin:10px 0 0"></p>
-    </div>
-    <div class=card>
-      <h3 style="margin:0 0 4px">🤖 Sub-fleet</h3><p class=hint style="margin:0 0 10px">The pool workers handed out to servers.</p>
-      <div class=toolbar style=margin-bottom:8px><input id=poolSearch placeholder="Search bots or servers…" autocomplete=off><button class="ghost sm" id=poolRefresh>↻ Refresh</button><span style=flex:1></span><button class="ghost sm" id=poolAllRestart>🔄 Restart all</button><button class="ghost sm" id=poolAllOn>▶ Turn all on</button><button class="ghost sm" id=poolAllOff>⏻ Turn all off</button></div>
-      <div id=poolList></div>
     </div>
   </div>
   <div id=pan-audit style=display:none>
@@ -5584,10 +5584,17 @@ a.link,.link{color:var(--brand2)}
   function loadFleet(){api('/api/admin/fleet').then(function(d){if(!d||!d.ok)return;renderFleetBot('fMain',d.main);renderFleetBot('fStaff',d.staff)})}
   function fleetPower(target,action){
    var label=target==='main'?'main':'staff';
-   if((action==='off'||action==='restart')&&!window.confirm((action==='off'?'Turn OFF':'Restart')+' the '+label+' bot?'+((target==='main'&&action==='off')?' Servers on the main bot stop responding until you turn it back on.':'')))return;
-   api('/api/admin/fleet/power','POST',{target:target,action:action}).then(function(r){
+   function go(){api('/api/admin/fleet/power','POST',{target:target,action:action}).then(function(r){
     if(r&&r.ok){toast(label+' bot — '+action+' ✓');setTimeout(loadFleet,800);setTimeout(loadFleet,3500)}
-    else toast((r&&r.error)||'Failed',true)});
+    else toast((r&&r.error)||'Failed',true)});}
+   if(action==='on'){go();return}
+   confirmBox({
+    icon:action==='off'?'⏻':'↻',
+    title:(action==='off'?'Turn off the '+label+' bot?':'Restart the '+label+' bot?'),
+    message:(target==='main'&&action==='off')?'Servers on the main bot stop responding until you turn it back on.':(action==='restart'?'It will drop offline and reconnect in a moment.':'It goes offline until you turn it back on.'),
+    confirmText:action==='off'?'Turn off':'Restart',
+    danger:action==='off'
+   }).then(function(ok){if(ok)go()});
   }
   function loadBots(){loadFleet();loadBrand();var box=$('#poolList');if(!POOL)box.innerHTML='<div class=sk style=height:68px></div><div class=sk style=height:68px></div>';api('/api/admin/pool').then(function(d){if(!d||!d.ok){box.innerHTML='<div class=pad>'+esc((d&&d.error)||'Could not load.')+'</div>';return}POOL=d;renderPool()})}
   function renderPool(){var d=POOL;if(!d)return;var sw=$('#poolSwitch');sw.classList.toggle('on',!!d.enabled);$('#poolSwitchTxt').textContent=d.enabled?'Hand-outs on':'Hand-outs off';
