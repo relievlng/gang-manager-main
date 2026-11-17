@@ -104,7 +104,7 @@ def _gang_role_ids(guild: "discord.Guild", store: dict) -> set[int]:
 
 # Fixed rank hierarchy for the website, highest first. Ranks not listed here
 # show after these, ordered by their Discord position. Edit this list to reorder.
-_RANK_ORDER = ["bot", "gov", "shodai", "leadership", "hierarchy", "honorary", "tenshi"]
+_RANK_ORDER = ["bot", "gov", "shodai", "leadership", "hierarchy", "honorary"]
 # Roles never shown on the website — not as chips, rank groups, or add options.
 _HIDDEN_ROLES = {".", "cee fuck", "ceefu"}
 
@@ -4953,7 +4953,9 @@ async def _h_stats(request):
             fleet = [{
                 "name": (str(bot.user.name) if getattr(bot, "user", None) else "Gang Manager"),
                 "role": "distributor",
-                "online": True, "off": False, "off_reason": "",
+                "online": bool(bot.is_ready()) and not MAIN_OFF["v"],
+                "off": MAIN_OFF["v"],
+                "off_reason": "turned off (maintenance)" if MAIN_OFF["v"] else "",
                 "ping": smoothed_latency_ms(bot),
             }]
             for b in pool_overview().get("bots", []):
@@ -5294,25 +5296,25 @@ a.link,.link{color:var(--brand2)}
     @media(max-width:560px){.fleetgrid{grid-template-columns:1fr}}
     </style>
     <div class=card id=fleetCard>
-      <h3>🛰️ Fleet</h3>
-      <p class=hint>Your two lead bots — the main bot (this service) and the staff bot (GM Support). The pool workers are the <b>sub-fleet</b> below.</p>
+      <h3>🛰️ Staff &amp; distribution</h3>
+      <p class=hint>Your two lead bots — the <b>staff</b> bot (GM Support) and the <b>distribution</b> bot (the main service). The pool workers are the <b>sub-fleet</b> below.</p>
       <div class=fleetgrid>
         <div class=fbot>
-          <div class=fbh><span class=fdot id=fMainDot></span><b id=fMainName>Main bot</b><span class=ftag>Distributor</span></div>
-          <div class=fbs id=fMainState>…</div>
-          <div class=fbtns>
-            <button class="ghost sm" data-fleet=main data-act=off id=fMainOff>⏻ Turn off</button>
-            <button class="ghost sm" data-fleet=main data-act=on id=fMainOn style=display:none>▶ Turn on</button>
-            <button class="ghost sm" data-fleet=main data-act=restart>↻ Restart</button>
-          </div>
-        </div>
-        <div class=fbot>
-          <div class=fbh><span class=fdot id=fStaffDot></span><b id=fStaffName>Staff bot</b><span class=ftag>Support</span></div>
+          <div class=fbh><span class=fdot id=fStaffDot></span><b id=fStaffName>Staff bot</b><span class=ftag>Staff</span></div>
           <div class=fbs id=fStaffState>…</div>
           <div class=fbtns>
             <button class="ghost sm" data-fleet=staff data-act=off id=fStaffOff>⏻ Turn off</button>
             <button class="ghost sm" data-fleet=staff data-act=on id=fStaffOn style=display:none>▶ Turn on</button>
             <button class="ghost sm" data-fleet=staff data-act=restart>↻ Restart</button>
+          </div>
+        </div>
+        <div class=fbot>
+          <div class=fbh><span class=fdot id=fMainDot></span><b id=fMainName>Main bot</b><span class=ftag>Distribution</span></div>
+          <div class=fbs id=fMainState>…</div>
+          <div class=fbtns>
+            <button class="ghost sm" data-fleet=main data-act=off id=fMainOff>⏻ Turn off</button>
+            <button class="ghost sm" data-fleet=main data-act=on id=fMainOn style=display:none>▶ Turn on</button>
+            <button class="ghost sm" data-fleet=main data-act=restart>↻ Restart</button>
           </div>
         </div>
       </div>
@@ -5594,7 +5596,12 @@ a.link,.link{color:var(--brand2)}
     message:(target==='main'&&action==='off')?'Servers on the main bot stop responding until you turn it back on.':(action==='restart'?'It will drop offline and reconnect in a moment.':'It goes offline until you turn it back on.'),
     confirmText:action==='off'?'Turn off':'Restart',
     danger:action==='off'
-   }).then(function(ok){if(ok)go()});
+   }).then(function(ok){
+    if(!ok)return;
+    if(target==='main'&&action==='off'){
+     confirmBox({icon:'⚠️',title:'Are you absolutely sure?',message:'This takes the main bot offline for every server. Type OFF to confirm.',confirmText:'Turn off the main bot',danger:true,input:'Type OFF'}).then(function(v){if(v===null)return;if(String(v).trim().toUpperCase()==='OFF')go();else toast('Didn’t match — type OFF to confirm',true)});
+    }else{go()}
+   });
   }
   function loadBots(){loadFleet();loadBrand();var box=$('#poolList');if(!POOL)box.innerHTML='<div class=sk style=height:68px></div><div class=sk style=height:68px></div>';api('/api/admin/pool').then(function(d){if(!d||!d.ok){box.innerHTML='<div class=pad>'+esc((d&&d.error)||'Could not load.')+'</div>';return}POOL=d;renderPool()})}
   function renderPool(){var d=POOL;if(!d)return;var sw=$('#poolSwitch');sw.classList.toggle('on',!!d.enabled);$('#poolSwitchTxt').textContent=d.enabled?'Hand-outs on':'Hand-outs off';
@@ -5987,9 +5994,18 @@ async def _apply_fleet_brand(avatar, banner, bio, by):
             _FLEET_BRAND["progress"] = {"done": len(results), "total": len(clients),
                                         "results": list(results), "running": True}
             await asyncio.sleep(1.0)
+        # push the same look to the staff bot too (separate service)
+        try:
+            sres = await _staff_brand_call(avatar, banner, bio)
+        except Exception:  # noqa: BLE001
+            sres = None
+        if sres is not None:
+            results.append({"name": sres.get("name") or "Gang Manager Staff",
+                            "changed": sres.get("changed") or [],
+                            "errors": sres.get("errors") or []})
     finally:
         _FLEET_BRAND["running"] = False
-        _FLEET_BRAND["progress"] = {"done": len(results), "total": len(clients),
+        _FLEET_BRAND["progress"] = {"done": len(results), "total": len(results),
                                     "results": results, "running": False}
         brand = DATA.setdefault("fleet_brand", {})
         brand["last_run"] = {
@@ -6017,6 +6033,12 @@ async def _h_admin_bot_profile(request):
         fleet_names = [bn or "Gang Manager"]
         for b in pool_overview().get("bots", []):
             fleet_names.append(b.get("name") or "bot")
+        try:
+            sp = await _staff_power_call("GET")
+            if sp and sp.get("name"):
+                fleet_names.append(sp["name"])
+        except Exception:  # noqa: BLE001
+            pass
         return _admin_json({
             "ok": True,
             "bio": brand.get("bio", ""),
@@ -6110,6 +6132,32 @@ async def _staff_power_call(method, action=None):
                 return {"ok": False, "error": "staff bot returned " + str(r.status)}
     except Exception:  # noqa: BLE001
         return None
+
+
+async def _staff_brand_call(avatar, banner, bio):
+    """Push the fleet avatar/banner/bio to the staff bot (separate service), so it
+    changes together with the pool. Multipart. Returns the staff bot's result, or
+    None if it's unreachable."""
+    base = _staff_base()
+    secret = (os.getenv("MFA_SECRET") or os.getenv("WEBHOOK_SECRET") or "").strip()
+    if not base or not secret or _aiohttp is None:
+        return None
+    try:
+        fd = _aiohttp.FormData()
+        if avatar is not None:
+            fd.add_field("avatar", avatar, filename="avatar.png", content_type="application/octet-stream")
+        if banner is not None:
+            fd.add_field("banner", banner, filename="banner.png", content_type="application/octet-stream")
+        if bio is not None:
+            fd.add_field("bio", bio)
+        timeout = _aiohttp.ClientTimeout(total=45)
+        async with _aiohttp.ClientSession(timeout=timeout) as s:
+            async with s.post(base + "/internal/brand", data=fd, headers={"X-Guard-Token": secret}) as r:
+                if r.status == 200:
+                    return await r.json(content_type=None)
+                return {"ok": False, "name": "Gang Manager Staff", "changed": [], "errors": ["staff bot " + str(r.status)]}
+    except Exception:  # noqa: BLE001
+        return {"ok": False, "name": "Gang Manager Staff", "changed": [], "errors": ["unreachable"]}
 
 
 async def _h_admin_fleet(request):
