@@ -11,6 +11,35 @@ def _roster_role(guild: discord.Guild, store: dict[str, Any]) -> discord.Role | 
     return guild.get_role(rid) if rid else None
 
 
+async def _ensure_members(guild: discord.Guild) -> None:
+    """Make sure the member list is loaded so ``role.members`` is accurate before
+    building a roster. A no-op when the guild is already cached or the members
+    intent is off — never raises."""
+    try:
+        if not guild.chunked:
+            await guild.chunk()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _apply_roster_roles(
+    guild: discord.Guild, store: dict[str, Any], roles: "list[discord.Role]"
+) -> list[str]:
+    """Set the roster's ranks to exactly the picked roles — the clean way to choose
+    what shows up. Keeps any custom rank name already mapped to a role, else uses
+    the role's own name. Highest role first, capped at 25 (Discord's field limit)."""
+    old_names = {r["role_id"]: r["name"] for r in store.get("ranks", [])}
+    # drop @everyone / managed (bot, booster, integration) roles — never rostered
+    clean = [r for r in roles if not r.is_default() and not r.managed]
+    picked = sorted(clean, key=lambda r: r.position, reverse=True)[:25]
+    store["ranks"] = [
+        {"name": (old_names.get(role.id) or role.name).strip() or role.name,
+         "role_id": role.id}
+        for role in picked
+    ]
+    return [r["name"] for r in store["ranks"]]
+
+
 def _live_roster_embed(
     guild: discord.Guild, store: dict[str, Any]
 ) -> discord.Embed:
@@ -101,6 +130,54 @@ class RosterRefreshView(GatedView):
 
 
 ROSTER_REFRESH_VIEW = RosterRefreshView()
+
+
+class RosterRolesPicker(GatedView):
+    """A native Discord role picker — leadership ticks which server roles make up
+    the roster, and each becomes a rank ordered by its place in the server. Opens
+    pre-filled with the current selection, so it doubles as the editor."""
+
+    def __init__(self, guild: discord.Guild, store: dict[str, Any]) -> None:
+        super().__init__(timeout=300)
+        current = []
+        for r in store.get("ranks", []):
+            role = guild.get_role(r["role_id"])
+            if role is not None:
+                current.append(role)
+        select = discord.ui.RoleSelect(
+            placeholder="Pick the roles that make up your roster…",
+            min_values=0,
+            max_values=25,
+            default_values=current[:25],
+            custom_id="roster:roles_pick",
+        )
+        select.callback = self._on_pick
+        self._select = select
+        self.add_item(select)
+
+    async def _on_pick(self, interaction: discord.Interaction) -> None:
+        store = guild_store(DATA, interaction.guild_id)
+        names = _apply_roster_roles(interaction.guild, store, self._select.values)
+        save_data(DATA)
+        if names:
+            listing = "\n".join(f"`{i + 1:>2}` {n}" for i, n in enumerate(names))
+            body = (
+                f"**Roster roles set — {len(names)} rank(s), top to bottom:**\n{listing}\n\n"
+                "Run `/roster view` to see everyone grouped by these. Re-open this to change it."
+            )
+        else:
+            body = (
+                "Cleared — no roles are on the roster right now. "
+                "Pick some above to rebuild it."
+            )
+        await interaction.response.edit_message(content=body[:2000], view=self)
+        await send_log(
+            interaction.guild,
+            store,
+            f"🎯 {interaction.user.mention} set **{len(names)}** roster role(s) with the picker.",
+            category="roster",
+            actor=interaction.user,
+        )
 
 
 _ID_RE = re.compile(r"(\d{17,20})")
@@ -307,11 +384,32 @@ async def roster_import_roles(interaction: discord.Interaction) -> None:
 
 
 @roster_group.command(
+    name="roles",
+    description="Pick which server roles make up the roster (leadership)",
+)
+async def roster_roles(interaction: discord.Interaction) -> None:
+    if await _deny(interaction, "set roster roles"):
+        return
+    store = guild_store(DATA, interaction.guild_id)
+    view = RosterRolesPicker(interaction.guild, store)
+    await interaction.response.send_message(
+        "**Roster roles**\n"
+        "Tick every role that should appear on the roster — each becomes a rank, "
+        "ordered by its place in your server. @everyone and bot roles are ignored. "
+        "Re-open this any time to change the selection.",
+        view=view,
+        ephemeral=True,
+    )
+
+
+@roster_group.command(
     name="view",
     description="Show the roster, built live from your rank roles",
 )
 async def roster_view(interaction: discord.Interaction) -> None:
+    await interaction.response.defer()
     store = guild_store(DATA, interaction.guild_id)
+    await _ensure_members(interaction.guild)
     embed = _live_roster_embed(interaction.guild, store)
     await _send_card(interaction, [embed], RosterRefreshView)
 
