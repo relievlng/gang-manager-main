@@ -66,6 +66,9 @@ from .pool import (
     restart_bot,
     disable_bot,
     enable_bot,
+    disable_all_bots,
+    enable_all_bots,
+    restart_all_bots,
     set_pool_enabled,
     set_admin_guild,
 )
@@ -5117,7 +5120,7 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
       <p class=hint style="margin:6px 0 0;opacity:.7">To get the ID: Discord → Settings → Advanced → turn on Developer Mode, then right-click your server → Copy Server ID.</p>
     </div>
     <div class=card>
-      <div class=toolbar style=margin-bottom:8px><input id=poolSearch placeholder="Search bots or servers…" autocomplete=off><button class="ghost sm" id=poolRefresh>↻ Refresh</button></div>
+      <div class=toolbar style=margin-bottom:8px><input id=poolSearch placeholder="Search bots or servers…" autocomplete=off><button class="ghost sm" id=poolRefresh>↻ Refresh</button><span style=flex:1></span><button class="ghost sm" id=poolAllRestart>🔄 Restart all</button><button class="ghost sm" id=poolAllOn>▶ Turn all on</button><button class="ghost sm" id=poolAllOff>⏻ Turn all off</button></div>
       <div id=poolList></div>
     </div>
   </div>
@@ -5231,6 +5234,14 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
     if(a==='enable'){x.disabled=true;api('/api/admin/pool/action','POST',{action:'enable',bot_id:b}).then(function(r){x.disabled=false;if(r.ok){toast('Turning on…');setTimeout(loadBots,3000)}else toast(r.error||'Failed',true)});return}
     if(a==='free'){var g=x.getAttribute('data-g');confirmBox({icon:'↩️',title:'Remove from this server?',message:'The bot leaves this server and that slot frees up. The server can add a bot again from the panel — its subscription isn’t touched.',confirmText:'Remove bot',danger:true}).then(function(ok){if(!ok)return;x.disabled=true;api('/api/admin/pool/action','POST',{action:'free',bot_id:b,guild:g}).then(function(r){x.disabled=false;if(r.ok){toast('Removed from the server');loadBots();loadSubs()}else toast(r.error||'Failed',true)})});return}
     if(a==='remove'){var g=x.getAttribute('data-g');confirmBox({icon:'🗑️',title:'Remove from the pool?',message:g?'This bot is serving a server — removing it makes it leave that server and forgets its token.':'Its token is forgotten. You can add it back any time.',confirmText:'Remove',danger:true}).then(function(ok){if(!ok)return;x.disabled=true;api('/api/admin/pool/action','POST',{action:'remove',bot_id:b,force:!!g}).then(function(r){x.disabled=false;if(r.ok){toast('Removed');loadBots();loadSubs()}else toast(r.error||'Failed',true)})})}}
+  function poolAll(a){var conf=null;
+    if(a==='all_off')conf={icon:'⏻',title:'Turn off every bot?',message:'All pool bots go offline and stay off across restarts. Any server a bot is serving goes offline until you turn the fleet back on — tokens and server assignments are kept.',confirmText:'Turn all off',danger:true};
+    else if(a==='all_restart')conf={icon:'🔄',title:'Restart every bot?',message:'Every enabled bot reconnects. Servers blip offline for a few seconds while they come back.',confirmText:'Restart all'};
+    function go(){var ids=['poolAllRestart','poolAllOn','poolAllOff'];ids.forEach(function(id){var b=$('#'+id);if(b)b.disabled=true});
+      api('/api/admin/pool/action','POST',{action:a}).then(function(r){ids.forEach(function(id){var b=$('#'+id);if(b)b.disabled=false});
+        if(r.ok){toast((a==='all_off'?'Turned off ':a==='all_on'?'Turning on ':'Restarting ')+(r.count||0)+'/'+(r.total||0)+' bots');setTimeout(function(){loadBots();loadSubs()},a==='all_off'?600:3000)}
+        else toast(r.error||'Failed',true)})}
+    if(conf)confirmBox(conf).then(function(ok){if(ok)go()});else go()}
   function togglePool(){if(!POOL)return;var on=!POOL.enabled;function go(){api('/api/admin/pool/action','POST',{action:'toggle',enabled:on}).then(function(r){if(r.ok){POOL.enabled=r.enabled;renderPool();toast(r.enabled?'Hand-outs on — new servers get their own bot':'Hand-outs off — new servers get the main bot')}else toast(r.error||'Failed',true)})}
     if(on&&!((POOL.counts||{}).free>0)){confirmBox({icon:'🤖',title:'Turn hand-outs on?',message:'No pool bot is online and free right now, so new servers will keep getting the main bot until one is.',confirmText:'Turn on'}).then(function(ok){if(ok)go()})}else go()}
   function saveHub(){var v=(($('#poolHub').value)||'').replace(/[^0-9]/g,'');api('/api/admin/pool/action','POST',{action:'hub',guild:v}).then(function(r){if(r.ok){if(POOL){POOL.admin_guild=r.admin_guild;POOL.main_hub_invite=r.main_hub_invite}$('#poolHubMsg').textContent=r.admin_guild?'Hub saved. Add the bots with the button, or the 🏠 link on each bot.':'Hub server cleared.';loadBots()}else toast(r.error||'Failed',true)})}
@@ -5249,7 +5260,7 @@ input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,
   function cmdkBuild(q){q=(q||'').toLowerCase();var items=[];var nav=[['subs','📂','Subscriptions'],['bans','⛔','Bans'],['shop','🧾','Shop log'],['staff','🛡️','Staff access']];if(STATE.owner){nav.push(['bots','🤖','Bots']);nav.push(['audit','📜','Audit log'])}nav.forEach(function(n){if(!q||n[2].toLowerCase().indexOf(q)>=0)items.push({t:'tab',id:n[0],ic:n[1],label:n[2],sub:'Section'})});SERVERS.forEach(function(s){if(!q||(s.name||'').toLowerCase().indexOf(q)>=0||String(s.id).indexOf(q)>=0)items.push({t:'srv',id:s.id,ic:'🌐',label:s.name,sub:bucket(s)})});cmdkItems=items.slice(0,40);cmdkSel=0;cmdkRender()}
   function cmdkRender(){$('#cmdkList').innerHTML=cmdkItems.length?cmdkItems.map(function(it,i){return '<div class="ci'+(i===cmdkSel?' sel':'')+'" data-i="'+i+'"><span class=cig>'+it.ic+'</span><span>'+esc(it.label)+'</span><span class=cis>'+esc(it.sub)+'</span></div>'}).join(''):'<div class=pad>No matches</div>';$('#cmdkList').querySelectorAll('.ci').forEach(function(el){el.onclick=function(){cmdkSel=parseInt(el.getAttribute('data-i'),10);cmdkGo()}})}
   function cmdkGo(){var it=cmdkItems[cmdkSel];if(!it){return}closeCmdk();if(it.t==='tab'){selectTab(it.id)}else{selectTab('subs');SUBFILTER='all';SUBQ='';$('#subSearch').value=String(it.id);SUBQ=String(it.id);renderFilters();renderSubs();toast('Jumped to '+it.label)}}
-  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
+  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
   document.addEventListener('input',function(e){var t=e.target;if(t.id==='subSearch'){SUBQ=t.value;renderSubs()}if(t.id==='shopSearch'){SHOPQ=t.value;renderShop()}if(t.id==='banSearch'){BANQ=t.value;renderBans()}if(t.id==='poolSearch'){POOLQ=t.value;renderPool()}if(t.id==='auditSearch'){AUDITQ=t.value;renderAudit()}if(t.id==='cmdkInput'){cmdkBuild(t.value)}});
   document.addEventListener('change',function(e){if(e.target.id==='subSort'){SUBSORT=e.target.value;renderSubs()}});
   document.addEventListener('keydown',function(e){
@@ -5565,6 +5576,16 @@ async def _h_admin_pool_action(request):
         _audit(request, uid, "pool_hub", str(g or ""), "cleared" if not g else "")
         return _admin_json({"ok": True, "admin_guild": g,
                             "main_hub_invite": _invite_url(g) if g else ""})
+    if action in ("all_off", "all_on", "all_restart"):
+        if action == "all_off":
+            res = await disable_all_bots()
+        elif action == "all_on":
+            res = await enable_all_bots()
+        else:
+            res = await restart_all_bots()
+        log.info("admin pool %s by=%s -> %s/%s", action, uid, res.get("count"), res.get("total"))
+        _audit(request, uid, f"pool_{action}", "", f"{res.get('count')}/{res.get('total')} bots")
+        return _admin_json(res)
     bid = str(body.get("bot_id") or "")
     if not bid.isdigit():
         return _admin_json({"ok": False, "error": "bad bot id"}, 400)

@@ -856,6 +856,48 @@ async def enable_bot(bid) -> dict:
     return {"ok": bool(ok), "off": False}
 
 
+async def disable_all_bots() -> dict:
+    """Turn every pool bot off at once (each stays off across restarts)."""
+    ids = list(pool_state()["bots"].keys())
+    done = 0
+    for b in ids:
+        try:
+            await disable_bot(b)
+            done += 1
+        except Exception as exc:  # noqa: BLE001
+            log.warning("disable_all: bot %s failed: %s", b, exc)
+    log.info("Bot pool: turned off %d/%d bots.", done, len(ids))
+    return {"ok": True, "count": done, "total": len(ids)}
+
+
+async def enable_all_bots() -> dict:
+    """Turn every pool bot back on and bring them online."""
+    ids = list(pool_state()["bots"].keys())
+    done = 0
+    for b in ids:
+        try:
+            await enable_bot(b)
+            done += 1
+        except Exception as exc:  # noqa: BLE001
+            log.warning("enable_all: bot %s failed: %s", b, exc)
+    log.info("Bot pool: turned on %d/%d bots.", done, len(ids))
+    return {"ok": True, "count": done, "total": len(ids)}
+
+
+async def restart_all_bots() -> dict:
+    """Reconnect every enabled pool bot at once (disabled ones stay off)."""
+    ids = [b for b, r in pool_state()["bots"].items() if not r.get("disabled")]
+    done = 0
+    for b in ids:
+        try:
+            await restart_bot(b)
+            done += 1
+        except Exception as exc:  # noqa: BLE001
+            log.warning("restart_all: bot %s failed: %s", b, exc)
+    log.info("Bot pool: restarted %d/%d bots.", done, len(ids))
+    return {"ok": True, "count": done, "total": len(ids)}
+
+
 def pool_overview() -> dict:
     """Everything Admin → Bots shows. Never includes tokens."""
     rows = []
@@ -929,4 +971,5 @@ __all__ = [
     "admin_guild", "set_admin_guild",
     "assign_bot_for_guild", "reclaim_stale", "add_tokens", "start_pool", "stop_worker",
     "free_bot", "remove_bot", "restart_bot", "disable_bot", "enable_bot", "pool_overview",
+    "disable_all_bots", "enable_all_bots", "restart_all_bots",
 ]
