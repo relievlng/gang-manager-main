@@ -963,6 +963,42 @@ def smoothed_latency_ms(client) -> "int | None":
     return int(round(floor))
 
 
+def guild_bot_status(guild_id) -> "dict | None":
+    """The pool bot assigned to a server and its REAL status — the actual assigned
+    bot (Online / Offline / Disabled / Not in the server), never the main-bot
+    fallback. Returns None when no pool bot is assigned (the main bot serves it).
+    Keys: bot_name, bot_id, bot_label ('Bot 3'), bot_status, bot_online, bot_ping."""
+    gid = str(guild_id)
+    bots = (pool_state().get("bots") or {})
+    ordered = sorted(bots.items(), key=lambda kv: (kv[1].get("added_at") or ""))
+    for idx, (bid, rec) in enumerate(ordered):
+        if gid not in _assigns(rec):
+            continue
+        online = _is_online(bid)
+        w = _client(bid)
+        in_guild = bool(online and w is not None and gid.isdigit() and w.get_guild(int(gid)) is not None)
+        if rec.get("disabled"):
+            status, is_up = "Disabled", False
+        elif not online:
+            status, is_up = "Offline", False
+        elif not in_guild:
+            status, is_up = "Not in the server", False
+        else:
+            status, is_up = "Online", True
+        name = rec.get("name") or ""
+        if not name and w is not None and getattr(w, "user", None) is not None:
+            name = str(w.user.name)
+        return {
+            "bot_name": name or str(bid),
+            "bot_id": str(bid),
+            "bot_label": f"Bot {idx + 1}",
+            "bot_status": status,
+            "bot_online": is_up,
+            "bot_ping": (smoothed_latency_ms(w) if online else None),
+        }
+    return None
+
+
 def pool_overview() -> dict:
     """Everything Admin → Bots shows. Never includes tokens."""
     rows = []

@@ -60,6 +60,7 @@ from .settings import CONFIG_SETTINGS, _SETTING_EMOJI, _LOG_KEYS, ensure_log_cha
 from .pool import (
     assign_bot_for_guild,
     pool_overview,
+    guild_bot_status,
     smoothed_latency_ms,
     add_tokens,
     free_bot,
@@ -4229,34 +4230,32 @@ async def _h_sub_check(request):
 
 
 def _bot_info_for_guild(gid):
-    """Who serves this server, for support tickets: {bot_name, bot_id, bot_label
-    ('Bot 3' / 'Main bot'), bot_online, bot_ping}."""
+    """Who serves this server and their REAL status, for support tickets. Reports
+    the actual assigned pool bot (Online / Offline / Disabled / Not in the server),
+    or the main bot when none is assigned — never a misleading fallback."""
+    info = guild_bot_status(gid)
+    if info is not None:
+        return info
+    # No pool bot assigned — the main bot serves it.
+    u = getattr(bot, "user", None)
     try:
-        c = designated_client(int(gid))
-    except (TypeError, ValueError):
-        c = None
-    u = getattr(c, "user", None)
-    if c is None or u is None:
-        return {"bot_name": "", "bot_id": "", "bot_label": "", "bot_online": False, "bot_ping": None}
-    label = "Main bot"
-    if WORKERS and c is not bot:
-        for i, w in enumerate(WORKERS):
-            if w is c:
-                label = f"Bot {i + 1}"
-                break
-    try:
-        online = bool(c.is_ready())
+        online = bool(bot.is_ready())
     except Exception:  # noqa: BLE001
         online = False
     ping = None
     try:
-        lat = c.latency
+        lat = bot.latency
         if lat is not None and lat == lat and lat not in (float("inf"), float("-inf")):
             ping = max(0, round(lat * 1000))
     except Exception:  # noqa: BLE001
         ping = None
-    return {"bot_name": str(getattr(u, "name", "") or ""), "bot_id": str(getattr(u, "id", "") or ""),
-            "bot_label": label, "bot_online": online, "bot_ping": ping}
+    return {
+        "bot_name": str(getattr(u, "name", "") or "") if u is not None else "",
+        "bot_id": str(getattr(u, "id", "") or "") if u is not None else "",
+        "bot_label": "Main bot",
+        "bot_status": "Online" if online else "Offline",
+        "bot_online": online, "bot_ping": ping,
+    }
 
 
 async def _h_support_verify(request):
