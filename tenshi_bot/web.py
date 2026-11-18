@@ -1303,6 +1303,31 @@ async def _staff_invoice_call(user_id, invoice_id, server, amount, currency, is_
         return None
 
 
+async def _staff_member_call(user_id):
+    base = _staff_base()
+    secret = (os.getenv("MFA_SECRET") or os.getenv("WEBHOOK_SECRET") or "").strip()
+    if not base or not secret or _aiohttp is None:
+        return None
+    try:
+        async with _aiohttp.ClientSession(timeout=_aiohttp.ClientTimeout(total=10)) as s:
+            async with s.get(base + "/internal/member", params={"user": str(user_id)},
+                             headers={"X-Guard-Token": secret}) as r:
+                if r.status == 200:
+                    return await r.json(content_type=None)
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
+async def _in_support(user_id):
+    """True / False if the user is in the GM Support server, or None if the support
+    bot can't be reached to check (caller decides how to handle the unknown)."""
+    res = await _staff_member_call(user_id)
+    if isinstance(res, dict) and res.get("ok"):
+        return bool(res.get("member"))
+    return None
+
+
 async def _dm_invoice(purchaser_id, invoice_id: str, guild_name: str,
                       amount: int, currency: str, is_renewal: bool = False) -> bool:
     """DM the buyer their invoice ID the moment a payment lands. Sent by the GM
@@ -4112,6 +4137,20 @@ async def _h_billing_checkout(request):
             f"<b>{html.escape(target_name)}</b> already has an active subscription.", nxt,
         )
 
+    # Must be in the GM Support server before buying — that's where invoices,
+    # tickets and updates go. Only block on a definite "no"; if the support bot
+    # can't be reached to check, let the purchase through rather than lose a sale.
+    if await _in_support(uid) is False:
+        inv = await _support_invite_resolved()
+        join = (f"<a class='b p' href='{html.escape(inv, quote=True)}' target=_blank rel=noopener>🎫 Join GM Support</a>"
+                if inv else "")
+        return _simple_page(
+            "🎫", "Join the support server first",
+            "Before subscribing, please join the <b>GM Support</b> server — that's where your "
+            "invoice, support tickets and updates are sent. Join, then come back and subscribe.",
+            join + _BACK, 403,
+        )
+
     base = _public_base(request)
     form = [
         ("mode", "subscription"),
@@ -5426,7 +5465,7 @@ a.link,.link{color:var(--brand2)}
     </style>
     <div class=card id=testBuyCard style=display:none>
       <h3>🧪 Send a test purchase</h3>
-      <p class=hint>Runs the real purchase flow for one user — DMs them a test invoice and posts the purchase log — with no charge and nothing recorded. Use it to check the DM and logs look right.</p>
+      <p class=hint>Runs the real purchase flow for one user — DMs them a test invoice and posts the purchase log — with no charge and nothing recorded. The user must be in the support server. Use it to check the DM and logs look right.</p>
       <div class=tbrow>
         <input id=tbUser placeholder="Discord user ID" autocomplete=off inputmode=numeric>
         <input id=tbServer placeholder="Server label (optional)" autocomplete=off>
@@ -6836,6 +6875,8 @@ async def _h_admin_test_purchase(request):
     amt = max(0, min(amt, 9_999_999))
     cur = (str(body.get("currency") or "USD").upper()[:8]) or "USD"
     server = (str(body.get("server") or "").strip() or "Test Server")[:100]
+    if await _in_support(target) is False:
+        return _admin_json({"ok": False, "error": "That user isn't in the support server — they need to join GM Support first."}, 400)
     invoice = "test_" + secrets.token_hex(8)
     dm_ok = await _dm_invoice(target, invoice, server, amt, cur, is_renewal=False)
     _fire(_gmlog(
