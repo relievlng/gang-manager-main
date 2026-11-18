@@ -5549,8 +5549,8 @@ a.link,.link{color:var(--brand2)}
     #shopCard .samt.mut{color:var(--mute);font-weight:600}
     @media(max-width:720px){#shopCard .shopstats{grid-template-columns:1fr 1fr}}
     #testBuyCard .tbrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
-    #testBuyCard .tbrow input{flex:1;min-width:150px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:rgba(0,0,0,.28);color:#ececf1;font:inherit}
-    #testBuyCard .tbrow input:focus{outline:none;border-color:#2f6bff;box-shadow:0 0 0 3px rgba(47,107,255,.22)}
+    #testBuyCard .tbrow input,#testBuyCard .tbrow select{flex:1;min-width:150px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:rgba(0,0,0,.28);color:#ececf1;font:inherit}
+    #testBuyCard .tbrow input:focus,#testBuyCard .tbrow select:focus{outline:none;border-color:#2f6bff;box-shadow:0 0 0 3px rgba(47,107,255,.22)}
     #testBuyCard .tbrow input#tbAmount{max-width:120px;flex:none}
     #testBuyCard .tbrow button{flex:none}
     </style>
@@ -5559,7 +5559,7 @@ a.link,.link{color:var(--brand2)}
       <p class=hint>Runs the real purchase flow for one user — DMs them a test invoice and posts the purchase log — with no charge and nothing recorded. The user must be in the support server. Use it to check the DM and logs look right.</p>
       <div class=tbrow>
         <input id=tbUser placeholder="Discord user ID" autocomplete=off inputmode=numeric>
-        <input id=tbServer placeholder="Server label (optional)" autocomplete=off>
+        <select id=tbServer><option value="">No specific server</option></select>
         <input id=tbAmount placeholder="9.99" autocomplete=off inputmode=decimal>
         <button class=brand-btn id=tbSend>Send test</button>
       </div>
@@ -5852,8 +5852,8 @@ a.link,.link{color:var(--brand2)}
     box.querySelectorAll('button[data-u]').forEach(function(x){x.onclick=function(){confirmBox({icon:'♻️',title:'Unban user?',message:'They will be able to use the bot again.',confirmText:'Unban'}).then(function(ok){if(!ok)return;api('/api/admin/unban','POST',{user_id:x.getAttribute('data-u')}).then(function(r){if(r.ok){toast('Unbanned');loadBans();loadSubs()}else toast(r.error||'Failed',true)})})}});
   }
   function doBan(){var id=$('#banId').value.trim(),rs=$('#banReason').value.trim();if(!id){toast('Enter a Discord ID',true);return}api('/api/admin/ban','POST',{user_id:id,reason:rs}).then(function(r){if(r.ok){toast('Banned');$('#banId').value='';$('#banReason').value='';loadBans();loadSubs()}else toast(r.error||'Failed',true)})}
-  function loadShop(){var box=$('#shopList');var tc=$('#testBuyCard');if(tc)tc.style.display=STATE.owner?'':'none';box.innerHTML='<div class=sk style=height:40px></div><div class=sk style=height:40px></div>';api('/api/admin/shop_log').then(function(d){if(!d.ok){box.innerHTML='<div class=pad>Could not load.</div>';return}SHOP=d.log||[];renderShop()})}
-  function sendTestBuy(){var u=($('#tbUser').value||'').trim();if(!/^\d{5,25}$/.test(u)){toast('Enter a valid Discord user ID',true);return}confirmBox({icon:'🧪',title:'Send a test purchase?',message:'DMs a test invoice to that user and posts a test purchase log. No charge, no record.',confirmText:'Send test'}).then(function(go){if(!go)return;var btn=$('#tbSend');btn.disabled=true;btn.textContent='Sending…';$('#tbMsg').textContent='';api('/api/admin/test_purchase','POST',{user_id:u,server:($('#tbServer').value||'').trim(),amount:($('#tbAmount').value||'').trim()}).then(function(r){btn.disabled=false;btn.textContent='Send test';if(r&&r.ok){$('#tbMsg').innerHTML=(r.dm==='sent'?'✅ Invoice DM delivered.':'⚠️ Logged, but couldn\'t DM them (their DMs may be closed, or they share no server with the bot).')+' · Invoice <span class="mono copy" data-copy="'+esc(r.invoice||'')+'" title="Click to copy">'+esc(r.invoice||'')+'</span>';toast('Test purchase sent')}else{toast((r&&r.error)||'Failed',true);$('#tbMsg').textContent=(r&&r.error)||'Failed'}})})}
+  function loadShop(){var box=$('#shopList');var tc=$('#testBuyCard');if(tc)tc.style.display=STATE.owner?'':'none';box.innerHTML='<div class=sk style=height:40px></div><div class=sk style=height:40px></div>';api('/api/admin/shop_log').then(function(d){if(!d.ok){box.innerHTML='<div class=pad>Could not load.</div>';return}SHOP=d.log||[];var sel=$('#tbServer');if(sel){var cur=sel.value;var o='<option value="">No specific server</option>';(d.servers||[]).forEach(function(s){o+='<option value="'+esc(s.id)+'">'+(s.active?'🟢 ':'⚪ ')+esc(s.name)+'</option>'});sel.innerHTML=o;if(cur)sel.value=cur}renderShop()})}
+  function sendTestBuy(){var u=($('#tbUser').value||'').trim();if(!/^\d{5,25}$/.test(u)){toast('Enter a valid Discord user ID',true);return}confirmBox({icon:'🧪',title:'Send a test purchase?',message:'DMs a test invoice to that user and posts a test purchase log. No charge, no record.',confirmText:'Send test'}).then(function(go){if(!go)return;var btn=$('#tbSend');btn.disabled=true;btn.textContent='Sending…';$('#tbMsg').textContent='';api('/api/admin/test_purchase','POST',{user_id:u,server_id:($('#tbServer').value||''),amount:($('#tbAmount').value||'').trim()}).then(function(r){btn.disabled=false;btn.textContent='Send test';if(r&&r.ok){$('#tbMsg').innerHTML=(r.dm==='sent'?'✅ Invoice DM delivered.':'⚠️ Logged, but couldn\'t DM them (their DMs may be closed, or they share no server with the bot).')+' · Invoice <span class="mono copy" data-copy="'+esc(r.invoice||'')+'" title="Click to copy">'+esc(r.invoice||'')+'</span>';toast('Test purchase sent')}else{toast((r&&r.error)||'Failed',true);$('#tbMsg').textContent=(r&&r.error)||'Failed'}})})}
   function relTs(t){if(!t)return '—';var s=Math.floor(Date.now()/1000)-t;if(s<60)return 'just now';var m=Math.floor(s/60);if(m<60)return m+'m ago';var h=Math.floor(m/60);if(h<24)return h+'h ago';var d=Math.floor(h/24);if(d<30)return d+'d ago';try{return new Date(t*1000).toLocaleDateString()}catch(e){return d+'d ago'}}
   function shopFiltered(){var q=SHOPQ.toLowerCase();return SHOP.filter(function(e){if(SHOPKIND!=='all'&&(e.kind||'purchase')!==SHOPKIND)return false;return !q||((e.email||'').toLowerCase().indexOf(q)>=0||(e.ip||'').indexOf(q)>=0||(e.guild_name||'').toLowerCase().indexOf(q)>=0||String(e.guild_id||'').indexOf(q)>=0||String(e.purchaser_id||'').indexOf(q)>=0||(e.session_id||'').toLowerCase().indexOf(q)>=0||(e.customer_id||'').toLowerCase().indexOf(q)>=0)})}
   function renderShopStats(list){var rev={},buyers={},np=0,nr=0;list.forEach(function(e){if(e.amount){var c=e.currency||'';rev[c]=(rev[c]||0)+e.amount}if(e.email)buyers[(e.email||'').toLowerCase()]=1;if((e.kind||'purchase')==='renewal')nr++;else np++});var revtxt=Object.keys(rev).map(function(c){return (rev[c]/100).toFixed(2)+(c?' '+c:'')}).join(' + ')||'—';function tile(n,k,ic){return '<div class=sstat><div class=si>'+ic+'</div><div><div class=n>'+n+'</div><div class=k>'+k+'</div></div></div>'}$('#shopStats').innerHTML=tile(esc(revtxt),'Revenue','💰')+tile(nf(np),'Purchases','💳')+tile(nf(nr),'Renewals','🔄')+tile(nf(Object.keys(buyers).length),'Buyers','👤')}
@@ -6944,7 +6944,17 @@ async def _h_admin_shop_log(request):
         except (TypeError, ValueError):
             pass
         rows.append({**e, "guild_name": gname})
-    return _admin_json({"ok": True, "log": rows})
+    servers = {}
+    for c in [bot, *WORKERS]:
+        for g in getattr(c, "guilds", []) or []:
+            if g.id not in servers:
+                try:
+                    active = bool(subscription_state(g.id).get("active"))
+                except Exception:  # noqa: BLE001
+                    active = False
+                servers[g.id] = {"id": str(g.id), "name": g.name, "active": active}
+    srv_list = sorted(servers.values(), key=lambda s: (not s["active"], s["name"].lower()))[:200]
+    return _admin_json({"ok": True, "log": rows, "servers": srv_list})
 
 
 async def _h_admin_test_purchase(request):
@@ -6965,7 +6975,13 @@ async def _h_admin_test_purchase(request):
         amt = 999
     amt = max(0, min(amt, 9_999_999))
     cur = (str(body.get("currency") or "USD").upper()[:8]) or "USD"
-    server = (str(body.get("server") or "").strip() or "Test Server")[:100]
+    sid = "".join(c for c in str(body.get("server_id") or "") if c.isdigit())
+    server = (str(body.get("server") or "").strip())[:100]
+    if sid:
+        g = get_guild_any(sid)
+        if g is not None:
+            server = g.name
+    server = server or "Test Server"
     if await _in_support(target) is False:
         return _admin_json({"ok": False, "error": "That user isn't in the support server — they need to join GM Support first."}, 400)
     invoice = "test_" + secrets.token_hex(8)
@@ -6977,7 +6993,7 @@ async def _h_admin_test_purchase(request):
         fields=[
             {"name": "👤 Buyer", "value": f"<@{target}>\n`{target}`", "inline": True},
             {"name": "💵 Amount", "value": f"**{amt/100:.2f} {cur}**", "inline": True},
-            {"name": "🏠 Server", "value": server, "inline": True},
+            {"name": "🏠 Server", "value": (f"{server}\n`{sid}`" if sid else server), "inline": True},
             {"name": "🧾 Invoice ID", "value": f"`{invoice}`", "inline": False},
             {"name": "📩 Invoice DM", "value": ("Delivered ✅" if dm_ok else "Couldn't DM (DMs closed / no shared server)"), "inline": True},
             {"name": "🧪 Note", "value": "Test event — no payment taken and no subscription granted.", "inline": False},
