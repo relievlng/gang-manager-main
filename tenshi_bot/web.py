@@ -5773,6 +5773,8 @@ a.link,.link{color:var(--brand2)}
           <label class=cllbl>Post to</label>
           <div style=display:flex;gap:10px;align-items:center><select id=clChannel></select><button class="ghost sm" id=clRefresh title="Reload channels">↻</button></div>
           <p class=hint id=clChanHint style=margin:6px 0 0></p>
+          <label class=cllbl>Ping role <span class=hint style=font-weight:400>— optional, @mentioned above the post</span></label>
+          <select id=clPing><option value="">No ping</option></select>
           <div class=clrow>
             <button class=ghost id=clSaveBtn>💾 Save draft</button>
             <span style=flex:1></span>
@@ -5973,7 +5975,7 @@ a.link,.link{color:var(--brand2)}
   function clToday(){try{return new Date().toISOString().slice(0,10)}catch(e){return ''}}
   function clBullets(v){return String(v||'').split('\n').map(function(x){return x.trim()}).filter(Boolean)}
   function clGather(){var sec={};CL_CATS.forEach(function(c){var el=$('#cl_'+c[0]);sec[c[0]]=el?el.value:''});
-    return {title:($('#clTitle').value||'').trim(),version:($('#clVersion').value||'').trim(),date:($('#clDate').value||'').trim(),summary:($('#clSummary').value||'').trim(),channel_id:($('#clChannel').value||'').trim(),sections:sec}}
+    return {title:($('#clTitle').value||'').trim(),version:($('#clVersion').value||'').trim(),date:($('#clDate').value||'').trim(),summary:($('#clSummary').value||'').trim(),channel_id:($('#clChannel').value||'').trim(),ping_role_id:($('#clPing').value||''),sections:sec}}
   function clRenderPreview(){var d=clGather();var title=d.title||'Gang Manager · Update';
     var html='<div class=clp-title>📋 '+esc(title)+(d.version?' · '+esc(d.version):'')+'</div>';
     if(d.summary)html+='<div class=clp-sum>'+esc(d.summary)+'</div>';var any=false;
@@ -5997,6 +5999,7 @@ a.link,.link{color:var(--brand2)}
     var sec=dr.sections||{};CL_CATS.forEach(function(c){var el=$('#cl_'+c[0]);if(el)el.value=((sec[c[0]]||[])).join('\n')});
     CL_CHANS=d.channels||[];var sel=$('#clChannel');var opts='<option value="">'+(d.staff_ok?'Default log channel':'Staff bot offline')+'</option>';
     CL_CHANS.forEach(function(c){opts+='<option value="'+c.id+'">#'+esc(c.name)+'</option>'});sel.innerHTML=opts;if(dr.channel_id)sel.value=dr.channel_id;
+    var psel=$('#clPing');if(psel){var popts='<option value="">No ping</option>';(d.roles||[]).forEach(function(r){popts+='<option value="'+esc(r.id)+'">@'+esc(r.name)+'</option>'});psel.innerHTML=popts;if(dr.ping_role_id)psel.value=dr.ping_role_id}
     $('#clChanHint').textContent=d.staff_ok?('Posts in '+(d.guild||'your server')+' · '+CL_CHANS.length+' channel'+(CL_CHANS.length===1?'':'s')+' available'):'Couldn\'t reach the staff bot — it posts the embed, so it needs to be online.';
     clRenderHistory(d.history||[]);clRenderPreview()})}
   function clSave(cb){var btn=$('#clSaveBtn');btn.disabled=true;api('/api/admin/changelog','POST',{action:'save',draft:clGather()}).then(function(r){btn.disabled=false;if(r&&r.ok){toast('Draft saved');if(cb)cb()}else{toast((r&&r.error)||'Save failed',true)}})}
@@ -6651,6 +6654,7 @@ def _sanitise_changelog(d):
         "date": str(d.get("date") or "")[:40],
         "summary": str(d.get("summary") or "")[:600],
         "channel_id": "".join(ch for ch in str(d.get("channel_id") or "") if ch.isdigit())[:25],
+        "ping_role_id": "".join(ch for ch in str(d.get("ping_role_id") or "") if ch.isdigit())[:25],
         "sections": {},
     }
     secs = d.get("sections") if isinstance(d.get("sections"), dict) else {}
@@ -6680,10 +6684,11 @@ async def _h_admin_changelog(request):
     cl.setdefault("draft", {})
     cl.setdefault("history", [])
     if request.method == "GET":
-        channels, staff_ok, guild_name, brand = [], False, "", ""
+        channels, roles, staff_ok, guild_name, brand = [], [], False, "", ""
         res = await _staff_changelog_call("GET")
         if isinstance(res, dict) and res.get("ok"):
             channels = res.get("channels") or []
+            roles = res.get("roles") or []
             guild_name = res.get("guild") or ""
             brand = res.get("brand") or ""
             staff_ok = True
@@ -6691,7 +6696,8 @@ async def _h_admin_changelog(request):
             "ok": True,
             "draft": cl.get("draft") or {},
             "history": (cl.get("history") or [])[:5],
-            "channels": channels, "staff_ok": staff_ok, "guild": guild_name, "brand": brand,
+            "channels": channels, "roles": roles, "staff_ok": staff_ok,
+            "guild": guild_name, "brand": brand,
         })
     if not _origin_ok(request):
         return _admin_json({"ok": False, "error": "Cross-site request blocked."}, 403)
