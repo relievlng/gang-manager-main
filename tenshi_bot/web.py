@@ -1213,6 +1213,8 @@ def _audit(request, actor, action: str, target: str = "", detail: str = "") -> N
     # Mirror it into its own Discord log channel via the GM Support staff bot.
     try:
         kind, title = _audit_kind(action)
+        if kind == "signin":
+            return  # admin sign-ins stay in the on-site audit log, not posted to Discord
         actor_name = _user_label(actor) or str(actor)
         who = f"<@{actor}>\n`{actor}`" if str(actor).isdigit() else f"{actor_name} (`{actor}`)"
         fields = [{"name": "👤 Who", "value": who, "inline": True}]
