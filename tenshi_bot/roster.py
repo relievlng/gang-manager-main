@@ -40,6 +40,18 @@ def _apply_roster_roles(
     return [r["name"] for r in store["ranks"]]
 
 
+def _detect_roster_roles(guild: discord.Guild) -> "list[discord.Role]":
+    """Best-guess the roster's rank roles with zero setup: the server's hoisted
+    roles (the ones shown as their own group in the member list — almost always
+    gang ranks), highest first. Falls back to any role that has real (non-bot)
+    members if nothing is hoisted. Skips @everyone and bot/booster/integration
+    roles; capped at 25 (Discord's embed-field limit)."""
+    usable = [r for r in guild.roles if not r.is_default() and not r.managed]
+    hoisted = [r for r in usable if r.hoist]
+    pool = hoisted or [r for r in usable if any(not m.bot for m in r.members)]
+    return sorted(pool, key=lambda r: r.position, reverse=True)[:25]
+
+
 def _live_roster_embed(
     guild: discord.Guild, store: dict[str, Any]
 ) -> discord.Embed:
@@ -134,8 +146,10 @@ ROSTER_REFRESH_VIEW = RosterRefreshView()
 
 class RosterRolesPicker(GatedView):
     """A native Discord role picker — leadership ticks which server roles make up
-    the roster, and each becomes a rank ordered by its place in the server. Opens
-    pre-filled with the current selection, so it doubles as the editor."""
+    the roster, each becoming a rank ordered by its place in the server. Opens
+    pre-filled with the current selection, so it doubles as the editor. Auto-detect
+    fills it from the server's rank roles (zero setup), Clear empties it, and the
+    picker itself unticks to remove."""
 
     def __init__(self, guild: discord.Guild, store: dict[str, Any]) -> None:
         super().__init__(timeout=300)
@@ -150,33 +164,73 @@ class RosterRolesPicker(GatedView):
             max_values=25,
             default_values=current[:25],
             custom_id="roster:roles_pick",
+            row=0,
         )
         select.callback = self._on_pick
         self._select = select
         self.add_item(select)
 
+    @staticmethod
+    def _body(names: "list[str]", lead: str = "") -> str:
+        if names:
+            listing = "\n".join(f"`{i + 1:>2}` {n}" for i, n in enumerate(names))
+            return (
+                f"{lead}**Roster roles — {len(names)} rank(s), top to bottom:**\n{listing}\n\n"
+                "Untick any above to remove it, or tick more. Run `/roster view` to see "
+                "everyone grouped by these."
+            )
+        return (
+            f"{lead}No roles on the roster right now. Tick some above, or tap "
+            "**✨ Auto-detect** to fill it from your server's rank roles."
+        )
+
     async def _on_pick(self, interaction: discord.Interaction) -> None:
         store = guild_store(DATA, interaction.guild_id)
         names = _apply_roster_roles(interaction.guild, store, self._select.values)
         save_data(DATA)
-        if names:
-            listing = "\n".join(f"`{i + 1:>2}` {n}" for i, n in enumerate(names))
-            body = (
-                f"**Roster roles set — {len(names)} rank(s), top to bottom:**\n{listing}\n\n"
-                "Run `/roster view` to see everyone grouped by these. Re-open this to change it."
-            )
-        else:
-            body = (
-                "Cleared — no roles are on the roster right now. "
-                "Pick some above to rebuild it."
-            )
-        await interaction.response.edit_message(content=body[:2000], view=self)
+        await interaction.response.edit_message(content=self._body(names)[:2000], view=self)
         await send_log(
             interaction.guild,
             store,
             f"🎯 {interaction.user.mention} set **{len(names)}** roster role(s) with the picker.",
             category="roster",
             actor=interaction.user,
+        )
+
+    @discord.ui.button(label="Auto-detect", style=discord.ButtonStyle.primary,
+                       emoji="✨", custom_id="roster:roles_auto", row=1)
+    async def _auto(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        store = guild_store(DATA, interaction.guild_id)
+        names = _apply_roster_roles(interaction.guild, store, _detect_roster_roles(interaction.guild))
+        save_data(DATA)
+        if names:
+            lead = (f"✨ Detected **{len(names)}** rank role(s) from your server — "
+                    "untick any that aren't gang ranks.\n\n")
+        else:
+            lead = ("Couldn't spot obvious rank roles (none are set to display separately). "
+                    "Tick them above manually.\n\n")
+        await interaction.response.edit_message(
+            content=self._body(names, lead)[:2000],
+            view=RosterRolesPicker(interaction.guild, store),
+        )
+        if names:
+            await send_log(
+                interaction.guild,
+                store,
+                f"🎯 {interaction.user.mention} auto-detected **{len(names)}** roster role(s).",
+                category="roster",
+                actor=interaction.user,
+            )
+
+    @discord.ui.button(label="Clear all", style=discord.ButtonStyle.secondary,
+                       emoji="🗑️", custom_id="roster:roles_clear", row=1)
+    async def _clear(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        store = guild_store(DATA, interaction.guild_id)
+        store["ranks"] = []
+        save_data(DATA)
+        await interaction.response.edit_message(
+            content=self._body([])[:2000],
+            view=RosterRolesPicker(interaction.guild, store),
         )
 
 
@@ -391,12 +445,22 @@ async def roster_roles(interaction: discord.Interaction) -> None:
     if await _deny(interaction, "set roster roles"):
         return
     store = guild_store(DATA, interaction.guild_id)
+    auto = ""
+    if not store.get("ranks"):
+        detected = _detect_roster_roles(interaction.guild)
+        if detected:
+            _apply_roster_roles(interaction.guild, store, detected)
+            save_data(DATA)
+            auto = (f"✨ Auto-detected **{len(store['ranks'])}** rank role(s) from your server — "
+                    "untick any that aren't gang ranks below.\n\n")
     view = RosterRolesPicker(interaction.guild, store)
     await interaction.response.send_message(
+        auto +
         "**Roster roles**\n"
         "Tick every role that should appear on the roster — each becomes a rank, "
-        "ordered by its place in your server. @everyone and bot roles are ignored. "
-        "Re-open this any time to change the selection.",
+        "ordered by its place in your server. Untick to remove. @everyone and bot roles "
+        "are ignored. Changes save instantly, and **✨ Auto-detect** refills from your "
+        "server any time.",
         view=view,
         ephemeral=True,
     )
