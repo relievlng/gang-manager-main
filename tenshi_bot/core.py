@@ -699,6 +699,8 @@ async def _send_card(
     am = allowed_mentions or discord.AllowedMentions.none()
     is_inter = isinstance(dest, discord.Interaction)
     _bot = _bot_of(dest)
+    for _e in (embeds or []):  # custom emojis on every card, posted by this bot
+        _emojify_embed(_e, _bot)
     try:
         layout = _v2_layout(embeds, _make_custom_view(make_view, _bot), header)
         if is_inter:
