@@ -4226,6 +4226,79 @@ async def _h_sub_check(request):
     return _aioweb.json_response({"active": peek_active(gid), "bot_in": get_guild_any(int(gid)) is not None})
 
 
+def _bot_for_guild(gid):
+    """(bot_name, bot_id) of the bot that serves this server — its assigned pool
+    bot, or the main bot. Empty strings when unknown."""
+    try:
+        c = designated_client(int(gid))
+    except (TypeError, ValueError):
+        c = None
+    u = getattr(c, "user", None)
+    if u is None:
+        return "", ""
+    return str(getattr(u, "name", "") or ""), str(getattr(u, "id", "") or "")
+
+
+async def _h_support_verify(request):
+    """Staff-bot lookup for Purchase Help tickets: verify an invoice ID the user
+    typed against real purchases, and report which server + bot it's for, plus the
+    user's own servers and their bots. Authed with the shared secret."""
+    secret = (os.getenv("MFA_SECRET") or os.getenv("WEBHOOK_SECRET") or "").strip()
+    if not secret or request.headers.get("X-Guard-Token", "") != secret:
+        return _aioweb.json_response({"error": "unauthorized"}, status=401)
+    uid = (request.query.get("user") or "").strip()
+    invoice = (request.query.get("invoice") or "").strip()[:120]
+    if not uid.isdigit():
+        return _aioweb.json_response({"error": "bad user"}, status=400)
+
+    match_out = None
+    if invoice:
+        for e in shop_log_list(600):
+            if str(e.get("session_id") or "") == invoice:
+                mgid = str(e.get("guild_id") or "")
+                g = get_guild_any(mgid) if mgid else None
+                bname, bid = _bot_for_guild(mgid) if mgid else ("", "")
+                match_out = {
+                    "server_id": mgid,
+                    "server_name": (g.name if g is not None else ""),
+                    "amount": e.get("amount"), "currency": e.get("currency"),
+                    "ts": e.get("ts"), "kind": e.get("kind"),
+                    "bot_name": bname, "bot_id": bid,
+                    "owned": str(e.get("purchaser_id") or "") == uid,
+                }
+                break
+
+    # the user's own servers (bought by them or subscription-linked), each with bot
+    seen = {}
+    for e in shop_log_list(600):
+        if str(e.get("purchaser_id") or "") == uid:
+            g = str(e.get("guild_id") or "")
+            if g:
+                seen[g] = True
+    for gid2, store in (DATA.get("guilds") or {}).items():
+        sub = store.get("subscription") if isinstance(store, dict) else None
+        if isinstance(sub, dict) and str(sub.get("purchaser_id") or "") == uid:
+            seen[str(gid2)] = True
+    servers = []
+    for g in list(seen)[:10]:
+        gg = get_guild_any(g)
+        try:
+            st = subscription_state(int(g))
+        except Exception:  # noqa: BLE001
+            st = {}
+        bname, bid = _bot_for_guild(g)
+        servers.append({
+            "server_id": g, "server_name": (gg.name if gg is not None else ""),
+            "active": bool(st.get("active")), "plan": st.get("plan"),
+            "bot_name": bname, "bot_id": bid,
+        })
+
+    return _aioweb.json_response({
+        "ok": True, "queried": invoice,
+        "valid": match_out is not None, "match": match_out, "servers": servers,
+    })
+
+
 async def _h_support_lookup(request):
     """Staff-bot lookup: one Discord user's Gang Manager billing, matched by the
     purchaser recorded at checkout (or by server ownership). Authed with the
@@ -6993,6 +7066,7 @@ async def start_web_server() -> None:
             _aioweb.get("/billing/portal", _h_billing_portal),
             _aioweb.get("/api/sub_check", _h_sub_check),
             _aioweb.get("/api/support_lookup", _h_support_lookup),
+            _aioweb.get("/api/support_verify", _h_support_verify),
             _aioweb.post("/api/sub_move", _h_sub_move),
             _aioweb.post("/billing/webhook", _h_billing_webhook),
             _aioweb.get("/login", _h_login),
