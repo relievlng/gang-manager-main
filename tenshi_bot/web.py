@@ -5011,8 +5011,8 @@ a{text-decoration:none;color:inherit}
 ::selection{background:rgba(255,255,255,.35)}
 ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:8px}
 header{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;padding:16px 22px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(7,7,10,.92),rgba(7,7,10,.72));backdrop-filter:blur(12px)}
-.logo{width:48px;height:48px;border-radius:10px;display:grid;place-items:center;overflow:visible;background:transparent;border:none;box-shadow:none;padding:0}
-.logo img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;display:block}
+.logo{width:56px;height:56px;border-radius:10px;display:grid;place-items:center;overflow:visible;background:transparent;border:none;box-shadow:none;padding:0}
+.logo img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;display:block;filter:drop-shadow(0 0 11px rgba(47,107,255,.55))}
 .brand{font-family:"Space Grotesk",sans-serif;font-size:19px;font-weight:700;letter-spacing:.5px;background:linear-gradient(90deg,#fff,#e8e8ee 40%,#b9b9c4 70%,#fff);background-size:200% auto;-webkit-background-clip:text;background-clip:text;color:transparent;flex:1;animation:sheen 6s linear infinite}
 @keyframes sheen{to{background-position:200% center}}
 .brand small{font-family:"Inter";font-weight:500;font-size:12px;color:var(--mute);letter-spacing:0;display:block;margin-top:-2px;-webkit-text-fill-color:var(--mute)}
