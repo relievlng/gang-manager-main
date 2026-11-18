@@ -4228,17 +4228,35 @@ async def _h_sub_check(request):
     return _aioweb.json_response({"active": peek_active(gid), "bot_in": get_guild_any(int(gid)) is not None})
 
 
-def _bot_for_guild(gid):
-    """(bot_name, bot_id) of the bot that serves this server — its assigned pool
-    bot, or the main bot. Empty strings when unknown."""
+def _bot_info_for_guild(gid):
+    """Who serves this server, for support tickets: {bot_name, bot_id, bot_label
+    ('Bot 3' / 'Main bot'), bot_online, bot_ping}."""
     try:
         c = designated_client(int(gid))
     except (TypeError, ValueError):
         c = None
     u = getattr(c, "user", None)
-    if u is None:
-        return "", ""
-    return str(getattr(u, "name", "") or ""), str(getattr(u, "id", "") or "")
+    if c is None or u is None:
+        return {"bot_name": "", "bot_id": "", "bot_label": "", "bot_online": False, "bot_ping": None}
+    label = "Main bot"
+    if WORKERS and c is not bot:
+        for i, w in enumerate(WORKERS):
+            if w is c:
+                label = f"Bot {i + 1}"
+                break
+    try:
+        online = bool(c.is_ready())
+    except Exception:  # noqa: BLE001
+        online = False
+    ping = None
+    try:
+        lat = c.latency
+        if lat is not None and lat == lat and lat not in (float("inf"), float("-inf")):
+            ping = max(0, round(lat * 1000))
+    except Exception:  # noqa: BLE001
+        ping = None
+    return {"bot_name": str(getattr(u, "name", "") or ""), "bot_id": str(getattr(u, "id", "") or ""),
+            "bot_label": label, "bot_online": online, "bot_ping": ping}
 
 
 async def _h_support_verify(request):
@@ -4259,14 +4277,13 @@ async def _h_support_verify(request):
             if str(e.get("session_id") or "") == invoice:
                 mgid = str(e.get("guild_id") or "")
                 g = get_guild_any(mgid) if mgid else None
-                bname, bid = _bot_for_guild(mgid) if mgid else ("", "")
                 match_out = {
                     "server_id": mgid,
                     "server_name": (g.name if g is not None else ""),
                     "amount": e.get("amount"), "currency": e.get("currency"),
                     "ts": e.get("ts"), "kind": e.get("kind"),
-                    "bot_name": bname, "bot_id": bid,
                     "owned": str(e.get("purchaser_id") or "") == uid,
+                    **(_bot_info_for_guild(mgid) if mgid else {}),
                 }
                 break
 
@@ -4288,11 +4305,10 @@ async def _h_support_verify(request):
             st = subscription_state(int(g))
         except Exception:  # noqa: BLE001
             st = {}
-        bname, bid = _bot_for_guild(g)
         servers.append({
             "server_id": g, "server_name": (gg.name if gg is not None else ""),
             "active": bool(st.get("active")), "plan": st.get("plan"),
-            "bot_name": bname, "bot_id": bid,
+            **_bot_info_for_guild(g),
         })
 
     return _aioweb.json_response({

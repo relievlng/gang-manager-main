@@ -22,7 +22,7 @@ _ASSET_DIR = os.path.join(os.path.dirname(__file__), "assets", "emoji")
 EMOJI: dict[str, tuple[str, str]] = {
     "app":     ("gm_app",     "📨"),
     "role":    ("gm_role",    "🎯"),
-    "active":  ("gm_active",  "🔥"),
+    "active":  ("gm_active_w", "🔥"),
     "account": ("gm_account", "🗓️"),
     "joined":  ("gm_joined",  "📥"),
     "vouch":   ("gm_vouch",   "🤝"),
@@ -32,8 +32,8 @@ EMOJI: dict[str, tuple[str, str]] = {
     "yes":     ("gm_yes",     "✅"),
     "no":      ("gm_no",      "❌"),
     "clock":   ("gm_clock",   "⏱️"),
-    "accept":  ("gm_accept",  "🏆"),
-    "deny":    ("gm_deny",    "🔒"),
+    "accept":  ("gm_accept_w", "🏆"),
+    "deny":    ("gm_deny_w",  "🔒"),
     # status-card icons
     "members": ("gm_members", "👥"),
     "servers": ("gm_servers", "🏴"),
