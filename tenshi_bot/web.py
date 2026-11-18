@@ -1214,11 +1214,12 @@ def _audit(request, actor, action: str, target: str = "", detail: str = "") -> N
     try:
         kind, title = _audit_kind(action)
         actor_name = _user_label(actor) or str(actor)
-        fields = [{"name": "Who", "value": f"{actor_name} (`{actor}`)", "inline": True}]
+        who = f"<@{actor}>\n`{actor}`" if str(actor).isdigit() else f"{actor_name} (`{actor}`)"
+        fields = [{"name": "👤 Who", "value": who, "inline": True}]
         if target:
-            fields.append({"name": "Target", "value": f"`{target}`", "inline": True})
+            fields.append({"name": "🎯 Target", "value": f"`{target}`", "inline": True})
         if detail:
-            fields.append({"name": "Detail", "value": str(detail)[:1024], "inline": False})
+            fields.append({"name": "📝 Detail", "value": str(detail)[:1024], "inline": False})
         _fire(_gmlog(kind, title, fields=fields))
     except Exception as exc:  # noqa: BLE001
         log.info("gmlog audit forward skipped: %s", exc)
@@ -1280,6 +1281,47 @@ async def _gmlog(kind: str, title: str, description: str = "", fields=None, colo
                     log.info("gmlog %s -> HTTP %s", kind, r.status)
     except Exception as exc:  # noqa: BLE001
         log.info("gmlog %s failed: %s", kind, exc)
+
+
+async def _dm_invoice(purchaser_id, invoice_id: str, guild_name: str,
+                      amount: int, currency: str, is_renewal: bool = False) -> None:
+    """DM the buyer their invoice ID the moment a payment lands, so they have a
+    reference to quote in a support ticket. Best-effort via the main bot."""
+    try:
+        pid = str(purchaser_id or "")
+        if not pid.isdigit() or not invoice_id:
+            return False
+        u = bot.get_user(int(pid)) or await bot.fetch_user(int(pid))
+        if u is None:
+            return False
+        emb = discord.Embed(
+            title="✅ Renewal confirmed" if is_renewal else "✅ Purchase confirmed",
+            description=("Thanks! Here's your receipt. **Keep your invoice ID** — quote it when "
+                         "you open a support ticket and staff can pull up your order instantly."),
+            colour=0x2f6bff,
+            timestamp=_dt.datetime.now(_dt.timezone.utc),
+        )
+        emb.add_field(name="🧾 Invoice ID", value=f"```{str(invoice_id)[:90]}```", inline=False)
+        if guild_name:
+            emb.add_field(name="Server", value=str(guild_name)[:100], inline=True)
+        amt_txt = (f"{amount/100:.2f} {currency}".strip()) if amount else ""
+        if amt_txt:
+            emb.add_field(name="Amount", value=amt_txt, inline=True)
+        emb.set_footer(text="Gang Manager · keep this for your records")
+        try:
+            base = (web_base_url() or "").rstrip("/")
+            if base:
+                emb.set_thumbnail(url=f"{base}/gm-icon.png")
+        except Exception:  # noqa: BLE001
+            pass
+        await u.send(embed=emb)
+        return True
+    except discord.Forbidden:
+        log.info("invoice DM blocked (DMs closed) for %s", purchaser_id)
+        return False
+    except Exception as exc:  # noqa: BLE001
+        log.info("invoice DM failed for %s: %s", purchaser_id, exc)
+        return False
 
 
 # admin audit action -> (log channel kind, human title for the Discord embed)
@@ -4605,16 +4647,32 @@ async def _h_billing_webhook(request):
             g = get_guild_any(gid)
             det = obj.get("customer_details") or {}
             amt = int(obj.get("amount_total") or obj.get("amount_paid") or 0)
+            cur = (obj.get("currency") or "").upper()
+            pid = _event_meta(obj, "purchaser_id") or ""
+            addr = det.get("address") if isinstance(det, dict) else None
+            country = (addr.get("country") or "") if isinstance(addr, dict) else ""
+            plan_label = (PLANS.get(DEFAULT_PLAN) or {}).get("label") or DEFAULT_PLAN
+            sid = obj.get("id") or ""
+            new_sale = etype == "checkout.session.completed"
             _fire(_gmlog(
                 "purchase",
-                "🛒 New purchase" if etype == "checkout.session.completed" else "💳 Subscription renewal",
+                "🛒 New purchase" if new_sale else "💳 Subscription renewal",
+                description=f"**{plan_label}** on **{g.name if g else gid}** — {amt/100:.2f} {cur}".strip(),
                 fields=[
-                    {"name": "Server", "value": f"{g.name if g else gid} (`{gid}`)", "inline": False},
-                    {"name": "Amount", "value": (f"{amt/100:.2f} {(obj.get('currency') or '').upper()}").strip(), "inline": True},
-                    {"name": "Email", "value": (det.get("email") or obj.get("customer_email") or "—")[:200], "inline": True},
-                    {"name": "IP", "value": (_event_meta(obj, "client_ip") or "—")[:64], "inline": True},
+                    {"name": "🏠 Server", "value": f"{g.name if g else gid}\n`{gid}`", "inline": True},
+                    {"name": "👤 Buyer", "value": (f"<@{pid}>\n`{pid}`" if str(pid).isdigit() else "—"), "inline": True},
+                    {"name": "💵 Amount", "value": (f"**{amt/100:.2f} {cur}**".strip() or "—"), "inline": True},
+                    {"name": "📦 Plan", "value": str(plan_label), "inline": True},
+                    {"name": "📧 Email", "value": (det.get("email") or obj.get("customer_email") or "—")[:200], "inline": True},
+                    {"name": "🌍 Country", "value": country or "—", "inline": True},
+                    {"name": "🌐 IP", "value": (_event_meta(obj, "client_ip") or "—")[:64], "inline": True},
+                    {"name": "🔁 Renews", "value": (f"<t:{int(until.timestamp())}:D>" if until else "—"), "inline": True},
+                    {"name": "✨ First activation", "value": ("Yes — newly unlocked 🎉" if not was_active else "No — already active"), "inline": True},
+                    {"name": "🧾 Invoice ID", "value": (f"`{str(sid)[:90]}`" if sid else "—"), "inline": False},
+                    {"name": "💳 Stripe customer", "value": f"`{obj.get('customer') or '—'}`", "inline": True},
                 ],
             ))
+            _fire(_dm_invoice(pid, sid, (g.name if g else str(gid)), amt, cur, is_renewal=not new_sale))
         except Exception:  # noqa: BLE001
             log.info("gmlog purchase skipped")
         if not was_active:
@@ -5331,7 +5389,23 @@ a.link,.link{color:var(--brand2)}
     #shopCard .samt small{display:block;font-size:10px;font-weight:600;color:var(--mute);letter-spacing:.5px}
     #shopCard .samt.mut{color:var(--mute);font-weight:600}
     @media(max-width:720px){#shopCard .shopstats{grid-template-columns:1fr 1fr}}
+    #testBuyCard .tbrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+    #testBuyCard .tbrow input{flex:1;min-width:150px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:rgba(0,0,0,.28);color:#ececf1;font:inherit}
+    #testBuyCard .tbrow input:focus{outline:none;border-color:#2f6bff;box-shadow:0 0 0 3px rgba(47,107,255,.22)}
+    #testBuyCard .tbrow input#tbAmount{max-width:120px;flex:none}
+    #testBuyCard .tbrow button{flex:none}
     </style>
+    <div class=card id=testBuyCard style=display:none>
+      <h3>🧪 Send a test purchase</h3>
+      <p class=hint>Runs the real purchase flow for one user — DMs them a test invoice and posts the purchase log — with no charge and nothing recorded. Use it to check the DM and logs look right.</p>
+      <div class=tbrow>
+        <input id=tbUser placeholder="Discord user ID" autocomplete=off inputmode=numeric>
+        <input id=tbServer placeholder="Server label (optional)" autocomplete=off>
+        <input id=tbAmount placeholder="9.99" autocomplete=off inputmode=decimal>
+        <button class=brand-btn id=tbSend>Send test</button>
+      </div>
+      <p class=hint id=tbMsg style=margin:9px 0 0></p>
+    </div>
     <div class=card id=shopCard><h3>Shop log</h3><p class=hint>Every purchase and renewal — email, server, IP and invoice captured at checkout.</p>
       <div class=shopstats id=shopStats></div>
       <div class=shoptools>
@@ -5619,7 +5693,8 @@ a.link,.link{color:var(--brand2)}
     box.querySelectorAll('button[data-u]').forEach(function(x){x.onclick=function(){confirmBox({icon:'♻️',title:'Unban user?',message:'They will be able to use the bot again.',confirmText:'Unban'}).then(function(ok){if(!ok)return;api('/api/admin/unban','POST',{user_id:x.getAttribute('data-u')}).then(function(r){if(r.ok){toast('Unbanned');loadBans();loadSubs()}else toast(r.error||'Failed',true)})})}});
   }
   function doBan(){var id=$('#banId').value.trim(),rs=$('#banReason').value.trim();if(!id){toast('Enter a Discord ID',true);return}api('/api/admin/ban','POST',{user_id:id,reason:rs}).then(function(r){if(r.ok){toast('Banned');$('#banId').value='';$('#banReason').value='';loadBans();loadSubs()}else toast(r.error||'Failed',true)})}
-  function loadShop(){var box=$('#shopList');box.innerHTML='<div class=sk style=height:40px></div><div class=sk style=height:40px></div>';api('/api/admin/shop_log').then(function(d){if(!d.ok){box.innerHTML='<div class=pad>Could not load.</div>';return}SHOP=d.log||[];renderShop()})}
+  function loadShop(){var box=$('#shopList');var tc=$('#testBuyCard');if(tc)tc.style.display=STATE.owner?'':'none';box.innerHTML='<div class=sk style=height:40px></div><div class=sk style=height:40px></div>';api('/api/admin/shop_log').then(function(d){if(!d.ok){box.innerHTML='<div class=pad>Could not load.</div>';return}SHOP=d.log||[];renderShop()})}
+  function sendTestBuy(){var u=($('#tbUser').value||'').trim();if(!/^\d{5,25}$/.test(u)){toast('Enter a valid Discord user ID',true);return}confirmBox({icon:'🧪',title:'Send a test purchase?',message:'DMs a test invoice to that user and posts a test purchase log. No charge, no record.',confirmText:'Send test'}).then(function(go){if(!go)return;var btn=$('#tbSend');btn.disabled=true;btn.textContent='Sending…';$('#tbMsg').textContent='';api('/api/admin/test_purchase','POST',{user_id:u,server:($('#tbServer').value||'').trim(),amount:($('#tbAmount').value||'').trim()}).then(function(r){btn.disabled=false;btn.textContent='Send test';if(r&&r.ok){$('#tbMsg').innerHTML=(r.dm==='sent'?'✅ Invoice DM delivered.':'⚠️ Logged, but couldn\'t DM them (their DMs may be closed, or they share no server with the bot).')+' · Invoice <span class="mono copy" data-copy="'+esc(r.invoice||'')+'" title="Click to copy">'+esc(r.invoice||'')+'</span>';toast('Test purchase sent')}else{toast((r&&r.error)||'Failed',true);$('#tbMsg').textContent=(r&&r.error)||'Failed'}})})}
   function relTs(t){if(!t)return '—';var s=Math.floor(Date.now()/1000)-t;if(s<60)return 'just now';var m=Math.floor(s/60);if(m<60)return m+'m ago';var h=Math.floor(m/60);if(h<24)return h+'h ago';var d=Math.floor(h/24);if(d<30)return d+'d ago';try{return new Date(t*1000).toLocaleDateString()}catch(e){return d+'d ago'}}
   function shopFiltered(){var q=SHOPQ.toLowerCase();return SHOP.filter(function(e){if(SHOPKIND!=='all'&&(e.kind||'purchase')!==SHOPKIND)return false;return !q||((e.email||'').toLowerCase().indexOf(q)>=0||(e.ip||'').indexOf(q)>=0||(e.guild_name||'').toLowerCase().indexOf(q)>=0||String(e.guild_id||'').indexOf(q)>=0||String(e.purchaser_id||'').indexOf(q)>=0||(e.session_id||'').toLowerCase().indexOf(q)>=0||(e.customer_id||'').toLowerCase().indexOf(q)>=0)})}
   function renderShopStats(list){var rev={},buyers={},np=0,nr=0;list.forEach(function(e){if(e.amount){var c=e.currency||'';rev[c]=(rev[c]||0)+e.amount}if(e.email)buyers[(e.email||'').toLowerCase()]=1;if((e.kind||'purchase')==='renewal')nr++;else np++});var revtxt=Object.keys(rev).map(function(c){return (rev[c]/100).toFixed(2)+(c?' '+c:'')}).join(' + ')||'—';function tile(n,k,ic){return '<div class=sstat><div class=si>'+ic+'</div><div><div class=n>'+n+'</div><div class=k>'+k+'</div></div></div>'}$('#shopStats').innerHTML=tile(esc(revtxt),'Revenue','💰')+tile(nf(np),'Purchases','💳')+tile(nf(nr),'Renewals','🔄')+tile(nf(Object.keys(buyers).length),'Buyers','👤')}
@@ -5834,7 +5909,7 @@ a.link,.link{color:var(--brand2)}
   function cmdkBuild(q){q=(q||'').toLowerCase();var items=[];var nav=[['subs','📂','Subscriptions'],['bans','⛔','Bans'],['shop','🧾','Shop log'],['staff','🛡️','Staff access']];if(STATE.owner){nav.push(['bots','🤖','Bots']);nav.push(['audit','📜','Audit log'])}nav.forEach(function(n){if(!q||n[2].toLowerCase().indexOf(q)>=0)items.push({t:'tab',id:n[0],ic:n[1],label:n[2],sub:'Section'})});SERVERS.forEach(function(s){if(!q||(s.name||'').toLowerCase().indexOf(q)>=0||String(s.id).indexOf(q)>=0)items.push({t:'srv',id:s.id,ic:'🌐',label:s.name,sub:bucket(s)})});cmdkItems=items.slice(0,40);cmdkSel=0;cmdkRender()}
   function cmdkRender(){$('#cmdkList').innerHTML=cmdkItems.length?cmdkItems.map(function(it,i){return '<div class="ci'+(i===cmdkSel?' sel':'')+'" data-i="'+i+'"><span class=cig>'+it.ic+'</span><span>'+esc(it.label)+'</span><span class=cis>'+esc(it.sub)+'</span></div>'}).join(''):'<div class=pad>No matches</div>';$('#cmdkList').querySelectorAll('.ci').forEach(function(el){el.onclick=function(){cmdkSel=parseInt(el.getAttribute('data-i'),10);cmdkGo()}})}
   function cmdkGo(){var it=cmdkItems[cmdkSel];if(!it){return}closeCmdk();if(it.t==='tab'){selectTab(it.id)}else{selectTab('subs');SUBFILTER='all';SUBQ='';$('#subSearch').value=String(it.id);SUBQ=String(it.id);renderFilters();renderSubs();toast('Jumped to '+it.label)}}
-  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-log')selectTab('log');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='brandApply')applyBrand();var _fb=t.closest&&t.closest('[data-fleet]');if(_fb){fleetPower(_fb.getAttribute('data-fleet'),_fb.getAttribute('data-act'))}if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();var _sk=t.closest&&t.closest('[data-sk]');if(_sk){SHOPKIND=_sk.getAttribute('data-sk');renderShop()}if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
+  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-log')selectTab('log');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='brandApply')applyBrand();var _fb=t.closest&&t.closest('[data-fleet]');if(_fb){fleetPower(_fb.getAttribute('data-fleet'),_fb.getAttribute('data-act'))}if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();var _sk=t.closest&&t.closest('[data-sk]');if(_sk){SHOPKIND=_sk.getAttribute('data-sk');renderShop()}if(t.id==='tbSend')sendTestBuy();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
   document.addEventListener('input',function(e){var t=e.target;if(t.id==='subSearch'){SUBQ=t.value;renderSubs()}if(t.id==='shopSearch'){SHOPQ=t.value;renderShop()}if(t.id==='banSearch'){BANQ=t.value;renderBans()}if(t.id==='poolSearch'){POOLQ=t.value;renderPool()}if(t.id==='brandBio'){brandCount()}if(t.id==='auditSearch'){AUDITQ=t.value;renderAudit()}if(t.id==='cmdkInput'){cmdkBuild(t.value)}});
   document.addEventListener('change',function(e){if(e.target.id==='subSort'){SUBSORT=e.target.value;renderSubs()}});
   document.addEventListener('keydown',function(e){
@@ -6713,6 +6788,44 @@ async def _h_admin_shop_log(request):
     return _admin_json({"ok": True, "log": rows})
 
 
+async def _h_admin_test_purchase(request):
+    """Owner-only: fire the real purchase flow for a chosen user — DM them a test
+    invoice and post the purchase log — without charging or recording anything."""
+    uid, err = _admin_owner_only(request)
+    if err is not None:
+        return err
+    if not _origin_ok(request):
+        return _admin_json({"ok": False, "error": "Cross-site request blocked."}, 403)
+    body = await _admin_body(request)
+    target = "".join(c for c in str(body.get("user_id") or "") if c.isdigit())
+    if not (5 <= len(target) <= 25):
+        return _admin_json({"ok": False, "error": "Enter the Discord user ID to send the test to."}, 400)
+    try:
+        amt = int(round(float(str(body.get("amount") or "9.99").replace(",", ".")) * 100))
+    except (TypeError, ValueError):
+        amt = 999
+    amt = max(0, min(amt, 9_999_999))
+    cur = (str(body.get("currency") or "USD").upper()[:8]) or "USD"
+    server = (str(body.get("server") or "").strip() or "Test Server")[:100]
+    invoice = "test_" + secrets.token_hex(8)
+    dm_ok = await _dm_invoice(target, invoice, server, amt, cur, is_renewal=False)
+    _fire(_gmlog(
+        "purchase",
+        "🧪 TEST purchase",
+        description=f"Test purchase sent to <@{target}> by an admin — no charge, no record created.",
+        fields=[
+            {"name": "👤 Buyer", "value": f"<@{target}>\n`{target}`", "inline": True},
+            {"name": "💵 Amount", "value": f"**{amt/100:.2f} {cur}**", "inline": True},
+            {"name": "🏠 Server", "value": server, "inline": True},
+            {"name": "🧾 Invoice ID", "value": f"`{invoice}`", "inline": False},
+            {"name": "📩 Invoice DM", "value": ("Delivered ✅" if dm_ok else "Couldn't DM (DMs closed / no shared server)"), "inline": True},
+            {"name": "🧪 Note", "value": "Test event — no payment taken and no subscription granted.", "inline": False},
+        ],
+    ))
+    _audit(request, uid, "test_purchase", target, f"{amt/100:.2f} {cur}")
+    return _admin_json({"ok": True, "invoice": invoice, "dm": "sent" if dm_ok else "blocked"})
+
+
 async def _h_admin_audit_log(request):
     """The admin-action audit trail. Owner-only — it records what staff did."""
     uid, owner = _admin_ctx(request)
@@ -6877,6 +6990,7 @@ async def start_web_server() -> None:
             _aioweb.post("/api/admin/mfa/send", _h_admin_mfa_send),
             _aioweb.post("/api/admin/mfa/verify", _h_admin_mfa_verify),
             _aioweb.get("/api/admin/shop_log", _h_admin_shop_log),
+            _aioweb.post("/api/admin/test_purchase", _h_admin_test_purchase),
             _aioweb.get("/api/admin/audit_log", _h_admin_audit_log),
         ]
     )
