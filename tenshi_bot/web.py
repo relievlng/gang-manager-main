@@ -5778,6 +5778,7 @@ a.link,.link{color:var(--brand2)}
           <div class=clrow>
             <button class=ghost id=clSaveBtn>💾 Save draft</button>
             <span style=flex:1></span>
+            <button class=ghost id=clRepostBtn style=display:none>↻ Repost last</button>
             <button class=brand-btn id=clPostBtn>📣 Post now</button>
           </div>
         </div>
@@ -5971,13 +5972,14 @@ a.link,.link{color:var(--brand2)}
    });
   }
   var CL_CATS=[['added','✨','Added'],['improved','⚡','Improved'],['fixed','🔧','Fixed'],['changed','🔀','Changed'],['removed','🗑️','Removed']];
-  var CL_CHANS=[],CL_BRAND='',CL_BOUND=false;
+  var CL_CHANS=[],CL_BRAND='',CL_BOUND=false,CL_LAST=null;
   function clToday(){try{return new Date().toISOString().slice(0,10)}catch(e){return ''}}
   function clBullets(v){return String(v||'').split('\n').map(function(x){return x.trim()}).filter(Boolean)}
   function clGather(){var sec={};CL_CATS.forEach(function(c){var el=$('#cl_'+c[0]);sec[c[0]]=el?el.value:''});
     return {title:($('#clTitle').value||'').trim(),version:($('#clVersion').value||'').trim(),date:($('#clDate').value||'').trim(),summary:($('#clSummary').value||'').trim(),channel_id:($('#clChannel').value||'').trim(),ping_role_id:($('#clPing').value||''),sections:sec}}
   function clRenderPreview(){var d=clGather();var title=d.title||'Gang Manager · Update';
-    var html='<div class=clp-title>📋 '+esc(title)+(d.version?' · '+esc(d.version):'')+'</div>';
+    var ping='';var ps=$('#clPing');if(ps&&ps.value){var po=ps.options[ps.selectedIndex];if(po&&po.text)ping='<div class=clp-ping style="margin:0 0 8px">🎉 <span style="background:rgba(88,101,242,.28);color:#c9cdfb;padding:2px 7px;border-radius:4px;font-weight:600">'+esc(po.text)+'</span></div>'}
+    var html=ping+'<div class=clp-title>📋 '+esc(title)+(d.version?' · '+esc(d.version):'')+'</div>';
     if(d.summary)html+='<div class=clp-sum>'+esc(d.summary)+'</div>';var any=false;
     CL_CATS.forEach(function(c){var items=clBullets(d.sections[c[0]]);if(!items.length)return;any=true;
       html+='<div class=clp-sec>'+c[1]+' '+esc(c[2])+'</div><div class=clp-items>'+items.map(function(x){return '• '+esc(x)}).join('<br>')+'</div>'});
@@ -5991,8 +5993,10 @@ a.link,.link{color:var(--brand2)}
     ['clTitle','clVersion','clDate','clSummary'].forEach(function(id){var el=$('#'+id);if(el)el.addEventListener('input',clRenderPreview)});
     CL_CATS.forEach(function(c){var el=$('#cl_'+c[0]);if(el)el.addEventListener('input',clRenderPreview)});
     var ch=$('#clChannel');if(ch)ch.addEventListener('change',clRenderPreview);
+    var pg=$('#clPing');if(pg)pg.addEventListener('change',clRenderPreview);
     var sb=$('#clSaveBtn');if(sb)sb.onclick=function(){clSave()};
     var pb=$('#clPostBtn');if(pb)pb.onclick=clPost;
+    var rpb=$('#clRepostBtn');if(rpb)rpb.onclick=clRepost;
     var rb=$('#clRefresh');if(rb)rb.onclick=function(){loadChangelog()}}
   function loadChangelog(){clInit();api('/api/admin/changelog').then(function(d){if(!d||!d.ok)return;CL_BRAND=d.brand||'';
     var dr=d.draft||{};$('#clTitle').value=dr.title||'';$('#clVersion').value=dr.version||'';$('#clDate').value=dr.date||clToday();$('#clSummary').value=dr.summary||'';
@@ -6003,12 +6007,16 @@ a.link,.link{color:var(--brand2)}
     $('#clChanHint').textContent=d.staff_ok?('Posts in '+(d.guild||'your server')+' · '+CL_CHANS.length+' channel'+(CL_CHANS.length===1?'':'s')+' available'):'Couldn\'t reach the staff bot — it posts the embed, so it needs to be online.';
     clRenderHistory(d.history||[]);clRenderPreview()})}
   function clSave(cb){var btn=$('#clSaveBtn');btn.disabled=true;api('/api/admin/changelog','POST',{action:'save',draft:clGather()}).then(function(r){btn.disabled=false;if(r&&r.ok){toast('Draft saved');if(cb)cb()}else{toast((r&&r.error)||'Save failed',true)}})}
+  function clChanName(d){return d.channel_id?('#'+(((CL_CHANS.filter(function(c){return c.id===d.channel_id})[0])||{}).name||'channel')):'the default log channel'}
+  function clClearBoxes(){['clTitle','clVersion','clSummary'].forEach(function(id){var e=$('#'+id);if(e)e.value=''});CL_CATS.forEach(function(c){var e=$('#cl_'+c[0]);if(e)e.value=''});var dt=$('#clDate');if(dt)dt.value=clToday();clRenderPreview()}
+  function clShowRepost(){var rb=$('#clRepostBtn');if(rb){rb.style.display='';rb.title='Repost '+((CL_LAST&&(CL_LAST.version||CL_LAST.title))||'the last changelog')}}
+  function clSendPost(d,fromBoxes){var btn=$('#clPostBtn');btn.disabled=true;btn.textContent='Posting…';var rb=$('#clRepostBtn');if(rb)rb.disabled=true;
+    api('/api/admin/changelog','POST',{action:'post',draft:d}).then(function(r){btn.disabled=false;btn.textContent='📣 Post now';if(rb)rb.disabled=false;
+      if(r&&r.ok){toast('Posted to '+(r.channel||'the channel'));if(r.history)clRenderHistory(r.history);CL_LAST=d;clShowRepost();if(fromBoxes)clClearBoxes()}else{toast((r&&r.error)||'Post failed',true)}})}
   function clPost(){var d=clGather();var has=(d.title||d.summary||CL_CATS.some(function(c){return clBullets(d.sections[c[0]]).length}));if(!has){toast('Add a title or at least one change first',true);return}
-    var chName=d.channel_id?('#'+(((CL_CHANS.filter(function(c){return c.id===d.channel_id})[0])||{}).name||'channel')):'the default log channel';
-    confirmBox({icon:'📋',title:'Post this changelog?',message:'It will be posted now to '+chName+' in the server\'s embed style.',confirmText:'Post now'}).then(function(go){if(!go)return;
-      var btn=$('#clPostBtn');btn.disabled=true;btn.textContent='Posting…';
-      api('/api/admin/changelog','POST',{action:'post',draft:d}).then(function(r){btn.disabled=false;btn.textContent='📣 Post now';
-        if(r&&r.ok){toast('Posted to '+(r.channel||'the channel'));if(r.history)clRenderHistory(r.history)}else{toast((r&&r.error)||'Post failed',true)}})})}
+    confirmBox({icon:'📋',title:'Post this changelog?',message:'It will be posted now to '+clChanName(d)+' in the server\'s embed style.',confirmText:'Post now'}).then(function(go){if(!go)return;clSendPost(d,true)})}
+  function clRepost(){if(!CL_LAST){toast('Nothing to repost yet',true);return}
+    confirmBox({icon:'↻',title:'Repost the last changelog?',message:'Posts the same update ('+esc(CL_LAST.version||CL_LAST.title||'last changelog')+') again to '+clChanName(CL_LAST)+'.',confirmText:'Repost'}).then(function(go){if(!go)return;clSendPost(CL_LAST,false)})}
   function loadBots(){loadFleet();loadBrand();var box=$('#poolList');if(!POOL)box.innerHTML='<div class=sk style=height:68px></div><div class=sk style=height:68px></div>';api('/api/admin/pool').then(function(d){if(!d||!d.ok){box.innerHTML='<div class=pad>'+esc((d&&d.error)||'Could not load.')+'</div>';return}POOL=d;renderPool()})}
   function renderPool(){var d=POOL;if(!d)return;var sw=$('#poolSwitch');sw.classList.toggle('on',!!d.enabled);$('#poolSwitchTxt').textContent=d.enabled?'Hand-outs on':'Hand-outs off';
     var c=d.counts||{};$('#poolStats').innerHTML=[['🤖',c.total,'Pool bots'],['🟢',c.online,'Online'],['🏴',c.serving,'Servers'],['⏳',c.reserved,'Reserved'],['🎟️',c.slots,'Open slots']].map(function(x){return '<div class=pst><span>'+x[0]+'</span><b>'+nf(x[1]||0)+'</b><small>'+x[2]+'</small></div>'}).join('');
