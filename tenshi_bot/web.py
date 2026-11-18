@@ -1283,14 +1283,43 @@ async def _gmlog(kind: str, title: str, description: str = "", fields=None, colo
         log.info("gmlog %s failed: %s", kind, exc)
 
 
-async def _dm_invoice(purchaser_id, invoice_id: str, guild_name: str,
-                      amount: int, currency: str, is_renewal: bool = False) -> None:
-    """DM the buyer their invoice ID the moment a payment lands, so they have a
-    reference to quote in a support ticket. Best-effort via the main bot."""
+async def _staff_invoice_call(user_id, invoice_id, server, amount, currency, is_renewal):
+    """Ask the GM Support bot to DM a buyer their invoice. Returns the staff bot's
+    JSON ({"dm": "sent"|"blocked"}) or None if it's unreachable."""
+    base = _staff_base()
+    secret = (os.getenv("MFA_SECRET") or os.getenv("WEBHOOK_SECRET") or "").strip()
+    if not base or not secret or _aiohttp is None:
+        return None
+    payload = {"user_id": str(user_id), "invoice_id": str(invoice_id), "server": str(server or ""),
+               "amount": int(amount or 0), "currency": str(currency or ""), "is_renewal": bool(is_renewal)}
     try:
-        pid = str(purchaser_id or "")
-        if not pid.isdigit() or not invoice_id:
-            return False
+        async with _aiohttp.ClientSession(timeout=_aiohttp.ClientTimeout(total=12)) as s:
+            async with s.post(base + "/internal/invoice", json=payload,
+                              headers={"X-Guard-Token": secret}) as r:
+                if r.status == 200:
+                    return await r.json(content_type=None)
+                return {"ok": False}
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def _dm_invoice(purchaser_id, invoice_id: str, guild_name: str,
+                      amount: int, currency: str, is_renewal: bool = False) -> bool:
+    """DM the buyer their invoice ID the moment a payment lands. Sent by the GM
+    Support bot (it shares the support server with users, so DMs reach them), with
+    the main bot as a fallback. Returns True if the DM was delivered."""
+    pid = str(purchaser_id or "")
+    if not pid.isdigit() or not invoice_id:
+        return False
+    # 1) Support bot first — most buyers share its server, so the DM lands.
+    try:
+        res = await _staff_invoice_call(pid, invoice_id, guild_name, amount, currency, is_renewal)
+        if isinstance(res, dict) and res.get("dm") == "sent":
+            return True
+    except Exception as exc:  # noqa: BLE001
+        log.info("staff invoice DM skipped: %s", exc)
+    # 2) Fallback to the main bot (works if it shares a server with the buyer).
+    try:
         u = bot.get_user(int(pid)) or await bot.fetch_user(int(pid))
         if u is None:
             return False
