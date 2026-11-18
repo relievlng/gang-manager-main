@@ -7492,6 +7492,15 @@ _PAGE_HTML = r"""
   .badge.live{background:rgba(34,197,94,.15);color:#86efac;border:1px solid rgba(34,197,94,.4)}
   .badge.done{background:rgba(255,255,255,.05);color:var(--mute);border:1px solid var(--line)}
 
+  /* stash: category groups, tags, sort */
+  .scat{display:flex;align-items:center;gap:9px;margin:16px 2px 9px;font-weight:800;font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:1px}
+  .scat .ic{font-size:14px}
+  .scat::before{content:"";width:3px;height:14px;border-radius:2px;background:var(--brand)}
+  .scat .pill{margin-left:auto;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:10.5px;letter-spacing:.4px;color:var(--mute);text-transform:none;font-weight:700}
+  .stcat-tag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.07);border:1px solid var(--line);color:var(--mute);text-transform:uppercase;letter-spacing:.4px}
+  .stsort{display:flex;align-items:center;justify-content:flex-end;gap:8px;font-size:12px;color:var(--mute);margin:2px 2px 12px}
+  .stsort select{padding:6px 10px;border-radius:10px;background:rgba(0,0,0,.3);border:1px solid var(--line);color:var(--text);font:inherit;font-size:12px}
+
   /* ===== premium pass: gate-grade styling across the whole panel ===== */
   body::before{
     background:
@@ -8148,21 +8157,49 @@ async function removeKos(uid,name){
   catch(e){if(e.status===401||e.status===403)return boot();toast(e.message||"Failed","err");}
 }
 
+const STASH_CATS=[
+  ["weapons","🔫","Weapons",["pistol","rifle","smg","deagle","draco","switch","glock","shotgun","revolver","sniper","knife","weapon","firearm","uzi","ak47","ak-47","mac10","mac-11","mp5","scar","carbine","machete","gun"]],
+  ["ammo","🔸","Ammo",["ammo","round","magazine"," mag","clip","bullet"]],
+  ["armor","🛡️","Armor",["armor","armour","vest","plate","kevlar"]],
+  ["drugs","🧪","Drugs",["weed","coke","cocaine","meth","crack","lean","xanax","acid","shroom","heroin","oxy","ketamine","mdma","molly","joint","blunt","baggie","drug"]],
+  ["cash","💵","Cash",["cash","money","dollar","bank","bond"]],
+  ["materials","⚙️","Materials",["metal","scrap","chem","acetone","powder","material","supply","fuel","lockpick","tool","plastic","glass","rubber","aluminium","aluminum","copper","steel","iron","part","agent","packaging"]],
+  ["other","📦","Other",[]]
+];
+function stashCat(name){const n=" "+String(name||"").toLowerCase()+" ";for(const c of STASH_CATS){if(c[3].some(k=>n.includes(k)))return c[0];}return "other";}
+function stashCatMeta(key){return STASH_CATS.find(c=>c[0]===key)||STASH_CATS[STASH_CATS.length-1];}
+function stashSort(s){if(s==="name")return (a,b)=>a.item.localeCompare(b.item);if(s==="weight")return (a,b)=>((b.qty||0)*(b.weight||0))-((a.qty||0)*(a.weight||0));return (a,b)=>(b.qty||0)-(a.qty||0);}
 function renderStash(){
   const q=$("search").value.toLowerCase();
   const all=STATE.stash||[];
   const items=all.filter(i=>i.item.toLowerCase().includes(q));
   const totQ=all.reduce((a,i)=>a+(i.qty||0),0);
   const totW=all.reduce((a,i)=>a+(i.qty||0)*(i.weight||0),0);
-  $("count").textContent=all.length+" items · "+totQ+" total"+(totW>0?" · "+(Math.round(totW*10)/10)+" kg":"");
+  const catSet=new Set(all.map(i=>stashCat(i.item)));
+  $("count").textContent=all.length+" item"+(all.length===1?"":"s")+" · "+totQ+" total"+(totW>0?" · "+(Math.round(totW*10)/10)+" kg":"");
+  const tiles=[["📦",all.length,"Items"],["🔢",totQ,"Units"],["⚖",Math.round(totW*10)/10,"Kg total"],["🗂",catSet.size,"Categories"]];
+  const stats=`<div class="stats" style="margin:0 0 14px">`+tiles.map((t,i)=>`<div class="stat" style="animation-delay:${i*45}ms"><span class="ic">${t[0]}</span><div class="n">${t[1]}</div><div class="l">${t[2]}</div></div>`).join("")+`</div>`;
   const add=`<div class="addbar"><input class="i" id="si" placeholder="Item name" onkeydown="if(event.key==='Enter')stashAdd()"><input class="q" id="sq" type="number" placeholder="Qty" value="1"><input class="q" id="sw" type="number" step="0.1" placeholder="kg ea"><button class="brand-btn" onclick="stashAdd()">Add</button></div>`;
   const drop=`<div class="drop" id="drop" onclick="$('file').click()"><div>📸 <b>Drop a stash screenshot</b> or click to upload</div><small class="muted">Reads item names + counts with OCR (weight bar ignored) — you confirm before anything is added</small><input id="file" type="file" accept="image/*" hidden></div><div id="cands" class="card" style="display:none;padding:14px;margin-bottom:14px"></div>`;
-  const list=items.length?`<ul class="members" style="gap:8px">`+items.map(stashRow).join("")+`</ul>`:`<div class="empty">Stash is empty — add an item or scan a screenshot.</div>`;
-  $("stashView").innerHTML=add+drop+list;wireDrop();
+  let body="";
+  if(!items.length){
+    body=`<div class="empty">`+(all.length?`No items match “${h($("search").value)}”.`:`Stash is empty — add an item above, or drop a screenshot to scan it in.`)+`</div>`;
+  }else{
+    const sort=window.__ssort||"qty";
+    const groups={};items.forEach(i=>{const k=stashCat(i.item);(groups[k]=groups[k]||[]).push(i);});
+    body=`<div class="stsort">Sort <select onchange="window.__ssort=this.value;renderStash()"><option value="qty"${sort==='qty'?' selected':''}>Most units</option><option value="name"${sort==='name'?' selected':''}>Name A–Z</option><option value="weight"${sort==='weight'?' selected':''}>Heaviest</option></select></div>`;
+    for(const c of STASH_CATS){const g=groups[c[0]];if(!g||!g.length)continue;g.sort(stashSort(sort));
+      const subQ=g.reduce((a,i)=>a+(i.qty||0),0);
+      body+=`<div class="scat"><span class="ic">${c[1]}</span>${c[2]}<span class="pill">${g.length} item${g.length===1?"":"s"} · ${subQ} units</span></div><ul class="members" style="gap:8px;margin-bottom:6px">`+g.map(stashRow).join("")+`</ul>`;
+    }
+  }
+  $("stashView").innerHTML=stats+add+drop+body;wireDrop();
 }
 function stashRow(i){
-  return `<li class="sitem">${i.image?`<img class="iconimg" src="${i.image}" alt="">`:`<div class="iconbox">${i.icon||"📦"}</div>`}<div class="grow"><div class="mname">${h(i.item)}</div>
-    <div class="chips"><span class="wchip">⚖ <input class="wi" type="number" step="0.1" value="${i.weight||0}" title="Weight each (kg)" onchange="stashWeight('${h(i.item)}',this.value)"> kg ea${i.weight>0?` · ${Math.round(i.qty*i.weight*10)/10} kg total`:""}</span></div></div>
+  const cm=stashCatMeta(stashCat(i.item));
+  const tot=i.weight>0?` · <b>${Math.round(i.qty*i.weight*10)/10}</b> kg`:"";
+  return `<li class="sitem">${i.image?`<img class="iconimg" src="${i.image}" alt="">`:`<div class="iconbox">${i.icon||cm[1]}</div>`}<div class="grow"><div class="mname">${h(i.item)}</div>
+    <div class="chips"><span class="stcat-tag">${cm[1]} ${cm[2]}</span><span class="wchip">⚖ <input class="wi" type="number" step="0.1" value="${i.weight||0}" title="Weight each (kg)" onchange="stashWeight('${h(i.item)}',this.value)"> kg ea${tot}</span></div></div>
     <div class="q"><button onclick="stashDelta('${h(i.item)}',-1)">−</button><span class="qn">${i.qty}</span><button onclick="stashDelta('${h(i.item)}',1)">+</button></div>
     <button class="danger" onclick="stashRemove('${h(i.item)}')">✕</button></li>`;
 }
