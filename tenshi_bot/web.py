@@ -1647,7 +1647,7 @@ def _guild_from(gid: str | None):
 async def _h_index(request):
     base = _canonical_base(request)
     note_base_url(base)  # so links the bot posts point here
-    page = _PAGE_HTML.replace("<!--GM_HEAD-->", _head_meta(base, "Gang Manager · Panel", _SITE_DESC), 1)
+    page = _bust(_PAGE_HTML.replace("<!--GM_HEAD-->", _head_meta(base, "Gang Manager · Panel", _SITE_DESC), 1))
     # never let the browser serve a stale panel page (old JS = stuck panels)
     return _aioweb.Response(
         text=page, content_type="text/html",
@@ -1666,6 +1666,33 @@ _ASSETS = {
     "/favicon.ico": ("favicon.ico", "image/x-icon"),
 }
 _ASSET_CACHE: dict[str, bytes] = {}
+_ASSET_ETAG: dict[str, str] = {}
+
+
+def _compute_asset_ver() -> str:
+    """A short hash of the brand assets' bytes — changes whenever a logo does,
+    so versioned URLs bust the browser cache on every asset update."""
+    h = hashlib.md5()
+    for fn in sorted({v[0] for v in _ASSETS.values()}):
+        try:
+            with open(os.path.join(_ASSET_DIR, fn), "rb") as f:
+                h.update(f.read())
+        except OSError:
+            pass
+    return h.hexdigest()[:10]
+
+
+_ASSET_VER = _compute_asset_ver()
+_VER_PATHS = ("/gm-logo.png", "/gm-icon.png", "/gm-banner.png", "/gm-og.png",
+              "/apple-touch-icon.png", "/favicon.ico")
+
+
+def _bust(doc: str) -> str:
+    """Append ?v=<asset version> to every brand-asset URL in a page so browsers
+    fetch the current logo instead of a stale cached copy. Apply once per page."""
+    for p in _VER_PATHS:
+        doc = doc.replace(p, f"{p}?v={_ASSET_VER}")
+    return doc
 
 
 async def _h_asset(request):
@@ -1680,8 +1707,15 @@ async def _h_asset(request):
         except OSError:
             return _aioweb.Response(status=404)
         _ASSET_CACHE[name] = data
-    return _aioweb.Response(body=data, content_type=ctype,
-                            headers={"Cache-Control": "public, max-age=86400"})
+        _ASSET_ETAG[name] = '"' + hashlib.md5(data).hexdigest()[:16] + '"'
+    etag = _ASSET_ETAG.get(name, "")
+    if etag and request.headers.get("If-None-Match") == etag:
+        return _aioweb.Response(status=304, headers={
+            "ETag": etag, "Cache-Control": "public, max-age=3600"})
+    headers = {"Cache-Control": "public, max-age=3600"}
+    if etag:
+        headers["ETag"] = etag
+    return _aioweb.Response(body=data, content_type=ctype, headers=headers)
 
 
 def _head_meta(base: str, title: str, desc: str) -> str:
@@ -1812,7 +1846,7 @@ def _legal_page(title: str, body: str) -> str:
            if is_privacy else
            "The agreement for adding and running Gang Manager in your Discord server.")
     head = _head_meta(web_base_url(), f"{title} · Gang Manager", _SITE_DESC)
-    return (
+    return _bust(
         _LEGAL_TMPL
         .replace("__HEAD__", head)
         .replace("__PON__", "on" if is_privacy else "")
@@ -2041,7 +2075,7 @@ def _simple_page(icon: str, title: str, text: str, actions: str = "", status: in
         f"<div class=ic>{icon}</div><h1>{html.escape(title)}</h1><p>{text}</p>"
         f"<div class=row>{actions}</div></div></body></html>"
     )
-    return _aioweb.Response(text=doc, status=status, content_type="text/html")
+    return _aioweb.Response(text=_bust(doc), status=status, content_type="text/html")
 
 
 _RETRY = "<a class='b p' href='/login'>Try again</a><a class='b' href='/'>Home</a>"
@@ -3936,9 +3970,9 @@ fetch("/api/me").then(function(r){return r.json();}).then(function(me){
 async def _h_landing(request):
     base = _canonical_base(request)
     note_base_url(base)
-    page = _LANDING_HTML.replace(
+    page = _bust(_LANDING_HTML.replace(
         "<!--GM_HEAD-->", _head_meta(base, "Gang Manager — the all-in-one FiveM gang bot", _SITE_DESC), 1
-    )
+    ))
     return _aioweb.Response(text=page, content_type="text/html")
 
 
@@ -4395,7 +4429,7 @@ def _billing_success_page(gid: str, brand: dict, status: int = 200):
         + _head_meta(web_base_url(), "You're subscribed · Gang Manager", _SITE_DESC)
     )
     body = _SUCCESS_HTML.replace("__GID__", gid).replace("__BRAND__", name)
-    return _aioweb.Response(text=head + body, status=status, content_type="text/html")
+    return _aioweb.Response(text=_bust(head + body), status=status, content_type="text/html")
 
 
 async def _h_billing_success(request):
@@ -5802,7 +5836,7 @@ def _user_label(uid) -> str:
 
 
 async def _h_admin(request):
-    return _aioweb.Response(text=_ADMIN_HTML, content_type="text/html",
+    return _aioweb.Response(text=_bust(_ADMIN_HTML), content_type="text/html",
                             headers={"Cache-Control": "no-store, max-age=0"})
 
 
