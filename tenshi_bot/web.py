@@ -5701,6 +5701,17 @@ a.link,.link{color:var(--brand2)}
       </div>
       <p class=hint id=hubCmdMsg style="margin:10px 0 0;opacity:.7">Takes effect instantly - no restart. The main bot's own commands here are not touched.</p>
     </div>
+    <div class=card>
+      <div class=poolhead>
+        <div><h3 style=margin:0>📝 Main server logs</h3><p class=hint style="margin:4px 0 0">Where this server's audit logs land - joins, leaves, role changes, nicknames, timeouts, bans and unbans. The main bot has no commands, so you point them here.</p></div>
+      </div>
+      <div class=frm style="margin-top:10px;align-items:center;flex-wrap:wrap">
+        <select id=mainLogSel style="min-width:240px;padding:9px 12px;border-radius:10px"></select>
+        <button class=ghost id=mainLogSave>Save</button>
+      </div>
+      <p class=hint id=mainLogMsg style="margin:8px 0 0"></p>
+      <p class=hint style="margin:6px 0 0;opacity:.7">Set the main server above first. The bot must be able to post in the channel you pick. Everything lands here unless a log type has its own channel set.</p>
+    </div>
   </div>
   <div id=pan-bots style=display:none>
     <style>
@@ -6265,7 +6276,8 @@ a.link,.link{color:var(--brand2)}
   function togglePool(){if(!POOL)return;var on=!POOL.enabled;function go(){api('/api/admin/pool/action','POST',{action:'toggle',enabled:on}).then(function(r){if(r.ok){POOL.enabled=r.enabled;renderPool();toast(r.enabled?'Hand-outs on - new servers get their own bot':'Hand-outs off - new servers get the main bot')}else toast(r.error||'Failed',true)})}
     if(on&&!((POOL.counts||{}).free>0)){confirmBox({icon:'🤖',title:'Turn hand-outs on?',message:'No pool bot is online and free right now, so new servers will keep getting the main bot until one is.',confirmText:'Turn on'}).then(function(ok){if(ok)go()})}else go()}
   function saveHub(){var v=(($('#poolHub').value)||'').replace(/[^0-9]/g,'');api('/api/admin/pool/action','POST',{action:'hub',guild:v}).then(function(r){if(r.ok){if(POOL){POOL.admin_guild=r.admin_guild;POOL.main_hub_invite=r.main_hub_invite}$('#poolHubMsg').textContent=r.admin_guild?'Hub saved. Add the bots with the button, or the 🏠 link on each bot.':'Hub server cleared.';loadBots()}else toast(r.error||'Failed',true)})}
-  function renderMain(){var d=POOL;if(!d)return;var hb=$('#mainHub');if(hb&&document.activeElement!==hb)hb.value=d.admin_guild||'';var sw=$('#hubCmdSwitch');if(sw){sw.classList.toggle('on',!d.hub_commands_off);var tx=$('#hubCmdSwitchTxt');if(tx)tx.textContent=d.hub_commands_off?'Sub-bot commands off':'Sub-bot commands on'}}
+  function renderMain(){var d=POOL;if(!d)return;var hb=$('#mainHub');if(hb&&document.activeElement!==hb)hb.value=d.admin_guild||'';var sw=$('#hubCmdSwitch');if(sw){sw.classList.toggle('on',!d.hub_commands_off);var tx=$('#hubCmdSwitchTxt');if(tx)tx.textContent=d.hub_commands_off?'Sub-bot commands off':'Sub-bot commands on'}var sel=$('#mainLogSel');if(sel){var cur=d.hub_log_channel||'';var chs=d.hub_channels||[];if(!d.admin_guild){sel.innerHTML='<option value="">(set the main server first)</option>'}else if(!chs.length){sel.innerHTML='<option value="">(no channels the bot can post in)</option>'}else{var html='<option value="">- No log channel -</option>';chs.forEach(function(c){html+='<option value="'+esc(c.id)+'"'+(String(c.id)===String(cur)?' selected':'')+'>#'+esc(c.name)+'</option>'});sel.innerHTML=html}}}
+  function saveMainLog(){var v=($('#mainLogSel')&&$('#mainLogSel').value)||'';api('/api/admin/pool/action','POST',{action:'hub_log',channel:v}).then(function(r){if(r.ok){if(POOL)POOL.hub_log_channel=r.hub_log_channel;$('#mainLogMsg').textContent=r.hub_log_channel?'Saved. Main-server logs will post there.':'Cleared - logs are off for the main server.'}else toast(r.error||'Failed',true)})}
   function loadMain(){api('/api/admin/pool').then(function(d){if(!d||!d.ok){toast((d&&d.error)||'Could not load.',true);return}POOL=d;renderMain()})}
   function saveMainHub(){var v=(($('#mainHub').value)||'').replace(/[^0-9]/g,'');api('/api/admin/pool/action','POST',{action:'hub',guild:v}).then(function(r){if(r.ok){if(POOL){POOL.admin_guild=r.admin_guild;POOL.main_hub_invite=r.main_hub_invite}$('#mainHubMsg').textContent=r.admin_guild?'Saved. Pool bots may sit in this server.':'Hub server cleared.'}else toast(r.error||'Failed',true)})}
   function toggleHubCmds(){var cur=POOL?!!POOL.hub_commands_off:false;var next=!cur;api('/api/admin/pool/action','POST',{action:'hub_cmds',off:next}).then(function(r){if(r.ok){if(POOL)POOL.hub_commands_off=r.hub_commands_off;renderMain();toast(r.hub_commands_off?'Sub-bot commands off in the hub':'Sub-bot commands on in the hub')}else toast(r.error||'Failed',true)})}
@@ -6306,7 +6318,7 @@ a.link,.link{color:var(--brand2)}
     var chName=d.channel_id?('#'+(((RL_CHANS.filter(function(c){return c.id===d.channel_id})[0])||{}).name||'channel')):'the default channel';
     confirmBox({icon:'🛡️',title:'Post these rules?',message:'They will be posted now to '+chName+' in the server\'s embed style.',confirmText:'Post now'}).then(function(go){if(!go)return;var btn=$('#rlPostBtn');btn.disabled=true;btn.textContent='Posting…';
       api('/api/admin/rules','POST',{action:'post',draft:d}).then(function(r){btn.disabled=false;btn.textContent='📣 Post now';toast(r&&r.ok?('Posted to '+(r.channel||'the channel')):((r&&r.error)||'Post failed'),!(r&&r.ok))})})}
-  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-main')selectTab('main');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-log')selectTab('log');if(t.id==='tab-rules')selectTab('rules');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='brandApply')applyBrand();var _fb=t.closest&&t.closest('[data-fleet]');if(_fb){fleetPower(_fb.getAttribute('data-fleet'),_fb.getAttribute('data-act'))}if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='mainHubSave')saveMainHub();if(t.id==='hubCmdSwitch'||(t.closest&&t.closest('#hubCmdSwitch')))toggleHubCmds();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();var _sk=t.closest&&t.closest('[data-sk]');if(_sk){SHOPKIND=_sk.getAttribute('data-sk');renderShop()}if(t.id==='tbSend')sendTestBuy();if(t.id==='tlSend')sendTestLogs();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
+  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-main')selectTab('main');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-log')selectTab('log');if(t.id==='tab-rules')selectTab('rules');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='brandApply')applyBrand();var _fb=t.closest&&t.closest('[data-fleet]');if(_fb){fleetPower(_fb.getAttribute('data-fleet'),_fb.getAttribute('data-act'))}if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='mainHubSave')saveMainHub();if(t.id==='mainLogSave')saveMainLog();if(t.id==='hubCmdSwitch'||(t.closest&&t.closest('#hubCmdSwitch')))toggleHubCmds();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();var _sk=t.closest&&t.closest('[data-sk]');if(_sk){SHOPKIND=_sk.getAttribute('data-sk');renderShop()}if(t.id==='tbSend')sendTestBuy();if(t.id==='tlSend')sendTestLogs();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
   document.addEventListener('input',function(e){var t=e.target;if(t.id==='subSearch'){SUBQ=t.value;renderSubs()}if(t.id==='shopSearch'){SHOPQ=t.value;renderShop()}if(t.id==='banSearch'){BANQ=t.value;renderBans()}if(t.id==='poolSearch'){POOLQ=t.value;renderPool()}if(t.id==='brandBio'){brandCount()}if(t.id==='auditSearch'){AUDITQ=t.value;renderAudit()}if(t.id==='cmdkInput'){cmdkBuild(t.value)}});
   document.addEventListener('change',function(e){if(e.target.id==='subSort'){SUBSORT=e.target.value;renderSubs()}});
   document.addEventListener('keydown',function(e){
@@ -7072,6 +7084,24 @@ async def _h_admin_pool(request):
             s["invite"] = _invite_url(s["id"], client_id=b["id"])
     data["main_hub_invite"] = _invite_url(hub) if hub else ""
     data["hub_commands_off"] = hub_commands_off()
+    # The main server's own log channel + the channels we could post logs to, so
+    # the operator can point the hub's audit logs somewhere (the main bot has no
+    # slash commands, so this is set here instead of with /settings).
+    hub_log, hub_channels = "", []
+    if hub:
+        hg = get_guild_any(hub)
+        if hg is not None:
+            hstore = guild_store(DATA, int(hub))
+            hub_log = str(hstore.get("log_channel_id") or "")
+            hme = getattr(hg, "me", None)
+            for c in getattr(hg, "text_channels", []):
+                try:
+                    if hme is None or c.permissions_for(hme).send_messages:
+                        hub_channels.append({"id": str(c.id), "name": c.name})
+                except Exception:  # noqa: BLE001
+                    hub_channels.append({"id": str(c.id), "name": c.name})
+    data["hub_log_channel"] = hub_log
+    data["hub_channels"] = hub_channels
     data["ok"] = True
     return _admin_json(data)
 
@@ -7115,6 +7145,20 @@ async def _h_admin_pool_action(request):
         log.info("admin pool hub_cmds off=%s by=%s", off, uid)
         _audit(request, uid, "pool_hub_cmds", "", "off" if off else "on")
         return _admin_json({"ok": True, "hub_commands_off": off})
+    if action == "hub_log":
+        hub = admin_guild()
+        if not hub:
+            return _admin_json({"ok": False, "error": "Set the main server first."}, 400)
+        cid = "".join(ch for ch in str(body.get("channel") or "") if ch.isdigit())
+        hstore = guild_store(DATA, int(hub))
+        if cid:
+            hstore["log_channel_id"] = int(cid)
+        else:
+            hstore.pop("log_channel_id", None)
+        save_data(DATA)
+        log.info("admin hub log channel=%s by=%s", cid or "(cleared)", uid)
+        _audit(request, uid, "hub_log_channel", cid or "", "cleared" if not cid else "")
+        return _admin_json({"ok": True, "hub_log_channel": cid})
     if action in ("all_off", "all_on", "all_restart"):
         if action == "all_off":
             res = await disable_all_bots(reason=str(body.get("reason") or ""), by=uid)
