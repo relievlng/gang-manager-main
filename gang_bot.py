@@ -60,6 +60,18 @@ async def _main_gate(interaction) -> bool:
 bot.tree.interaction_check = _main_gate
 
 
+# The distribution bot carries no slash commands of its own: it hands out the
+# pool bots, runs the website and sits in the hub. Hand the full command set to
+# the pool (its sub bots serve customers), then clear the main tree so the
+# distributor syncs with nothing. The gate above stays put for the pool, which
+# copies it; only this bot goes command-less. Set GM_DISTRIBUTOR_COMMANDS=1 to
+# keep commands on the main bot (the old behaviour).
+if os.getenv("GM_DISTRIBUTOR_COMMANDS", "").strip().lower() not in ("1", "true", "yes", "on"):
+    set_pool_commands(bot.tree.get_commands())
+    bot.tree.clear_commands(guild=None)
+    log.info("Distribution bot: cleared own commands - the pool serves them instead.")
+
+
 # --------------------------------------------------------------------------- #
 # Live status — rotates every 30s through real numbers
 # --------------------------------------------------------------------------- #

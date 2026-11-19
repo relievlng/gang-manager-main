@@ -639,13 +639,30 @@ def _wire(w) -> None:
     w.add_listener(on_guild_remove, "on_guild_remove")
 
 
+# The command set the pool bots serve. The distribution (main) bot hands its
+# commands over to the pool, then clears its own tree so the distributor carries
+# none - so the pool must be given the snapshot before that clear, and build its
+# workers from it rather than from the (now empty) main tree.
+_POOL_COMMANDS = None
+
+
+def set_pool_commands(cmds) -> int:
+    """Hand the pool the command objects its sub bots should serve. Call this
+    before clearing the main bot's tree; workers are built from this snapshot."""
+    global _POOL_COMMANDS
+    _POOL_COMMANDS = list(cmds)
+    log.info("Pool will serve %d command group(s) on its sub bots.", len(_POOL_COMMANDS))
+    return len(_POOL_COMMANDS)
+
+
 def _make_worker(members: bool):
     """A bot client that mirrors the main bot: same slash commands, same
     paywall check, same member events, same persistent buttons."""
     intents = discord.Intents.default()
     intents.members = bool(members)
     w = commands.Bot(command_prefix="!", intents=intents, help_command=None)
-    for cmd in bot.tree.get_commands():
+    _cmds = _POOL_COMMANDS if _POOL_COMMANDS is not None else list(bot.tree.get_commands())
+    for cmd in _cmds:
         try:
             w.tree.add_command(cmd)
         except Exception as exc:  # noqa: BLE001
@@ -1101,7 +1118,8 @@ def pool_overview() -> dict:
 
 __all__ = [
     "MAX_POOL", "pool_state", "pool_enabled", "set_pool_enabled", "crypto_status",
-    "admin_guild", "set_admin_guild",
+    "admin_guild", "set_admin_guild", "hub_commands_off", "set_hub_commands_off",
+    "set_pool_commands",
     "assign_bot_for_guild", "reclaim_stale", "add_tokens", "start_pool", "stop_worker",
     "free_bot", "remove_bot", "restart_bot", "disable_bot", "enable_bot", "pool_overview",
     "disable_all_bots", "enable_all_bots", "restart_all_bots",
