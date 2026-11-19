@@ -221,6 +221,77 @@ async def settings_logs(interaction: discord.Interaction, channel: discord.TextC
     )
 
 
+@settings_group.command(
+    name="testlogs",
+    description="Fire a sample of every log type so you can see how they look (leadership)",
+)
+async def settings_testlogs(interaction: discord.Interaction) -> None:
+    if not await _settings_guard(interaction):
+        return
+    await interaction.response.defer(ephemeral=True)
+    store = guild_store(DATA, interaction.guild_id)
+    guild = interaction.guild
+    me = interaction.user
+    # (category, sample text, fields) - rendered through the real send_log so each
+    # one looks exactly like a live log, just with made-up info.
+    samples = [
+        ("roster", "🧪 **Test** - a member was promoted on the roster.",
+         [("Member", me.mention, True), ("New rank", "Lieutenant", True), ("Was", "Member", True)]),
+        ("kos", "🧪 **Test** - a target was added to the KOS list.",
+         [("Target", "ShadowRunner", True), ("Reason", "Shot on sight at the docks", False)]),
+        ("radio", "🧪 **Test** - the radio frequency was updated.",
+         [("Frequency", "123.45", True)]),
+        ("eoi", "🧪 **Test** - an application was accepted.",
+         [("Applicant", me.mention, True), ("Result", "Accepted", True), ("Votes", "7 yes, 1 no", True)]),
+        ("members", "🧪 **Test** - a role was changed.",
+         [("Member", me.mention, True), ("Role", "Member", True), ("Action", "Added", True)]),
+        ("joins", "🧪 **Test** - a member joined the server.",
+         [("Member", me.mention, True), ("Account age", "3 months", True), ("Member #", "128", True)]),
+        ("tickets", "🧪 **Test** - a ticket was opened.",
+         [("Ticket", "#0007", True), ("Type", "Purchase Help", True)]),
+        ("orders", "🧪 **Test** - a new order was placed.",
+         [("Item", "Gang Manager Monthly", True), ("Amount", "$9.99", True)]),
+        ("web", "🧪 **Test** - a setting was changed from the web panel.",
+         [("Setting", "Welcome channel", True)]),
+        ("config", "🧪 **Test** - a setting was changed.",
+         [("Setting", "KOS log channel", True)]),
+        ("activity", "🧪 **Test** - a general activity entry.", None),
+    ]
+    sent, skipped = [], []
+    for cat, text, fields in samples:
+        key = LOG_ROUTING.get(cat)
+        cid = (store.get(key) if key else None) or store.get("log_channel_id")
+        chan = guild.get_channel(cid) if cid else None
+        if chan is None:
+            skipped.append(cat)
+            continue
+        try:
+            await send_log(guild, store, text, category=cat, actor=me, fields=fields)
+            sent.append((cat, chan))
+        except discord.HTTPException:
+            skipped.append(cat)
+    lines = "\n".join(
+        f"{LOG_CATEGORIES[c][0]} **{LOG_CATEGORIES[c][1]}** -> {ch.mention}" for c, ch in sent)
+    e = discord.Embed(
+        title="🧪 Test logs sent",
+        description=(
+            f"Fired **{len(sent)}** sample log(s), each to its own channel so you can see the "
+            f"real format with test info.\n\n{lines or '_No log channels are set yet._'}"
+        ),
+        color=OK if sent else MUTED,
+    )
+    if skipped:
+        names = ", ".join(LOG_CATEGORIES[c][1] for c in skipped)
+        e.add_field(name=f"Skipped - no channel set ({len(skipped)})", value=names[:1024], inline=False)
+        e.add_field(
+            name="Set them up",
+            value="Use `/settings channel` for one, or `/settings logs_setup` to auto-create them all.",
+            inline=False,
+        )
+    _brand(e, guild)
+    await _send_card(interaction, [e], ephemeral=True)
+
+
 def _log_channel_name(setting_key: str) -> str:
     """Friendly channel name for a *_log_channel setting key."""
     if setting_key == "log_channel":
