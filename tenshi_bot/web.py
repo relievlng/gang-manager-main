@@ -5837,6 +5837,8 @@ a.link,.link{color:var(--brand2)}
           <label class=cllbl>Post to</label>
           <div style=display:flex;gap:10px;align-items:center><select id=rlChannel></select><button class="ghost sm" id=rlRefresh title="Reload channels">↻</button></div>
           <p class=hint id=rlChanHint style=margin:6px 0 0></p>
+          <label class=cllbl>Ping role <span class=hint style=font-weight:400>- optional, @mentions them when the rules post</span></label>
+          <select id=rlPing></select>
           <div class=clrow>
             <button class=ghost id=rlSaveBtn>💾 Save draft</button>
             <span style=flex:1></span>
@@ -6159,20 +6161,21 @@ a.link,.link{color:var(--brand2)}
   function cmdkRender(){$('#cmdkList').innerHTML=cmdkItems.length?cmdkItems.map(function(it,i){return '<div class="ci'+(i===cmdkSel?' sel':'')+'" data-i="'+i+'"><span class=cig>'+it.ic+'</span><span>'+esc(it.label)+'</span><span class=cis>'+esc(it.sub)+'</span></div>'}).join(''):'<div class=pad>No matches</div>';$('#cmdkList').querySelectorAll('.ci').forEach(function(el){el.onclick=function(){cmdkSel=parseInt(el.getAttribute('data-i'),10);cmdkGo()}})}
   function cmdkGo(){var it=cmdkItems[cmdkSel];if(!it){return}closeCmdk();if(it.t==='tab'){selectTab(it.id)}else{selectTab('subs');SUBFILTER='all';SUBQ='';$('#subSearch').value=String(it.id);SUBQ=String(it.id);renderFilters();renderSubs();toast('Jumped to '+it.label)}}
   var RL_CHANS=[],RL_BOUND=false;
-  function rlGather(){return {title:($('#rlTitle')||{}).value||'',intro:($('#rlIntro')||{}).value||'',footer:($('#rlFooter')||{}).value||'',channel_id:($('#rlChannel')||{}).value||'',rules:(($('#rlRules')||{}).value||'').split('\n').map(function(x){return x.trim()}).filter(Boolean)}}
+  function rlGather(){return {title:($('#rlTitle')||{}).value||'',intro:($('#rlIntro')||{}).value||'',footer:($('#rlFooter')||{}).value||'',channel_id:($('#rlChannel')||{}).value||'',ping_role_id:($('#rlPing')||{}).value||'',rules:(($('#rlRules')||{}).value||'').split('\n').map(function(x){return x.trim()}).filter(Boolean)}}
   function rlRenderPreview(){var d=rlGather();var html='<div class=rlp-title>🛡️ '+esc(d.title||'Server Rules')+'</div>';
     if(d.intro)html+='<div class=rlp-intro>'+esc(d.intro)+'</div>';
     if(d.rules.length)html+=d.rules.map(function(r,i){return '<div class=rlp-rule><b>'+(i+1)+'.</b>  '+esc(r)+'</div>'}).join('');
     else html+='<div class=rlp-intro style=color:#949ba4>Add a rule per line to see it here…</div>';
     if(d.footer)html+='<div class=rlp-foot>'+esc(d.footer)+'</div>';$('#rlPrev').innerHTML=html}
   function rlFillChannels(chans){RL_CHANS=chans||[];var sel=$('#rlChannel');if(!sel)return;var cur=sel.value;sel.innerHTML=RL_CHANS.map(function(c){return '<option value="'+c.id+'">#'+esc(c.name)+(c.guild?(' · '+esc(c.guild)):'')+'</option>'}).join('')||'<option value="">No channels</option>';if(cur)sel.value=cur;csSync('rlChannel')}
-  function rlInit(){if(RL_BOUND)return;RL_BOUND=true;csEnhance($('#rlChannel'),'#');['rlTitle','rlIntro','rlRules','rlFooter'].forEach(function(id){var el=$('#'+id);if(el)el.addEventListener('input',rlRenderPreview)});var sb=$('#rlSaveBtn');if(sb)sb.onclick=rlSave;var pb=$('#rlPostBtn');if(pb)pb.onclick=rlPost;var rb=$('#rlRefresh');if(rb)rb.onclick=function(){loadRules()}}
+  function rlInit(){if(RL_BOUND)return;RL_BOUND=true;csEnhance($('#rlChannel'),'#');csEnhance($('#rlPing'),'@');['rlTitle','rlIntro','rlRules','rlFooter'].forEach(function(id){var el=$('#'+id);if(el)el.addEventListener('input',rlRenderPreview)});var sb=$('#rlSaveBtn');if(sb)sb.onclick=rlSave;var pb=$('#rlPostBtn');if(pb)pb.onclick=rlPost;var rb=$('#rlRefresh');if(rb)rb.onclick=function(){loadRules()}}
   function loadRules(){rlInit();api('/api/admin/rules').then(function(d){if(!d||!d.ok)return;var dr=d.draft||{};
     if($('#rlTitle')&&!$('#rlTitle').value)$('#rlTitle').value=dr.title||'';
     if($('#rlIntro')&&!$('#rlIntro').value)$('#rlIntro').value=dr.intro||'';
     if($('#rlFooter')&&!$('#rlFooter').value)$('#rlFooter').value=dr.footer||'';
     if($('#rlRules')&&!$('#rlRules').value&&(dr.rules||[]).length)$('#rlRules').value=(dr.rules||[]).join('\n');
     rlFillChannels(d.channels);if(dr.channel_id&&$('#rlChannel'))$('#rlChannel').value=dr.channel_id;csSync('rlChannel');
+    var psel=$('#rlPing');if(psel){var popts='<option value="">No ping</option>';(d.roles||[]).forEach(function(r){popts+='<option value="'+esc(r.id)+'">@'+esc(r.name)+'</option>'});psel.innerHTML=popts;if(dr.ping_role_id)psel.value=dr.ping_role_id;csSync('rlPing')}
     var h=$('#rlChanHint');if(h)h.textContent=d.staff_ok?'':'Staff bot offline - channels may be stale.';rlRenderPreview()})}
   function rlSave(){var btn=$('#rlSaveBtn');btn.disabled=true;api('/api/admin/rules','POST',{action:'save',draft:rlGather()}).then(function(r){btn.disabled=false;toast(r&&r.ok?'Draft saved':((r&&r.error)||'Save failed'),!(r&&r.ok))})}
   function rlPost(){var d=rlGather();if(!d.rules.length&&!d.intro.trim()){toast('Add at least one rule first',true);return}
@@ -6793,6 +6796,7 @@ def _sanitise_rules(d):
         "intro": str(d.get("intro") or "")[:600],
         "footer": str(d.get("footer") or "")[:200],
         "channel_id": "".join(ch for ch in str(d.get("channel_id") or "") if ch.isdigit())[:25],
+        "ping_role_id": "".join(ch for ch in str(d.get("ping_role_id") or "") if ch.isdigit())[:25],
         "rules": rules[:40],
     }
 
@@ -6806,15 +6810,16 @@ async def _h_admin_rules(request):
     rl = DATA.setdefault("rules", {})
     rl.setdefault("draft", {})
     if request.method == "GET":
-        channels, staff_ok, guild_name, brand = [], False, "", ""
+        channels, roles, staff_ok, guild_name, brand = [], [], False, "", ""
         res = await _staff_rules_call("GET")
         if isinstance(res, dict) and res.get("ok"):
             channels = res.get("channels") or []
+            roles = res.get("roles") or []
             guild_name = res.get("guild") or ""
             brand = res.get("brand") or ""
             staff_ok = True
         return _admin_json({"ok": True, "draft": rl.get("draft") or {}, "channels": channels,
-                            "staff_ok": staff_ok, "guild": guild_name, "brand": brand})
+                            "roles": roles, "staff_ok": staff_ok, "guild": guild_name, "brand": brand})
     if not _origin_ok(request):
         return _admin_json({"ok": False, "error": "Cross-site request blocked."}, 403)
     body = await _admin_body(request)
