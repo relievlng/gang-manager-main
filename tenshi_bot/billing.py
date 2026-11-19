@@ -581,6 +581,64 @@ def _renew_hint(guild_id: int) -> str:
     return "\n\nThe server owner can subscribe from the Gang Manager website."
 
 
+def _subscribe_url() -> str:
+    base = web_base_url()
+    return (base + "/panel") if base else ""
+
+
+def _support_url() -> str:
+    """The support Discord invite for ban appeals, from env, else the website."""
+    inv = (os.getenv("SUPPORT_INVITE_URL") or os.getenv("GM_SUPPORT_INVITE") or "").strip()
+    if inv:
+        low = inv.lower()
+        if low.startswith(("http://", "https://")):
+            return inv
+        if low.startswith(("discord.gg/", "discord.com/invite/")):
+            return "https://" + inv
+        return "https://discord.gg/" + inv.lstrip("/")
+    return web_base_url()
+
+
+def _link_view(label: str, url: str) -> "discord.ui.View | None":
+    if not url:
+        return None
+    v = discord.ui.View()
+    v.add_item(discord.ui.Button(label=label, url=url, style=discord.ButtonStyle.link))
+    return v
+
+
+def inactive_embed(guild_id: int) -> "discord.Embed":
+    """A branded 'subscription isn't active' card, shown on the gate and on join."""
+    state = subscription_state(guild_id)
+    word = "has expired" if state.get("status") == "expired" else "hasn't started yet"
+    e = discord.Embed(
+        title="🔒 Gang Manager isn't active here",
+        description=(
+            f"This server's subscription **{word}**.\n\n"
+            "Subscribe or manage it to switch the bot back on - your roster, KOS list, "
+            "wars, tickets and the full web control panel come straight back."
+        ),
+        color=0xF5A623,
+    )
+    e.set_footer(text="Gang Manager · the all-in-one FiveM gang bot")
+    return e
+
+
+def banned_embed() -> "discord.Embed":
+    """A branded 'you're blocked' card with an appeal path to the support Discord."""
+    e = discord.Embed(
+        title="⛔ You're blocked from Gang Manager",
+        description=(
+            "You've been blocked from using this bot across every server it runs in.\n\n"
+            "If you think this is a mistake, you can **appeal in our support Discord** "
+            "using the button below."
+        ),
+        color=0xED4245,
+    )
+    e.set_footer(text="Gang Manager")
+    return e
+
+
 # --------------------------------------------------------------------------- #
 # The gate - blocks paid commands in an unsubscribed server
 # --------------------------------------------------------------------------- #
@@ -597,9 +655,14 @@ async def subscription_gate(interaction: "discord.Interaction") -> bool:
     """
     if is_banned(getattr(interaction.user, "id", 0)):
         try:
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    "⛔ You're blocked from using this bot.", ephemeral=True)
+            view = _link_view("Appeal in our Discord", _support_url())
+            kw = {"embed": banned_embed(), "ephemeral": True}
+            if view is not None:
+                kw["view"] = view
+            if interaction.response.is_done():
+                await interaction.followup.send(**kw)
+            else:
+                await interaction.response.send_message(**kw)
         except Exception:  # noqa: BLE001
             pass
         return False
@@ -615,17 +678,15 @@ async def subscription_gate(interaction: "discord.Interaction") -> bool:
     if is_active(guild.id):
         return True
 
-    state = subscription_state(guild.id)
-    word = "has expired" if state["status"] == "expired" else "isn't active yet"
-    msg = (
-        "🔒 **Gang Manager isn't active in this server.**\n"
-        f"This server's subscription {word}." + _renew_hint(guild.id)
-    )
     try:
+        view = _link_view("Subscribe or manage", _subscribe_url())
+        kw = {"embed": inactive_embed(guild.id), "ephemeral": True}
+        if view is not None:
+            kw["view"] = view
         if interaction.response.is_done():
-            await interaction.followup.send(msg, ephemeral=True)
+            await interaction.followup.send(**kw)
         else:
-            await interaction.response.send_message(msg, ephemeral=True)
+            await interaction.response.send_message(**kw)
     except discord.HTTPException:
         pass
     return False
