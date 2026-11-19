@@ -296,10 +296,8 @@ async def on_guild_join(guild: discord.Guild) -> None:
 @bot.event
 async def on_member_join(member: discord.Member) -> None:
     guild = member.guild
-    if not serves_guild(guild):
-        return  # another of our bots (a pool bot) handles this server
-    if not guild_active(guild.id):
-        return  # no welcome/logs until the server is subscribed
+    if not _should_log(guild):
+        return  # not our server to log (wrong bot, or an unsubscribed customer)
     store = guild_store(DATA, guild.id)
 
     # public welcome message
@@ -339,10 +337,8 @@ async def on_member_join(member: discord.Member) -> None:
 @bot.event
 async def on_member_remove(member: discord.Member) -> None:
     guild = member.guild
-    if not serves_guild(guild):
-        return  # another of our bots (a pool bot) handles this server
-    if not guild_active(guild.id):
-        return
+    if not _should_log(guild):
+        return  # not our server to log (wrong bot, or an unsubscribed customer)
     store = guild_store(DATA, guild.id)
     joined = member.joined_at
     roles = [r.mention for r in member.roles if r.name != "@everyone"]
@@ -368,6 +364,18 @@ async def on_member_remove(member: discord.Member) -> None:
 # ("by whom") is best-effort from the server audit log, so a missing View Audit
 # Log permission never breaks logging - it just drops the "By" line.
 # --------------------------------------------------------------------------- #
+
+def _should_log(guild) -> bool:
+    """Whether THIS bot should write member logs for `guild`. Only the bot that
+    serves it (no double logs from the main bot + a pool bot sharing a server),
+    and either the hub / main server (always - your own server logs even though
+    it carries no subscription) or a subscription-active customer server."""
+    if not serves_guild(guild):
+        return False
+    if str(getattr(guild, "id", "")) == admin_guild():
+        return True  # the operator's own server always logs
+    return guild_active(guild.id)
+
 
 def _user_badges(user) -> str:
     """Public badge names from a user's flags, as a compact string (or '')."""
@@ -436,7 +444,7 @@ async def _audit_actor(guild, action, target_id=None, within: int = 20):
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member) -> None:
     guild = after.guild
-    if not serves_guild(guild) or not guild_active(guild.id):
+    if not _should_log(guild):
         return
     store = guild_store(DATA, guild.id)
 
@@ -483,7 +491,7 @@ async def on_member_update(before: discord.Member, after: discord.Member) -> Non
 
 @bot.event
 async def on_member_ban(guild: discord.Guild, user) -> None:
-    if not serves_guild(guild) or not guild_active(guild.id):
+    if not _should_log(guild):
         return
     store = guild_store(DATA, guild.id)
     actor, reason = await _audit_actor(guild, discord.AuditLogAction.ban, getattr(user, "id", None))
@@ -493,7 +501,7 @@ async def on_member_ban(guild: discord.Guild, user) -> None:
 
 @bot.event
 async def on_member_unban(guild: discord.Guild, user) -> None:
-    if not serves_guild(guild) or not guild_active(guild.id):
+    if not _should_log(guild):
         return
     store = guild_store(DATA, guild.id)
     actor, reason = await _audit_actor(guild, discord.AuditLogAction.unban, getattr(user, "id", None))
