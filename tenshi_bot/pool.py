@@ -131,6 +131,21 @@ def set_admin_guild(gid) -> str:
     return g
 
 
+def hub_commands_off() -> bool:
+    """When set, the pool (sub) bots decline their slash commands inside the
+    hub/admin server only - every bot's own hand-out server is untouched. Keeps
+    the hub from being spammed by a dozen pool bots all answering the same
+    command; it's the main bot you drive the hub with."""
+    return bool(pool_state().get("hub_commands_off"))
+
+
+def set_hub_commands_off(on: bool) -> bool:
+    pool_state()["hub_commands_off"] = bool(on)
+    save_data(DATA)
+    log.info("Pool sub-bot commands in the hub are now %s.", "OFF" if on else "ON")
+    return bool(on)
+
+
 def _rec(bot_id):
     return pool_state()["bots"].get(str(bot_id))
 
@@ -635,9 +650,29 @@ def _make_worker(members: bool):
             w.tree.add_command(cmd)
         except Exception as exc:  # noqa: BLE001
             log.debug("pool: skipped command %s: %s", getattr(cmd, "name", cmd), exc)
-    for attr in ("interaction_check", "on_error"):
-        if attr in vars(bot.tree):
-            setattr(w.tree, attr, getattr(bot.tree, attr))
+    if "on_error" in vars(bot.tree):
+        w.tree.on_error = bot.tree.on_error
+    # Wrap the main bot's check (the subscription gate) so a pool bot can be
+    # muted in the hub/admin server without affecting the main bot or customers.
+    # Read live each call, so toggling it from the admin site is instant.
+    _inherited_check = getattr(bot.tree, "interaction_check", None)
+
+    async def _pool_interaction_check(interaction, _inherited=_inherited_check):
+        hub = admin_guild()
+        if (hub and interaction.guild_id is not None
+                and str(interaction.guild_id) == hub and hub_commands_off()):
+            try:
+                await interaction.response.send_message(
+                    "🛠️ Gang Manager's sub-bot commands are turned off in this server. "
+                    "Use them in your own server instead.", ephemeral=True)
+            except discord.HTTPException:
+                pass
+            return False
+        if _inherited is not None:
+            return await _inherited(interaction)
+        return True
+
+    w.tree.interaction_check = _pool_interaction_check
     for name, fn in _SETUP["handlers"]:
         w.add_listener(fn, name)
     _wire(w)
