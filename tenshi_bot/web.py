@@ -5978,12 +5978,13 @@ a.link,.link{color:var(--brand2)}
   function clGather(){var sec={};CL_CATS.forEach(function(c){var el=$('#cl_'+c[0]);sec[c[0]]=el?el.value:''});
     return {title:($('#clTitle').value||'').trim(),version:($('#clVersion').value||'').trim(),date:($('#clDate').value||'').trim(),summary:($('#clSummary').value||'').trim(),channel_id:($('#clChannel').value||'').trim(),ping_role_id:($('#clPing').value||''),sections:sec}}
   function clRenderPreview(){var d=clGather();var title=d.title||'Gang Manager · Update';
-    var ping='';var ps=$('#clPing');if(ps&&ps.value){var po=ps.options[ps.selectedIndex];if(po&&po.text)ping='<div class=clp-ping style="margin:0 0 8px">🎉 <span style="background:rgba(88,101,242,.28);color:#c9cdfb;padding:2px 7px;border-radius:4px;font-weight:600">'+esc(po.text)+'</span></div>'}
-    var html=ping+'<div class=clp-title>📋 '+esc(title)+(d.version?' · '+esc(d.version):'')+'</div>';
+    var ping='';var ps=$('#clPing');if(ps&&ps.value){var po=ps.options[ps.selectedIndex];if(po&&po.text)ping='<div class=clp-sec>🎉 Heads up</div><div class=clp-items><span style="background:rgba(88,101,242,.28);color:#c9cdfb;padding:2px 7px;border-radius:4px;font-weight:600">'+esc(po.text)+'</span></div>'}
+    var html='<div class=clp-title>📋 '+esc(title)+(d.version?' · '+esc(d.version):'')+'</div>';
     if(d.summary)html+='<div class=clp-sum>'+esc(d.summary)+'</div>';var any=false;
     CL_CATS.forEach(function(c){var items=clBullets(d.sections[c[0]]);if(!items.length)return;any=true;
       html+='<div class=clp-sec>'+c[1]+' '+esc(c[2])+'</div><div class=clp-items>'+items.map(function(x){return '• '+esc(x)}).join('<br>')+'</div>'});
     if(!any&&!d.summary)html+='<div class=clp-empty>Fill in a summary or some changes to see them here…</div>';
+    html+=ping;
     var foot=CL_BRAND||'GM Support';if(d.version)foot+=' · '+d.version;if(d.date)foot+=' · '+d.date;
     html+='<div class=clp-foot>'+esc(foot)+'</div>';$('#clPrev').innerHTML=html}
   function clRenderHistory(h){var box=$('#clHistory');if(!h||!h.length){box.innerHTML='<div class=hint>No changelogs posted yet.</div>';return}
