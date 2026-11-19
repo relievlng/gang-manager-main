@@ -1,9 +1,9 @@
-"""Bot pool — extra Gang Manager bots that each serve one customer server.
+"""Bot pool - extra Gang Manager bots that each serve one customer server.
 
 Your main bot is untouched. The pool is a list of extra bots (all owned by
 you) whose tokens you paste into Admin → Bots. Each one runs in this same
 process with exactly the same slash commands, buttons and events as the main
-bot, and reads/writes the same data — so every pool bot is linked to the main
+bot, and reads/writes the same data - so every pool bot is linked to the main
 bot through the shared store and the website.
 
 When the pool is switched ON, a subscribed server that hasn't got a bot yet is
@@ -28,7 +28,7 @@ from .emojis import sync_app_emojis
 
 try:  # tokens are encrypted at rest (cryptography is in requirements.txt)
     from cryptography.fernet import Fernet, InvalidToken
-except Exception:  # noqa: BLE001 — without it the pool just refuses to store tokens
+except Exception:  # noqa: BLE001 - without it the pool just refuses to store tokens
     Fernet = None  # type: ignore[assignment]
 
     class InvalidToken(Exception):  # type: ignore[no-redef]
@@ -42,13 +42,13 @@ LAUNCH_GAP = 1.5      # seconds between pool-bot logins at startup
 
 _ICON = pathlib.Path(__file__).with_name("gm-icon.png")
 _DESCRIPTION = (
-    "Run your gang like a machine — roster, KOS, wars, strikes, tickets and "
+    "Run your gang like a machine - roster, KOS, wars, strikes, tickets and "
     "recruitment, with a full web control panel. Add it & subscribe at https://gangmanager.site"
 )
-# Bios we set in an earlier version — safe to refresh to the current one. A bio
+# Bios we set in an earlier version - safe to refresh to the current one. A bio
 # that isn't blank and isn't one of these is treated as custom and left alone.
 _OLD_DESCRIPTIONS = frozenset({
-    "Gang Manager — roster, KOS, wars, tickets and recruitment for your FiveM gang, "
+    "Gang Manager - roster, KOS, wars, tickets and recruitment for your FiveM gang, "
     "with a full web control panel.",
 })
 
@@ -166,9 +166,9 @@ def _fernet():
 
 def crypto_status() -> dict:
     if Fernet is None:
-        return {"ok": False, "why": "The 'cryptography' package isn't installed yet — redeploy so requirements.txt installs it."}
+        return {"ok": False, "why": "The 'cryptography' package isn't installed yet - redeploy so requirements.txt installs it."}
     if _fernet() is None:
-        return {"ok": False, "why": "No encryption key — set POOL_SECRET (or DISCORD_TOKEN) in Railway."}
+        return {"ok": False, "why": "No encryption key - set POOL_SECRET (or DISCORD_TOKEN) in Railway."}
     return {"ok": True, "source": "POOL_SECRET" if os.getenv("POOL_SECRET") else "DISCORD_TOKEN"}
 
 
@@ -290,7 +290,7 @@ def assign_bot_for_guild(guild_id):
         joined = bool(_assigns(r)[gid].get("joined_at"))
         if healthy and (_is_online(b) or joined):
             return int(b)
-        # a broken/offline reservation that never joined — hand out another bot
+        # a broken/offline reservation that never joined - hand out another bot
         _assigns(r).pop(gid, None)
         save_data(DATA)
         break
@@ -300,7 +300,7 @@ def assign_bot_for_guild(guild_id):
     if b is None and reclaim_stale():
         b = _pick_bot(gid)
     if b is None:
-        log.warning("Bot pool: no pool bot with room for server %s — handing out the main bot.", gid)
+        log.warning("Bot pool: no pool bot with room for server %s - handing out the main bot.", gid)
         return None
     _assigns(bots[b])[gid] = {"at": _iso_now(), "joined_at": None, "name": ""}
     save_data(DATA)
@@ -330,7 +330,7 @@ async def _inspect(token: str) -> dict:
         try:
             await probe.login(token)
         except discord.LoginFailure:
-            raise ValueError("Discord rejected that token — copy a fresh one (Bot → Reset Token).")
+            raise ValueError("Discord rejected that token - copy a fresh one (Bot → Reset Token).")
         except discord.HTTPException as exc:
             raise ValueError(f"Discord error while checking it: {exc}")
         user = probe.user
@@ -372,7 +372,7 @@ async def _inspect(token: str) -> dict:
         }
 
         icon = _ICON.read_bytes() if _ICON.exists() else None
-        # Branding — only fill what's blank, never overwrite a custom look.
+        # Branding - only fill what's blank, never overwrite a custom look.
         if icon and getattr(user, "avatar", None) is None:
             try:
                 await user.edit(avatar=icon)
@@ -461,7 +461,7 @@ async def add_tokens(raw: str) -> dict:
                 return
             bid = info["id"]
             if main_id and bid == main_id:
-                results[i] = {"ok": False, "n": n, "error": "That's your main bot's token — it isn't a pool bot."}
+                results[i] = {"ok": False, "n": n, "error": "That's your main bot's token - it isn't a pool bot."}
                 return
             owned = any(is_owner(x) for x in info["owner_ids"]) or (
                 main_team is not None and info["team_id"] == main_team
@@ -566,7 +566,7 @@ def _wire(w) -> None:
         hub = admin_guild()
         for g in list(w.guilds):
             if hub and str(g.id) == hub:
-                continue  # the admin/hub server — every bot may stay here
+                continue  # the admin/hub server - every bot may stay here
             meta = amap.get(str(g.id))
             if meta is None:
                 log.info("Pool bot %s leaving %s (%s): not one of its servers", bid, g.name, g.id)
@@ -578,7 +578,7 @@ def _wire(w) -> None:
                 meta.setdefault("joined_at", _iso_now())
                 meta["name"] = g.name
         save_data(DATA)
-        log.info("Pool bot %s (%s) online — serving %d server(s)", bid, w.user.name, len(amap))
+        log.info("Pool bot %s (%s) online - serving %d server(s)", bid, w.user.name, len(amap))
 
     async def on_guild_join(guild) -> None:
         if w.user is None:
@@ -586,15 +586,15 @@ def _wire(w) -> None:
         bid = w.user.id
         rec = _rec(bid)
         if admin_guild() and str(guild.id) == admin_guild():
-            log.info("Pool bot %s joined the hub server %s (%s) — staying", bid, guild.name, guild.id)
-            return  # the owner's admin/hub server — stay online, don't serve it
+            log.info("Pool bot %s joined the hub server %s (%s) - staying", bid, guild.name, guild.id)
+            return  # the owner's admin/hub server - stay online, don't serve it
         meta = _assigns(rec).get(str(guild.id)) if rec is not None else None
         if meta is None:
-            log.info("Pool bot %s added to %s (%s) without a hand-out — leaving", bid, guild.name, guild.id)
+            log.info("Pool bot %s added to %s (%s) without a hand-out - leaving", bid, guild.name, guild.id)
             await _post_note(
                 guild,
                 "👋 This Gang Manager bot is reserved for another server, so I've left. To get Gang "
-                "Manager here, subscribe on the website and use **Add bot** there — you'll be given "
+                "Manager here, subscribe on the website and use **Add bot** there - you'll be given "
                 "your own bot.",
             )
             try:
@@ -617,7 +617,7 @@ def _wire(w) -> None:
             _assigns(rec).pop(str(guild.id), None)
             _remember_last(rec, guild.id)
             save_data(DATA)
-            log.info("Pool bot %s left %s — %d server(s) left", w.user.id, guild.id, len(_assigns(rec)))
+            log.info("Pool bot %s left %s - %d server(s) left", w.user.id, guild.id, len(_assigns(rec)))
 
     w.add_listener(on_ready, "on_ready")
     w.add_listener(on_guild_join, "on_guild_join")
@@ -662,7 +662,7 @@ async def _run_worker(bid: int, token: str) -> None:
             st["status"] = "stopped"
         except discord.PrivilegedIntentsRequired:
             log.warning(
-                "Pool bot %s: its Server Members Intent is off — running without it. Turn it on in its "
+                "Pool bot %s: its Server Members Intent is off - running without it. Turn it on in its "
                 "Developer Portal page, then press Restart in Admin → Bots.", bid,
             )
             members, retry = False, True
@@ -671,7 +671,7 @@ async def _run_worker(bid: int, token: str) -> None:
                 r["members_intent"] = False
                 save_data(DATA)
         except discord.LoginFailure:
-            log.error("Pool bot %s: its token was rejected — re-add it in Admin → Bots.", bid)
+            log.error("Pool bot %s: its token was rejected - re-add it in Admin → Bots.", bid)
             st["status"] = "bad_token"
             r = _rec(bid)
             if r is not None:
@@ -683,7 +683,7 @@ async def _run_worker(bid: int, token: str) -> None:
         except Exception as exc:  # noqa: BLE001
             tries += 1
             st["status"] = "error"
-            log.warning("Pool bot %s stopped unexpectedly (%s) — retry %d/5", bid, exc, tries)
+            log.warning("Pool bot %s stopped unexpectedly (%s) - retry %d/5", bid, exc, tries)
             retry, delay = tries < 5, min(60, 5 * tries)
         finally:
             if w in WORKERS:
@@ -708,7 +708,7 @@ async def _launch(bid: int, restart: bool = False) -> bool:
     if not token:
         rec["status"] = "locked"
         save_data(DATA)
-        log.error("Pool bot %s: can't decrypt its token (key changed?) — re-add it in Admin → Bots.", bid)
+        log.error("Pool bot %s: can't decrypt its token (key changed?) - re-add it in Admin → Bots.", bid)
         return False
     cur = _RUNNING.get(bid)
     if cur and cur.get("task") is not None and not cur["task"].done():
@@ -811,7 +811,7 @@ async def remove_bot(bid, force: bool = False) -> dict:
     if rec is None:
         raise KeyError(bid)
     if _assigns(rec) and not force:
-        raise ValueError("This bot is serving a server — free it first, or remove it anyway.")
+        raise ValueError("This bot is serving a server - free it first, or remove it anyway.")
     if _assigns(rec):
         await free_bot(bid)
     await stop_worker(bid)
@@ -911,7 +911,7 @@ async def restart_all_bots() -> dict:
 # --------------------------------------------------------------------------- #
 # Ping smoothing
 #
-# discord.py's ``client.latency`` is the *last* heartbeat round-trip — a single
+# discord.py's ``client.latency`` is the *last* heartbeat round-trip - a single
 # sample that jumps whenever a heartbeat lands on a busy moment of the event
 # loop. Reporting that raw number makes a healthy bot look laggy. We keep a
 # short rolling history per bot and report its floor instead: the true network
@@ -952,7 +952,7 @@ def record_latency(client) -> None:
 def smoothed_latency_ms(client) -> "int | None":
     """A bot's ping as the floor of its recent heartbeats. Records the live
     sample first, then returns the lowest sane reading (dropping a single
-    fluke once there's enough history) — the real round-trip, not a spike."""
+    fluke once there's enough history) - the real round-trip, not a spike."""
     record_latency(client)
     key = _lat_key(client)
     hist = _LAT_HIST.get(key) if key is not None else None
@@ -964,7 +964,7 @@ def smoothed_latency_ms(client) -> "int | None":
 
 
 def guild_bot_status(guild_id) -> "dict | None":
-    """The pool bot assigned to a server and its REAL status — the actual assigned
+    """The pool bot assigned to a server and its REAL status - the actual assigned
     bot (Online / Offline / Disabled / Not in the server), never the main-bot
     fallback. Returns None when no pool bot is assigned (the main bot serves it).
     Keys: bot_name, bot_id, bot_label ('Bot 3'), bot_status, bot_online, bot_ping."""

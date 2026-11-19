@@ -40,7 +40,7 @@ def _order_channel_name(order: dict, guild) -> str:
 
 async def _rename_order_channel(guild, order: dict) -> None:
     """Rename the order's channel to match its customer + paid status. Best-effort
-    — Discord rate-limits renames to 2 / 10 min, so a failure is ignored."""
+    - Discord rate-limits renames to 2 / 10 min, so a failure is ignored."""
     ch = guild.get_channel(order.get("channel_id") or 0)
     if ch is None:
         return
@@ -85,7 +85,7 @@ _ORDER_STEPS = ("Opened", "Claimed", "Paid", "Closed")
 
 
 def _order_progress(order: dict[str, Any]) -> str:
-    """🟢 Opened → 🟢 Claimed → ⚪ Paid → ⚪ Closed — fills in as staff work it."""
+    """🟢 Opened → 🟢 Claimed → ⚪ Paid → ⚪ Closed - fills in as staff work it."""
     reached = (
         True,
         bool(order.get("claimed_by")),
@@ -97,7 +97,7 @@ def _order_progress(order: dict[str, Any]) -> str:
 
 def _order_embed(order: dict[str, Any], guild: "discord.Guild | None" = None) -> discord.Embed:
     """The ticket's one live card: greeting, status panel, items, progress
-    tracker. The accent shows the state at a glance — green once paid, red /
+    tracker. The accent shows the state at a glance - green once paid, red /
     amber for urgent / high priority, grey when closed."""
     paid = order.get("paid", False)
     closed = order.get("status", "open") == "closed"
@@ -126,12 +126,12 @@ def _order_embed(order: dict[str, Any], guild: "discord.Guild | None" = None) ->
 
     if uid:
         greet = (
-            f"Hey <@{uid}> — thanks for the order! Staff will be with you shortly.\n"
+            f"Hey <@{uid}> - thanks for the order! Staff will be with you shortly.\n"
             "Drop anything else below: prices, timing, drop spot. You'll get the full "
             "transcript in your DMs when it's closed."
         )
     else:
-        greet = "Opened from the website. Staff — bring the customer in with `/ticket add`."
+        greet = "Opened from the website. Staff - bring the customer in with `/ticket add`."
 
     embed = discord.Embed(
         title=f"{emoji}  {ttype} Order",
@@ -149,8 +149,8 @@ def _order_embed(order: dict[str, Any], guild: "discord.Guild | None" = None) ->
     embed.add_field(name="Handled by", value=f"<@{claimed}>" if claimed else "*unclaimed*", inline=True)
     if created:
         embed.add_field(name="Opened", value=f"<t:{created}:R>", inline=True)
-    embed.add_field(name="Quantity", value=(order.get("quantity") or "—")[:1024], inline=True)
-    embed.add_field(name="📦 Items", value=(order.get("guns") or "—")[:1024], inline=False)
+    embed.add_field(name="Quantity", value=(order.get("quantity") or "-")[:1024], inline=True)
+    embed.add_field(name="📦 Items", value=(order.get("guns") or "-")[:1024], inline=False)
     if order.get("notes"):
         embed.add_field(name="📝 Notes", value=order["notes"][:1024], inline=False)
     embed.add_field(
@@ -172,11 +172,11 @@ def _orders_board_embed(store: dict[str, Any]) -> discord.Embed:
     }
 
     def fmt(o: dict[str, Any]) -> str:
-        items = (o.get("guns") or "—").replace("\n", " ")
-        qty = (o.get("quantity") or "—").replace("\n", " ")
+        items = (o.get("guns") or "-").replace("\n", " ")
+        qty = (o.get("quantity") or "-").replace("\n", " ")
         mark = "💰" if o.get("paid") else "⏳"
         prio = _prio_label(o).split(" ")[0]
-        line = f"{prio}{mark} `#{o['id']}` <@{o['user_id']}> — {items} ×{qty}"
+        line = f"{prio}{mark} `#{o['id']}` <@{o['user_id']}> - {items} ×{qty}"
         return line[:200]
 
     embed = discord.Embed(
@@ -209,7 +209,7 @@ def _orders_board_embed(store: dict[str, Any]) -> discord.Embed:
             value=val,
             inline=False,
         )
-    embed.set_footer(text="🔴🟠🔵🟢 priority · 💰 paid · ⏳ unpaid — urgent first")
+    embed.set_footer(text="🔴🟠🔵🟢 priority · 💰 paid · ⏳ unpaid - urgent first")
     return embed
 
 
@@ -351,7 +351,7 @@ async def _build_transcript(channel: discord.TextChannel) -> str:
 # ---- post-close rating ------------------------------------------------------ #
 
 class RatingView(discord.ui.View):
-    """⭐ 1–5 buttons in the customer's DM after a ticket closes."""
+    """⭐ 1-5 buttons in the customer's DM after a ticket closes."""
 
     def __init__(self) -> None:
         super().__init__(timeout=None)
@@ -370,7 +370,7 @@ class RatingView(discord.ui.View):
             link = pending.pop(str(interaction.message.id), None)
             if not link:
                 await interaction.response.edit_message(
-                    content="Thanks — this ticket was already rated. 🙏", view=None
+                    content="Thanks - this ticket was already rated. 🙏", view=None
                 )
                 return
             g = get_guild_any(link["guild_id"])
@@ -390,8 +390,8 @@ class RatingView(discord.ui.View):
                     f"⭐ Ticket #{order['id']} rated **{n}/5** by <@{order['user_id']}>.",
                     category="tickets",
                     fields=[
-                        ("Handled by", f"<@{order['claimed_by']}>" if order.get("claimed_by") else "—", True),
-                        ("Type", order.get("type") or "—", True),
+                        ("Handled by", f"<@{order['claimed_by']}>" if order.get("claimed_by") else "-", True),
+                        ("Type", order.get("type") or "-", True),
                     ],
                 )
         return cb
@@ -435,7 +435,7 @@ async def _close_ticket_core(
         summary.add_field(name="Priority", value=_prio_label(order), inline=True)
         if order.get("claimed_by"):
             summary.add_field(name="Handled by", value=f"<@{order['claimed_by']}>", inline=True)
-        summary.add_field(name="Items", value=order.get("guns") or "—", inline=False)
+        summary.add_field(name="Items", value=order.get("guns") or "-", inline=False)
     if reason:
         summary.add_field(name="Reason", value=reason[:1024], inline=False)
     if open_for:
@@ -473,7 +473,7 @@ async def _close_ticket_core(
                 title=f"🔒  Your {ttype} ticket is closed",
                 description=(
                     f"Thanks for dealing with **{guild.name}**! The full chat log is attached.\n\n"
-                    "**How did we do?** Tap a rating below — it goes straight to the team."
+                    "**How did we do?** Tap a rating below - it goes straight to the team."
                 ),
                 color=EMBED_COLOR,
                 timestamp=datetime.datetime.now(datetime.timezone.utc),
@@ -519,9 +519,9 @@ async def _close_ticket_core(
                 ("Order", f"#{order['id']}", True),
                 ("Customer", f"<@{order['user_id']}>", True),
                 ("Paid", "🟢 Yes" if order.get("paid") else "🔴 No", True),
-                ("Open for", open_for or "—", True),
-                ("Items", order.get("guns") or "—", False),
-                ("Reason", reason or "—", False),
+                ("Open for", open_for or "-", True),
+                ("Items", order.get("guns") or "-", False),
+                ("Reason", reason or "-", False),
             ],
         )
 
@@ -530,7 +530,7 @@ async def _close_ticket_core(
     bye = discord.Embed(
         title="🔒  Ticket closed",
         description=(
-            f"Closed by **{who}**" + (f" — {reason}" if reason else "") + ".\n"
+            f"Closed by **{who}**" + (f" - {reason}" if reason else "") + ".\n"
             f"🧾 Transcript saved · this channel deletes <t:{gone}:R>"
         ),
         color=MUTED,
@@ -608,7 +608,7 @@ async def create_order(
             reason=f"{type_name} order" + (f" by {owner}" if owner is not None else " (website)"),
         )
     except discord.Forbidden:
-        return {"ok": False, "error": "Couldn't open a channel — check my Manage Channels permission and role position."}
+        return {"ok": False, "error": "Couldn't open a channel - check my Manage Channels permission and role position."}
     except discord.HTTPException:
         return {"ok": False, "error": "Something went wrong opening the ticket channel."}
 
@@ -651,8 +651,8 @@ async def create_order(
         fields=[
             ("Order", f"#{oid}", True),
             ("Type", type_name, True),
-            ("Items", order["guns"] or "—", False),
-            ("Quantity", order["quantity"] or "—", True),
+            ("Items", order["guns"] or "-", False),
+            ("Quantity", order["quantity"] or "-", True),
         ],
     )
     return {"ok": True, "order": order, "channel": channel}
@@ -685,7 +685,7 @@ class OrderModal(discord.ui.Modal):
         self.add_item(self.notes)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        # Ack immediately — creating the channel is an API call that can take
+        # Ack immediately - creating the channel is an API call that can take
         # longer than Discord's 3s window, which would otherwise 404 the modal.
         await interaction.response.defer(ephemeral=True)
         store = guild_store(DATA, interaction.guild_id)
@@ -708,7 +708,7 @@ class TicketPanelSelect(discord.ui.Select):
 
     def __init__(self, options: list[discord.SelectOption] | None = None) -> None:
         empty = not options
-        opts = options or [discord.SelectOption(label="—", value="0")]
+        opts = options or [discord.SelectOption(label="-", value="0")]
         super().__init__(
             custom_id="ticket:open",
             placeholder="No active orders right now" if empty else "Open a ticket…",
@@ -734,7 +734,7 @@ class TicketPanelSelect(discord.ui.Select):
             )
             await _reset_panel_select(interaction, store)
             return
-        # one open ticket per member per type — send them to the existing one
+        # one open ticket per member per type - send them to the existing one
         for o in store["orders"]:
             if (
                 o.get("user_id") == interaction.user.id
@@ -750,7 +750,7 @@ class TicketPanelSelect(discord.ui.Select):
                     await _reset_panel_select(interaction, store)
                     return
         await interaction.response.send_modal(OrderModal(chosen))
-        # Reset the dropdown so the same option can be picked again — otherwise a
+        # Reset the dropdown so the same option can be picked again - otherwise a
         # single-option menu stays "selected" and Discord won't fire a new pick.
         await _reset_panel_select(interaction, store)
 
@@ -778,7 +778,7 @@ class OrderTicketView(GatedView):
     """Staff buttons on a ticket: Claim, Mark Paid/Unpaid, Priority and Close.
     Pass the order so the buttons show its state: Claim turns into Take Over once
     someone has it, Paid flips to Unpaid, Priority wears the current level's
-    colour (🟢 🔵 🟠 🔴) — short labels keep all four on one row."""
+    colour (🟢 🔵 🟠 🔴) - short labels keep all four on one row."""
 
     def __init__(self, order: dict | None = None) -> None:
         super().__init__(timeout=None)
@@ -892,7 +892,7 @@ class OrderTicketView(GatedView):
             fields=[
                 ("Order", f"#{order['id']}", True),
                 ("Customer", f"<@{order['user_id']}>", True),
-                ("Items", order.get("guns") or "—", False),
+                ("Items", order.get("guns") or "-", False),
             ],
         )
 
@@ -955,7 +955,7 @@ class OrderTicketView(GatedView):
             save_data(DATA)
         await interaction.response.defer()
         await interaction.followup.send(
-            "Closing — transcript saved, channel will delete shortly. 🔒",
+            "Closing - transcript saved, channel will delete shortly. 🔒",
             ephemeral=True,
         )
         await _close_ticket(interaction, store, order)
@@ -963,7 +963,7 @@ class OrderTicketView(GatedView):
 
 async def _refresh_order_card(guild, order: dict) -> None:
     """Re-render the order card in its ticket channel (status, items, buttons) to
-    match the current order — used when the website changes paid status, so the
+    match the current order - used when the website changes paid status, so the
     Discord card stays in sync. Best-effort."""
     cid = order.get("channel_id")
     mid = order.get("message_id")
@@ -1008,15 +1008,15 @@ def _build_ticket_panel(guild, store, message: str | None = None):
             value=(
                 "1️⃣  Pick a category below\n"
                 "2️⃣  Tell us what you want & how many\n"
-                "3️⃣  A private channel opens — staff take it from there"
+                "3️⃣  A private channel opens - staff take it from there"
             ),
             inline=False,
         )
     else:
-        # No order types configured — show a clean "nothing open" state.
+        # No order types configured - show a clean "nothing open" state.
         embed = discord.Embed(
             title="🎫  Orders",
-            description="🔕  **No active orders right now.**\nCheck back soon — order types will appear here when they're open.",
+            description="🔕  **No active orders right now.**\nCheck back soon - order types will appear here when they're open.",
             color=MUTED,
         )
     if getattr(guild, "icon", None):
@@ -1029,7 +1029,7 @@ def _build_ticket_panel(guild, store, message: str | None = None):
 async def _refresh_ticket_panel(guild, store) -> bool:
     """Re-edit the posted ticket panel in place so its dropdown matches the
     current types. No-op (returns False) if no panel has been posted or it was
-    deleted. Best-effort — never raises."""
+    deleted. Best-effort - never raises."""
     cid = store.get("ticket_panel_channel_id")
     mid = store.get("ticket_panel_message_id")
     if not cid or not mid:
@@ -1222,7 +1222,7 @@ async def ticket_set_category(
     where = (
         category.mention
         if category
-        else "`cleared` — tickets open under the panel channel's category"
+        else "`cleared` - tickets open under the panel channel's category"
     )
     await interaction.response.send_message(
         f"New tickets will now open under {where}. ✅\n"
@@ -1256,7 +1256,7 @@ async def ticket_panel(
     await interaction.response.send_message(
         "Ticket panel posted. ✅ It updates on its own when you add or remove types."
         if has_types else
-        "Ticket panel posted in **closed mode** 🔒 — there are no ticket types yet, so the "
+        "Ticket panel posted in **closed mode** 🔒 - there are no ticket types yet, so the "
         "menu is disabled. Add one with `/ticket type_add` and the panel opens itself.",
         ephemeral=True,
     )
@@ -1273,7 +1273,7 @@ async def ticket_toggle(interaction: discord.Interaction) -> None:
     now_open = not store.get("tickets_open", True)
     store["tickets_open"] = now_open
     save_data(DATA)
-    state = "🟢 **open** — people can order again" if now_open else "🔒 **closed** — no new orders"
+    state = "🟢 **open** - people can order again" if now_open else "🔒 **closed** - no new orders"
     await interaction.response.send_message(f"Ticket orders are now {state}.", ephemeral=True)
     await send_log(
         interaction.guild,
@@ -1311,7 +1311,7 @@ async def _ticket_member_access(
         return
     if not allow and member.id == order.get("user_id"):
         await interaction.response.send_message(
-            "You can't remove the ticket owner — close the ticket instead.",
+            "You can't remove the ticket owner - close the ticket instead.",
             ephemeral=True,
         )
         return
@@ -1327,7 +1327,7 @@ async def _ticket_member_access(
             )
     except discord.Forbidden:
         await interaction.response.send_message(
-            "I can't edit this channel's permissions — check my **Manage Channels**.",
+            "I can't edit this channel's permissions - check my **Manage Channels**.",
             ephemeral=True,
         )
         return
@@ -1385,7 +1385,7 @@ async def ticket_autoclose_loop() -> None:
             )
             warn_id = order.get("autoclose_warn_msg")
             if warn_id and last_id and last_id != warn_id:
-                # someone talked after the warning — reset
+                # someone talked after the warning - reset
                 order.pop("autoclose_warn_msg", None)
                 order.pop("autoclose_warned_ts", None)
                 save_data(DATA)
@@ -1476,11 +1476,11 @@ async def ticket_stats(interaction: discord.Interaction) -> None:
         description=f"**{open_n}** open · **{len(closed)}** closed · 💰 **{paid}** paid",
         color=EMBED_COLOR,
     )
-    summary.add_field(name="⏱️ Avg time open", value=fmt_dur(sum(durations) / len(durations)) if durations else "—")
+    summary.add_field(name="⏱️ Avg time open", value=fmt_dur(sum(durations) / len(durations)) if durations else "-")
     ratings = [o["rating"] for o in orders if o.get("rating")]
     summary.add_field(
         name="⭐ Customer rating",
-        value=f"**{sum(ratings) / len(ratings):.1f}**/5 · {len(ratings)} rated" if ratings else "—",
+        value=f"**{sum(ratings) / len(ratings):.1f}**/5 · {len(ratings)} rated" if ratings else "-",
     )
     summary.add_field(
         name="📈 Opened per day · last 14d",
@@ -1512,7 +1512,7 @@ async def ticket_stats(interaction: discord.Interaction) -> None:
             for i, (uid, b) in enumerate(ranked)
         )
     else:
-        lb.description = "*No claimed tickets closed yet — hit 🙋 Claim on tickets to get on the board.*"
+        lb.description = "*No claimed tickets closed yet - hit 🙋 Claim on tickets to get on the board.*"
     _brand(lb, interaction.guild)
     await _send_card(interaction, [summary, lb])
 
@@ -1520,7 +1520,7 @@ async def ticket_stats(interaction: discord.Interaction) -> None:
 @bot.tree.command(
     name="close", description="Close the ticket you're in (staff or ticket owner)"
 )
-@app_commands.describe(reason="Optional reason — shown in the transcript and the customer's DM")
+@app_commands.describe(reason="Optional reason - shown in the transcript and the customer's DM")
 async def close_ticket_cmd(
     interaction: discord.Interaction, reason: str | None = None
 ) -> None:
@@ -1544,7 +1544,7 @@ async def close_ticket_cmd(
     order["status"] = "closed"  # claim it so a second /close can't re-fire
     save_data(DATA)
     await interaction.response.send_message(
-        "Closing — transcript saved, channel will delete shortly. 🔒", ephemeral=True
+        "Closing - transcript saved, channel will delete shortly. 🔒", ephemeral=True
     )
     await _close_ticket(interaction, store, order, reason)
 

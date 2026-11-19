@@ -3,10 +3,10 @@
 A server's subscription lives in its store under ``subscription`` (see
 ``guild_store`` in core.py). Ways a server becomes active:
 
-* **Stripe** — set ``STRIPE_SECRET_KEY`` / ``STRIPE_PRICE_ID`` /
+* **Stripe** - set ``STRIPE_SECRET_KEY`` / ``STRIPE_PRICE_ID`` /
   ``STRIPE_WEBHOOK_SECRET``; the Subscribe button takes real monthly payments and
   the webhook (web.py) keeps the paid-until date in sync with Stripe.
-* **Manual** — the bot operator comps a server with ``/subscription grant`` or
+* **Manual** - the bot operator comps a server with ``/subscription grant`` or
   the panel's owner tools (e.g. ♾ Lifetime for your own gang's server).
 
 The paywall is the same everywhere: without an active subscription, slash
@@ -16,7 +16,7 @@ welcome messages and the background jobs all pause in that server.
 The bot operator is detected automatically from the Discord application (the
 account/team that owns the bot in the Developer Portal), plus anyone listed in
 ``BOT_OWNER_IDS``. Operators can comp servers and open any server's web panel,
-but get no special pass inside Discord — so testing shows exactly what a
+but get no special pass inside Discord - so testing shows exactly what a
 customer sees. Subscriptions are required by default (``BILLING_ENABLED=false``
 turns the paywall off).
 """
@@ -123,7 +123,7 @@ def owner_ids() -> set[int]:
 
 async def detect_app_owners() -> set[int]:
     """Read the application's owner (or team) from Discord so the person who owns
-    the bot is recognised automatically — no env var needed."""
+    the bot is recognised automatically - no env var needed."""
     try:
         app = await bot.application_info()
     except Exception as exc:  # never block startup on this
@@ -147,7 +147,7 @@ async def detect_app_owners() -> set[int]:
 
 
 # --------------------------------------------------------------------------- #
-# Access control — global ban list, admin-site staff allowlist, shop log
+# Access control - global ban list, admin-site staff allowlist, shop log
 # --------------------------------------------------------------------------- #
 
 def _ban_store() -> dict:
@@ -260,7 +260,7 @@ def set_admin_staff_name(user_id, name: str) -> None:
         save_data(DATA)
 
 
-# Shop log — purchases with email + IP for the admin site (newest first, capped).
+# Shop log - purchases with email + IP for the admin site (newest first, capped).
 _SHOP_LOG_CAP = 500
 
 
@@ -283,7 +283,7 @@ def shop_log_list(limit: int = 200) -> list:
     return list(_shop_log_store())[: max(0, int(limit))]
 
 
-# Admin audit log — every privileged admin-site action (newest first, capped).
+# Admin audit log - every privileged admin-site action (newest first, capped).
 _AUDIT_LOG_CAP = 1000
 
 
@@ -417,12 +417,12 @@ def grant(
 ) -> dict:
     """Activate or extend a server's subscription.
 
-    * ``days`` — add that many days (from the current end if still in the
+    * ``days`` - add that many days (from the current end if still in the
       future, else from now). Used for manual grants.
-    * ``until`` — make sure the server is paid up to at least this moment. It
+    * ``until`` - make sure the server is paid up to at least this moment. It
       only ever moves the end date forward, so replaying the same Stripe event
       (or receiving two events for one payment) never double-counts.
-    * ``lifetime`` — no end date.
+    * ``lifetime`` - no end date.
     """
     store = guild_store(DATA, guild_id)
     sub = get_subscription(store)
@@ -457,7 +457,7 @@ def grant(
 
 
 def start_trial(guild_id: int, days: int | None = None) -> dict | None:
-    """Optional one-time trial (off by default — TRIAL_DAYS=0). Returns None if
+    """Optional one-time trial (off by default - TRIAL_DAYS=0). Returns None if
     already used or disabled."""
     store = guild_store(DATA, guild_id)
     sub = get_subscription(store)
@@ -483,7 +483,7 @@ def expire(guild_id: int) -> dict:
 
 
 def move_subscription(from_guild_id, to_guild_id) -> "dict | None":
-    """Move an active subscription from one server to another — no new charge.
+    """Move an active subscription from one server to another - no new charge.
 
     Copies the Stripe linkage (sub_id / customer_id), plan, purchaser and the
     paid-through date (or lifetime flag) onto ``to_guild_id``, then releases
@@ -533,7 +533,7 @@ def move_subscription(from_guild_id, to_guild_id) -> "dict | None":
 
 def guild_for_sub(sub_id, exclude_guild=None):
     """Return a guild id (other than exclude_guild) whose ACTIVE subscription is
-    powered by this Stripe subscription id — used to enforce one server per sub.
+    powered by this Stripe subscription id - used to enforce one server per sub.
     """
     if not sub_id:
         return None
@@ -582,17 +582,17 @@ def _renew_hint(guild_id: int) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# The gate — blocks paid commands in an unsubscribed server
+# The gate - blocks paid commands in an unsubscribed server
 # --------------------------------------------------------------------------- #
 
 async def subscription_gate(interaction: "discord.Interaction") -> bool:
     """The paywall check for slash commands AND buttons/menus (GatedView).
 
-    Exempt: DMs and the setup/subscription/help commands — so an unsubscribed
+    Exempt: DMs and the setup/subscription/help commands - so an unsubscribed
     server can still check status, set up and subscribe. No-op when billing is
     off. Nobody gets a personal pass, so what you test is what customers get.
 
-    Banned users are blocked first, before any exemption — a ban means the bot
+    Banned users are blocked first, before any exemption - a ban means the bot
     ignores them everywhere (commands, buttons, menus), in every server.
     """
     if is_banned(getattr(interaction.user, "id", 0)):
@@ -645,11 +645,11 @@ def _fmt_state(guild: "discord.Guild", state: dict) -> discord.Embed:
     mode = state.get("mode")
     status = state["status"]
     if mode == "free":
-        head, color = "✅ Active (billing is off — free mode)", 0x22C55E
+        head, color = "✅ Active (billing is off - free mode)", 0x22C55E
     elif mode == "lifetime":
-        head, color = "✅ Active — lifetime", 0x22C55E
+        head, color = "✅ Active - lifetime", 0x22C55E
     elif state["active"]:
-        head, color = f"✅ Active — {state['days_left']} day(s) left", 0x22C55E
+        head, color = f"✅ Active - {state['days_left']} day(s) left", 0x22C55E
     elif status == "expired":
         head, color = "🔒 Expired", 0xEF4444
     else:
@@ -659,7 +659,7 @@ def _fmt_state(guild: "discord.Guild", state: dict) -> discord.Embed:
     plan = state.get("plan")
     if mode != "free":
         if plan and plan in PLANS:
-            embed.add_field(name="Plan", value=f"{PLANS[plan]['label']} — {PLANS[plan]['price']}", inline=True)
+            embed.add_field(name="Plan", value=f"{PLANS[plan]['label']} - {PLANS[plan]['price']}", inline=True)
         elif plan:
             embed.add_field(name="Plan", value=str(plan).title(), inline=True)
         exp = _parse_dt(state.get("expires_at"))
@@ -726,7 +726,7 @@ async def subscription_grant(
         await interaction.response.send_message(txt, embed=_fmt_state(target, state), ephemeral=True)
     else:
         await interaction.response.send_message(
-            txt + " (The bot isn't in that server yet — it applies as soon as it joins.)", ephemeral=True
+            txt + " (The bot isn't in that server yet - it applies as soon as it joins.)", ephemeral=True
         )
 
 

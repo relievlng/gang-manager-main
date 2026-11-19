@@ -1,4 +1,4 @@
-"""/settings — channel & role configuration."""
+"""/settings - channel & role configuration."""
 
 from .core import *  # noqa: F401,F403
 from .roster import *  # noqa: F401,F403
@@ -81,7 +81,7 @@ def _settings_cards(guild: discord.Guild, store: dict[str, Any], avatar: str | N
         val = store.get(skey)
         obj = (guild.get_channel(val) if kind == "channel" else guild.get_role(val)) if val else None
         mark = "✅" if obj else "⬜"
-        return f"{mark} {_SETTING_EMOJI[key]} {label} — {obj.mention if obj else '*not set*'}"
+        return f"{mark} {_SETTING_EMOJI[key]} {label} - {obj.mention if obj else '*not set*'}"
 
     done = sum(
         1 for k, (_, skey, kind) in CONFIG_SETTINGS.items()
@@ -89,7 +89,7 @@ def _settings_cards(guild: discord.Guild, store: dict[str, Any], avatar: str | N
     )
     total = len(CONFIG_SETTINGS)
     head = discord.Embed(
-        title="⚙️  Gang Manager — Setup",
+        title="⚙️  Gang Manager - Setup",
         description=f"**Setup progress**\n`{_bar(done, total, 18)}` **{done}/{total}** configured",
         color=EMBED_COLOR,
     )
@@ -112,7 +112,7 @@ def _settings_cards(guild: discord.Guild, store: dict[str, Any], avatar: str | N
 
 
 settings_group = app_commands.Group(
-    name="settings", description="Set up the bot — channels, roles & logs (leadership)"
+    name="settings", description="Set up the bot - channels, roles & logs (leadership)"
 )
 
 
@@ -158,7 +158,7 @@ async def settings_view(interaction: discord.Interaction) -> None:
 
 
 @settings_group.command(name="channel", description="Set (or clear) a channel setting")
-@app_commands.describe(setting="Which channel setting", channel="The channel — leave empty to clear it")
+@app_commands.describe(setting="Which channel setting", channel="The channel - leave empty to clear it")
 @app_commands.choices(
     setting=[
         app_commands.Choice(name=f"{_SETTING_EMOJI[k]} {CONFIG_SETTINGS[k][0]}", value=k)
@@ -176,7 +176,7 @@ async def settings_channel(
 
 
 @settings_group.command(name="role", description="Set (or clear) a role setting")
-@app_commands.describe(setting="Which role setting", role="The role — leave empty to clear it")
+@app_commands.describe(setting="Which role setting", role="The role - leave empty to clear it")
 @app_commands.choices(
     setting=[
         app_commands.Choice(name=f"{_SETTING_EMOJI[k]} {CONFIG_SETTINGS[k][0]}", value=k)
@@ -290,7 +290,7 @@ async def settings_logs_setup(interaction: discord.Interaction) -> None:
     save_data(DATA)
 
     desc = f"Created **{len(created)}** log channel(s) under **📋 Gang Manager Logs**:"
-    desc += "\n" + ("\n".join(created) if created else "—")
+    desc += "\n" + ("\n".join(created) if created else "-")
     if kept:
         desc += f"\n\nLeft **{len(kept)}** already-set channel(s) alone. Run this again any time to re-create missing ones."
     e = discord.Embed(title="✅  📋 Log channels ready", description=desc, color=OK)

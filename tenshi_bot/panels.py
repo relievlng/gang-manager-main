@@ -83,7 +83,7 @@ async def role_menu_list(interaction: discord.Interaction) -> None:
         embed.description = "No roles yet. Add some with `/role_menu add`."
     else:
         embed.description = "\n".join(
-            f"- <@&{r['id']}>" + (f" — {r['description']}" if r.get("description") else "")
+            f"- <@&{r['id']}>" + (f" - {r['description']}" if r.get("description") else "")
             for r in roles
         )
     await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -119,7 +119,7 @@ async def role_menu_post(
         )
     if not options:
         await interaction.response.send_message(
-            "No usable roles in the menu yet — add some with `/role_menu add` first.",
+            "No usable roles in the menu yet - add some with `/role_menu add` first.",
             ephemeral=True,
         )
         return
@@ -295,7 +295,7 @@ async def radio_view(interaction: discord.Interaction) -> None:
     freq = store.get("radio_freq")
     if not freq:
         await interaction.response.send_message(
-            "No radio set yet — leadership can roll one with `/radio new`.",
+            "No radio set yet - leadership can roll one with `/radio new`.",
             ephemeral=True,
         )
         return
@@ -320,7 +320,7 @@ async def radio_panel(interaction: discord.Interaction) -> None:
 
 # ---- /eoi (open the form) --------------------------------------------------- #
 
-@bot.tree.command(name="eoi", description="Apply to the gang — fill out an EOI form")
+@bot.tree.command(name="eoi", description="Apply to the gang - fill out an EOI form")
 async def eoi(interaction: discord.Interaction) -> None:
     if await _block_if_already_member(interaction):
         return
@@ -352,7 +352,7 @@ async def eoi_post(
     embed = discord.Embed(
         title="📝  Recruitment is Open",
         description=message
-        or "Want to roll with us? Tap **📨 Apply** below and fill out the form — "
+        or "Want to roll with us? Tap **📨 Apply** below and fill out the form - "
         "the current members of the gang vote on every application.",
         color=EMBED_COLOR,
     )
@@ -362,7 +362,7 @@ async def eoi_post(
     embed.add_field(
         name="How it works",
         value=(
-            "1️⃣  Tap **📨 Apply** — name, role, activity, montages, pick a voucher\n"
+            "1️⃣  Tap **📨 Apply** - name, role, activity, montages, pick a voucher\n"
             "2️⃣  Current members vote ✅ / ❌ on your application\n"
             "3️⃣  When voting closes, the result is posted here 🎉"
         ),
@@ -371,7 +371,7 @@ async def eoi_post(
     embed.add_field(
         name="⚠️ Heads up",
         value=(
-            "• **No montage = instant deny** — put at least one in your application.\n"
+            "• **No montage = instant deny** - put at least one in your application.\n"
             "• Invite your mates and have them fill this out too."
         ),
         inline=False,
@@ -404,50 +404,50 @@ class EOIPromptView(GatedView):
 # ---- /help ------------------------------------------------------------- #
 
 _HELP_PAGES: dict[str, tuple[str, str, str]] = {
-    "home": ("🏠", "Gang Manager — Command Guide",
+    "home": ("🏠", "Gang Manager - Command Guide",
              "**Pick a category below** to see its commands.\n\n"
              "**Quick start**\n"
-             "1️⃣ Open the **web panel → ⚙️ Settings** — channels, roles and logs in one place\n"
-             "2️⃣ `/roster import_roles` — your ranks from your server roles\n"
-             "3️⃣ `/ticket type_add` → `/ticket panel` — open for orders\n"
-             "4️⃣ `/eoi_post` — put up the Apply panel for recruits\n"
-             "5️⃣ `/gang dashboard` — your live command center"),
+             "1️⃣ Open the **web panel → ⚙️ Settings** - channels, roles and logs in one place\n"
+             "2️⃣ `/roster import_roles` - your ranks from your server roles\n"
+             "3️⃣ `/ticket type_add` → `/ticket panel` - open for orders\n"
+             "4️⃣ `/eoi_post` - put up the Apply panel for recruits\n"
+             "5️⃣ `/gang dashboard` - your live command center"),
     "gang": ("👑", "Gang",
-             "`/gang dashboard` — live command center with graphs + 🔄 refresh\n"
-             "`/gang profile [@member]` — rank, KOS, strikes, tickets\n"
+             "`/gang dashboard` - live command center with graphs + 🔄 refresh\n"
+             "`/gang profile [@member]` - rank, KOS, strikes, tickets\n"
              "`/strike add` · `list` · `remove` · `clear` · `limit`\n"
-             "`/war start <enemy> [first_to]` — live scoreboard; staff tap 🏆 won / 💀 lost each round\n"
+             "`/war start <enemy> [first_to]` - live scoreboard; staff tap 🏆 won / 💀 lost each round\n"
              "`/war view` · `history` · `panel` · `end`"),
     "roster": ("🎯", "Roster",
-               "`/roster view` — live from your rank roles, with 🔄 refresh\n"
-               "`/roster import_roles` — every server role as a rank ⭐\n"
+               "`/roster view` - live from your rank roles, with 🔄 refresh\n"
+               "`/roster import_roles` - every server role as a rank ⭐\n"
                "`/roster rank_set <name> <role>` · `rank_list` · `rank_remove`\n"
                "`/roster add` · `remove` · `reset`"),
     "kos": ("💀", "KOS",
             "`/kos view` · `/kos add @members [reason]` · `/kos remove @member`\n"
-            "`/kos start <text> <size>` — sign-up → 🎲 Draw → pick → ✅ approve → posts to announcements + roster (channels remembered)\n"
-            "`/kos reset` — full reset, keeps your saved channels"),
+            "`/kos start <text> <size>` - sign-up → 🎲 Draw → pick → ✅ approve → posts to announcements + roster (channels remembered)\n"
+            "`/kos reset` - full reset, keeps your saved channels"),
     "tickets": ("🎫", "Tickets",
                 "`/ticket type_add` · `type_remove` · `type_list` · `set_category`\n"
-                "`/ticket panel` — post the order menu · `/ticket toggle` — open/close orders\n"
-                "`/ticket board` — open orders, urgent first\n"
-                "`/ticket stats` — analytics + staff leaderboard\n"
+                "`/ticket panel` - post the order menu · `/ticket toggle` - open/close orders\n"
+                "`/ticket board` - open orders, urgent first\n"
+                "`/ticket stats` - analytics + staff leaderboard\n"
                 "`/ticket autoclose <hours>` · `/ticket add` · `/ticket remove`\n"
-                "`/close [reason]` — transcript to staff + a short DM to the customer\n"
+                "`/close [reason]` - transcript to staff + a short DM to the customer\n"
                 "In a ticket: 🙋 Claim · 💰 Paid · 🚩 Priority · 🔒 Close"),
     "community": ("📨", "Recruitment · Radio · Roles",
-                  "`/eoi` · `/eoi_post` — apply / post the Apply panel\n"
+                  "`/eoi` · `/eoi_post` - apply / post the Apply panel\n"
                   "EOI form: role + activity, montage (auto YouTube preview), and pick a voucher\n"
                   "Members vote ✅/❌ · ⏱️ auto 24h timer (leadership can change) · vouch runs by DM\n"
-                  "`/radio new` · `view` · `panel` — rolling gang frequency\n"
-                  "`/role_menu add` · `remove` · `list` · `post` — self-serve roles"),
+                  "`/radio new` · `view` · `panel` - rolling gang frequency\n"
+                  "`/role_menu add` · `remove` · `list` · `post` - self-serve roles"),
     "settings": ("⚙️", "Settings & Website",
                  "**Easiest:** the web panel's **⚙️ Settings** tab sets everything from dropdowns\n"
-                 "`/settings view` — setup progress, everything set, 🩺 health check\n"
-                 "`/settings channel` · `/settings role` — set one (leave empty to clear)\n"
-                 "`/settings logs #channel` — every log type to one channel\n"
-                 "`/settings logs_setup` — auto-create a channel for every log type\n"
-                 "`/subscription status` — this server's plan and paid-until date"),
+                 "`/settings view` - setup progress, everything set, 🩺 health check\n"
+                 "`/settings channel` · `/settings role` - set one (leave empty to clear)\n"
+                 "`/settings logs #channel` - every log type to one channel\n"
+                 "`/settings logs_setup` - auto-create a channel for every log type\n"
+                 "`/subscription status` - this server's plan and paid-until date"),
 }
 
 

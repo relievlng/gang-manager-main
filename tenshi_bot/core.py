@@ -42,21 +42,21 @@ ALLOWED_GUILD_IDS = {int(x) for x in _allowed_raw.split(",") if x.isdigit()}
 # paid features (and the web panel) work. Set BILLING_ENABLED=false to turn the
 # paywall off and treat every server as active.
 BILLING_ENABLED = os.getenv("BILLING_ENABLED", "true").lower() in ("1", "true", "yes", "on")
-# Bot operator(s) — comma-separated Discord user IDs. They bypass the gate and
+# Bot operator(s) - comma-separated Discord user IDs. They bypass the gate and
 # can grant/extend subscriptions manually with /subscription grant.
 _owner_raw = os.getenv("BOT_OWNER_IDS", "").replace(" ", "")
 BOT_OWNER_IDS = {int(x) for x in _owner_raw.split(",") if x.isdigit()}
-# Free trial length (days). 0 (the default) means no trial — servers must
+# Free trial length (days). 0 (the default) means no trial - servers must
 # subscribe to activate.
 try:
     TRIAL_DAYS = int(os.getenv("TRIAL_DAYS", "0") or 0)
 except ValueError:
     TRIAL_DAYS = 0
 
-EMBED_COLOR = 0xC9C9D2  # GM silver — the brand accent for neutral cards
+EMBED_COLOR = 0xC9C9D2  # GM silver - the brand accent for neutral cards
 
 # --------------------------------------------------------------------------- #
-# Palette — one source of truth for every embed colour.
+# Palette - one source of truth for every embed colour.
 #
 # Status colours carry meaning across the whole bot, so an accept always looks
 # like an accept and a loss always looks like a loss. Accent colours give each
@@ -217,7 +217,7 @@ intents = discord.Intents.default()
 # privileged. It's ON by default now. The only remaining requirement is the
 # "Server Members Intent" toggle in the Developer Portal (Bot → Privileged
 # Gateway Intents). If that toggle is off, main() catches the error and restarts
-# the bot once WITHOUT the intent instead of crashing — welcome + join/leave
+# the bot once WITHOUT the intent instead of crashing - welcome + join/leave
 # logs simply stay off until the toggle is flipped. Set MEMBERS_INTENT=false to
 # force it off even when the portal allows it.
 MEMBERS_INTENT = os.getenv("MEMBERS_INTENT", "true").lower() in ("1", "true", "yes", "on")
@@ -251,7 +251,7 @@ async def set_main_power(off: bool) -> None:
 # --------------------------------------------------------------------------- #
 # Bot pool lookups (see pool.py). WORKERS holds any extra pool bots running in
 # this process; it's empty unless pool bots have been added in Admin → Bots, in
-# which case every helper below falls straight through to the main bot — so
+# which case every helper below falls straight through to the main bot - so
 # behaviour is identical to a single-bot setup. pool.py mutates WORKERS in
 # place (never rebinds it).
 # --------------------------------------------------------------------------- #
@@ -326,8 +326,8 @@ def get_user_any(user_id):
 
 
 def all_guilds() -> list:
-    """Every server any of our bots is in — once each, as seen by the bot that
-    serves it — so loops and the website cover pool-served servers too."""
+    """Every server any of our bots is in - once each, as seen by the bot that
+    serves it - so loops and the website cover pool-served servers too."""
     if not WORKERS:
         return list(bot.guilds)
     amap = _pool_assignments()
@@ -350,7 +350,7 @@ def all_guilds() -> list:
 
 
 def serves_guild(guild) -> bool:
-    """True when `guild` came from the bot that should act for it — stops
+    """True when `guild` came from the bot that should act for it - stops
     double welcomes/logs if the main bot and a pool bot share a server."""
     if not WORKERS:
         return True
@@ -381,7 +381,7 @@ async def _deny(
 ) -> bool:
     """The one permission gate for every command. If the user isn't leadership,
     send a uniform ephemeral "Only {who} can {what}." and return True (so the
-    caller returns). Otherwise return False. `who` only changes the wording —
+    caller returns). Otherwise return False. `who` only changes the wording -
     there's no separate staff role, so staff actions still require leadership."""
     if is_leadership(interaction.user):
         return False
@@ -417,7 +417,7 @@ def _emojify_embed(embed: discord.Embed, client) -> None:
             vv = gmify(f.value, client) if f.value else f.value
             if nn != f.name or vv != f.value:
                 embed.set_field_at(i, name=nn, value=vv, inline=f.inline)
-    except Exception:  # noqa: BLE001 — cosmetics must never break an embed
+    except Exception:  # noqa: BLE001 - cosmetics must never break an embed
         pass
 
 
@@ -472,12 +472,12 @@ def _hero(embed: discord.Embed) -> discord.Embed:
 
 
 def _quote(text: str) -> str:
-    """Markdown blockquote, line by line — gives stat blocks their own panel."""
+    """Markdown blockquote, line by line - gives stat blocks their own panel."""
     return "\n".join(f"> {line}" if line.strip() else ">" for line in str(text).split("\n"))
 
 
 def _embed_container(embed: discord.Embed, rows: "list | None" = None) -> "discord.ui.Container":
-    """Render a classic embed as a Components V2 card — one consistent look for
+    """Render a classic embed as a Components V2 card - one consistent look for
     the whole bot:
 
       [hero banner]                       (hero panels only)
@@ -571,7 +571,7 @@ def guild_active(guild_id) -> bool:
 
 
 def welcome_embed(guild: "discord.Guild", member) -> "discord.Embed":
-    """The join welcome card — shared by on_member_join and the panel's
+    """The join welcome card - shared by on_member_join and the panel's
     'Test welcome' button so both render identically."""
     submit = discord.utils.get(guild.text_channels, name="submit-eois")
     where = submit.mention if submit is not None else "#submit-eois"
@@ -654,7 +654,7 @@ def _v2_layout(
             last_row = item.row
         flush()
 
-    # Buttons/menus live INSIDE the last card (above its footer) — one clean
+    # Buttons/menus live INSIDE the last card (above its footer) - one clean
     # unit. Built before the card joins the layout, so every item is registered.
     for i, e in enumerate(embeds):
         last = i == len(embeds) - 1
@@ -714,7 +714,7 @@ async def _send_card(
     except discord.Forbidden:
         raise
     except Exception as exc:  # noqa: BLE001
-        log.warning("V2 send failed (%s) — falling back to classic", exc)
+        log.warning("V2 send failed (%s) - falling back to classic", exc)
     kwargs = {"embeds": embeds, "allowed_mentions": am}
     if make_view:
         kwargs["view"] = _make_custom_view(make_view, _bot)
@@ -759,7 +759,7 @@ async def _send_v2(
         await interaction.response.send_message(view=layout, ephemeral=ephemeral)
         return
     except Exception as exc:  # noqa: BLE001
-        log.warning("V2 render failed (%s) — falling back to embed", exc)
+        log.warning("V2 render failed (%s) - falling back to embed", exc)
     if interaction.response.is_done():
         await interaction.followup.send(embed=embed, ephemeral=ephemeral)
     else:
@@ -770,10 +770,10 @@ _SPARK_CHARS = "▁▂▃▄▅▆▇█"
 
 
 def _spark(values) -> str:
-    """Unicode sparkline, e.g. ▁▂▄▇█▆▃ — reads like a mini line graph."""
+    """Unicode sparkline, e.g. ▁▂▄▇█▆▃ - reads like a mini line graph."""
     vals = [float(v) for v in values]
     if not vals:
-        return "—"
+        return "-"
     lo, hi = min(vals), max(vals)
     if hi == lo:
         return _SPARK_CHARS[3] * len(vals)
@@ -834,7 +834,7 @@ def now_stamp() -> str:
 
 async def notify_strike_change(guild, store, user_id: int, *, kind: str, strike_id=None) -> None:
     """DM a member that a strike was removed (`kind='remove'`) or all of their
-    strikes were cleared (`kind='clear'`). Best-effort — a closed DM or a missing
+    strikes were cleared (`kind='clear'`). Best-effort - a closed DM or a missing
     member is swallowed so it never blocks the action. Works the same whether the
     change came from `/strike` in Discord or from the website."""
     try:
@@ -941,7 +941,7 @@ async def send_log(
     if channel_ctx is not None:
         embed.add_field(name="Channel", value=channel_ctx.mention, inline=True)
     for name, value, inline in fields or []:
-        embed.add_field(name=name, value=(value or "—")[:1024], inline=inline)
+        embed.add_field(name=name, value=(value or "-")[:1024], inline=inline)
     try:
         await _send_card(channel, [embed])
     except discord.HTTPException:
@@ -1037,7 +1037,7 @@ def _set_embed_field(embed: discord.Embed, name: str, value: str, inline: bool =
 
 
 def _eoi_card(store: dict, mid, guild, *, app=None, votes=None, timer=None, vouch=None) -> discord.Embed:
-    """Build the EOI application card from stored state — the single source of
+    """Build the EOI application card from stored state - the single source of
     truth, rebuilt on every vote / timer change / vouch / close so the post
     always carries the same premium Components-V2 look as the rest of the bot.
 
@@ -1054,10 +1054,10 @@ def _eoi_card(store: dict, mid, guild, *, app=None, votes=None, timer=None, vouc
     passed = app.get("passed")
 
     uid = app.get("user_id")
-    ign = app.get("ign") or "—"
-    role = app.get("role") or "—"
+    ign = app.get("ign") or "-"
+    role = app.get("role") or "-"
     role_emoji = app.get("role_emoji") or "🎯"
-    activity = app.get("activity") or "—"
+    activity = app.get("activity") or "-"
     act_emoji = app.get("act_emoji") or "🔥"
 
     client = designated_client(getattr(guild, "id", 0))
@@ -1097,9 +1097,9 @@ def _eoi_card(store: dict, mid, guild, *, app=None, votes=None, timer=None, vouc
     elif vstatus == "declined":
         vval = f"{E('no')} Declined by {vmention}"
     elif vstatus == "pending":
-        vval = f"{E('clock')} Pending — {vmention}"
+        vval = f"{E('clock')} Pending - {vmention}"
     else:
-        vval = "—"
+        vval = "-"
     embed.add_field(name=f"{E('vouch')} Vouch", value=vval, inline=True)
 
     if app.get("account_ts"):
@@ -1137,7 +1137,7 @@ def _eoi_card(store: dict, mid, guild, *, app=None, votes=None, timer=None, vouc
         ends = timer["ends"]
         embed.add_field(
             name=f"{E('clock')} Voting closes",
-            value=f"<t:{ends}:R> · <t:{ends}:f>\n-# auto-closes — leadership can change below",
+            value=f"<t:{ends}:R> · <t:{ends}:f>\n-# auto-closes - leadership can change below",
             inline=False,
         )
     return _brand(embed, guild)
@@ -1238,7 +1238,7 @@ class EOIView(GatedView):
             "EOIView error on %s: %s", getattr(item, "custom_id", "?"), error
         )
         text = (
-            "⚠️ Couldn't record that vote — I may be missing permission to edit "
+            "⚠️ Couldn't record that vote - I may be missing permission to edit "
             "the message or post here."
         )
         try:
@@ -1300,7 +1300,7 @@ class EOIView(GatedView):
         await _edit_card(msg, [card], lambda: _eoi_view(store, msg.id))
         await interaction.followup.send(f"⏱️ Voting closes <t:{ends}:R>.", ephemeral=True)
         await send_log(
-            interaction.guild, store, f"⏱️ EOI voting timer set — closes <t:{ends}:R>.",
+            interaction.guild, store, f"⏱️ EOI voting timer set - closes <t:{ends}:R>.",
             category="eoi", actor=interaction.user,
         )
 
@@ -1321,18 +1321,18 @@ def _eoi_view(store: dict[str, Any], message_id: int) -> EOIView:
 # EOI application modal (the form in your screenshot + a YouTube link)
 # --------------------------------------------------------------------------- #
 
-# (label, emoji, description) — the description shows as a subtitle under each
+# (label, emoji, description) - the description shows as a subtitle under each
 # choice in the dropdown, so the menus read clearly at a glance.
 _EOI_ROLES = [
     ("Shooter", "🔫", "Fragging, hits, holding down turf"),
     ("Crafter / Supplier", "🛠️", "Guns, ammo, keeping everyone stocked"),
     ("Money / Business", "💰", "Shops, deals, running the economy"),
-    ("Whatever's needed", "🧩", "Flexible — put me where you need me"),
+    ("Whatever's needed", "🧩", "Flexible - put me where you need me"),
 ]
 _EOI_ACTIVITY = [
     ("Every day", "🔥", "On pretty much daily"),
-    ("Most days", "📅", "5–6 days a week"),
-    ("A few times a week", "🕒", "2–4 days a week"),
+    ("Most days", "📅", "5-6 days a week"),
+    ("A few times a week", "🕒", "2-4 days a week"),
     ("Weekends", "🎉", "Mainly Saturday & Sunday"),
     ("Casual", "😴", "Here and there when I can"),
 ]
@@ -1361,14 +1361,14 @@ async def _block_if_already_member(interaction: discord.Interaction) -> bool:
         and any(getattr(r, "id", None) in gang_role_ids for r in member_roles)
     ):
         await interaction.response.send_message(
-            "You're already in the gang, silly 😄 — no need to apply.",
+            "You're already in the gang, silly 😄 - no need to apply.",
             ephemeral=True,
         )
         return True
     return False
 
 
-class EOIModal(discord.ui.Modal, title="Join the Gang — Application"):
+class EOIModal(discord.ui.Modal, title="Join the Gang - Application"):
     ign = discord.ui.Label(
         text="In-game name",
         description="The character or RP name people know you by",
@@ -1376,7 +1376,7 @@ class EOIModal(discord.ui.Modal, title="Join the Gang — Application"):
     )
     role = discord.ui.Label(
         text="Which role fits you?",
-        description="Your main play-style — you can always do more later",
+        description="Your main play-style - you can always do more later",
         component=discord.ui.Select(
             placeholder="Pick your main role…",
             required=True,
@@ -1385,7 +1385,7 @@ class EOIModal(discord.ui.Modal, title="Join the Gang — Application"):
     )
     activity = discord.ui.Label(
         text="How active are you?",
-        description="Be honest — it just helps us place you right",
+        description="Be honest - it just helps us place you right",
         component=discord.ui.Select(
             placeholder="Pick how often you're on…",
             required=True,
@@ -1394,7 +1394,7 @@ class EOIModal(discord.ui.Modal, title="Join the Gang — Application"):
     )
     montage = discord.ui.Label(
         text="Montage or clips",
-        description="Show us your gameplay — one YouTube link per line",
+        description="Show us your gameplay - one YouTube link per line",
         component=discord.ui.TextInput(
             style=discord.TextStyle.paragraph,
             placeholder="https://youtu.be/…\nhttps://youtu.be/…",
@@ -1404,7 +1404,7 @@ class EOIModal(discord.ui.Modal, title="Join the Gang — Application"):
     )
     voucher = discord.ui.Label(
         text="Got someone to vouch for you?",
-        description="Pick a current member — they get a DM to confirm, and their name shows on your application",
+        description="Pick a current member - they get a DM to confirm, and their name shows on your application",
         component=discord.ui.UserSelect(
             placeholder="Choose someone to vouch for you…",
             min_values=0,
@@ -1437,8 +1437,8 @@ class EOIModal(discord.ui.Modal, title="Join the Gang — Application"):
 
         user = interaction.user
         ign = self.ign.component.value.strip()
-        role = (self.role.component.values or ["—"])[0]
-        activity = (self.activity.component.values or ["—"])[0]
+        role = (self.role.component.values or ["-"])[0]
+        activity = (self.activity.component.values or ["-"])[0]
         role_emoji = _eoi_emoji(_EOI_ROLES, role, "🎯")
         act_emoji = _eoi_emoji(_EOI_ACTIVITY, activity, "🔥")
 
@@ -1503,12 +1503,12 @@ class EOIModal(discord.ui.Modal, title="Join the Gang — Application"):
         vouch_note = ""
         if voucher is not None:
             if voucher.id == user.id:
-                vouch_note = "\n⚠️ You can't vouch for yourself — that was skipped."
+                vouch_note = "\n⚠️ You can't vouch for yourself - that was skipped."
             elif getattr(voucher, "bot", False):
-                vouch_note = "\n⚠️ You picked a bot to vouch — that was skipped."
+                vouch_note = "\n⚠️ You picked a bot to vouch - that was skipped."
             elif await _request_vouch(interaction.guild, store, posted, user, voucher):
                 vouch_note = (
-                    f"\n🤝 Asked {voucher.mention} to vouch — they'll get a DM to confirm."
+                    f"\n🤝 Asked {voucher.mention} to vouch - they'll get a DM to confirm."
                 )
             else:
                 vouch_note = (
@@ -1527,7 +1527,7 @@ class EOIModal(discord.ui.Modal, title="Join the Gang — Application"):
             category="eoi",
             actor=interaction.user,
             fields=[
-                ("In-game", ign or "—", True),
+                ("In-game", ign or "-", True),
                 ("Role", role, True),
                 ("Activity", activity, True),
             ],
@@ -1539,7 +1539,7 @@ class EOIModal(discord.ui.Modal, title="Join the Gang — Application"):
 async def _close_eoi(
     guild: discord.Guild, store: dict[str, Any], mid: int, rec: dict, force: str | None = None
 ) -> None:
-    """Tally votes, lock the EOI post, and — if it passed — welcome them into
+    """Tally votes, lock the EOI post, and - if it passed - welcome them into
     the gang in the EOI channel and give them the base Tenshi rank role (falling
     back to the roster role only if no Tenshi rank is configured). Denials are
     quiet: post is marked and the applicant gets a DM. `force` overrides the vote
@@ -1621,7 +1621,7 @@ async def _close_eoi(
                 embed=discord.Embed(
                     title="🎉 You're in!" if passed else "Your application",
                     description=(
-                        f"Your EOI for **{guild.name}** was **accepted** — welcome to the gang."
+                        f"Your EOI for **{guild.name}** was **accepted** - welcome to the gang."
                         if passed
                         else f"Your EOI for **{guild.name}** wasn't accepted this time."
                     ),
@@ -1632,7 +1632,7 @@ async def _close_eoi(
             pass
     await send_log(
         guild, store,
-        f"{'✅' if passed else '❌'} EOI {'accepted' if passed else 'denied'} — "
+        f"{'✅' if passed else '❌'} EOI {'accepted' if passed else 'denied'} - "
         f"{f'<@{uid}>' if uid else 'applicant'} (✅ {yes} · ❌ {no}).",
         category="eoi",
     )
@@ -1642,7 +1642,7 @@ async def _close_eoi(
 #
 # An applicant can pick one member to vouch for them. That member is DM'd an
 # Accept / Decline button; on accept, their name is shown on the EOI post.
-# The DM buttons are DynamicItems so they keep working across restarts — all the
+# The DM buttons are DynamicItems so they keep working across restarts - all the
 # state they need (guild, EOI message, voucher) lives in the custom_id.
 
 
@@ -1727,7 +1727,7 @@ async def _handle_vouch_decision(
     result = _brand(discord.Embed(
         title="🤝 Vouch confirmed" if accepted else "Vouch declined",
         description=(
-            f"You vouched for <@{applicant_id}> — your name now shows on their application. 🫡"
+            f"You vouched for <@{applicant_id}> - your name now shows on their application. 🫡"
             if accepted
             else f"You declined to vouch for <@{applicant_id}>. No worries."
         ),
@@ -1752,7 +1752,7 @@ async def _handle_vouch_decision(
     await send_log(
         guild,
         store,
-        f"🤝 Vouch {'accepted' if accepted else 'declined'} — {voucher_mention} for <@{applicant_id}>.",
+        f"🤝 Vouch {'accepted' if accepted else 'declined'} - {voucher_mention} for <@{applicant_id}>.",
         category="eoi",
     )
 
@@ -1842,7 +1842,7 @@ class SelfRoleSelect(discord.ui.Select):
     """
 
     def __init__(self, options: list[discord.SelectOption] | None = None) -> None:
-        opts = options or [discord.SelectOption(label="—", value="0")]
+        opts = options or [discord.SelectOption(label="-", value="0")]
         super().__init__(
             custom_id="selfrole:menu",
             placeholder="Select your roles…",

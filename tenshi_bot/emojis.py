@@ -1,6 +1,6 @@
 """Custom application emojis for Gang Manager.
 
-Each bot — the main bot and every pool bot — uploads this set to *its own*
+Each bot - the main bot and every pool bot - uploads this set to *its own*
 application on startup, because Discord application emojis only render for the
 application that owns them. Everything falls back to a plain unicode glyph when
 the upload hasn't happened yet or failed, so the bot always works.
@@ -70,7 +70,7 @@ EMOJI: dict[str, tuple[str, str]] = {
     "n1":      ("gm_n1",      "1️⃣"),
     "n2":      ("gm_n2",      "2️⃣"),
     "n3":      ("gm_n3",      "3️⃣"),
-    # progress-bar segments (no unicode fallback — _vote_bar falls back to squares)
+    # progress-bar segments (no unicode fallback - _vote_bar falls back to squares)
     "vbar_lf": ("vbar_lf", ""),
     "vbar_le": ("vbar_le", ""),
     "vbar_mf": ("vbar_mf", ""),
@@ -124,7 +124,7 @@ def _app_id(client) -> int | None:
 async def sync_app_emojis(client: discord.Client) -> None:
     """Upload any missing Gang Manager emojis to this bot's application and cache
     their mention strings. Idempotent (skips ones already uploaded) and
-    best-effort — a failure just leaves the unicode fallbacks in place."""
+    best-effort - a failure just leaves the unicode fallbacks in place."""
     try:
         app_id = _app_id(client)
         if not app_id:

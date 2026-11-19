@@ -1,4 +1,4 @@
-"""/roster — live roster from rank roles, ranks, import_roles, add/remove/reset."""
+"""/roster - live roster from rank roles, ranks, import_roles, add/remove/reset."""
 
 from .core import *  # noqa: F401,F403
 
@@ -14,7 +14,7 @@ def _roster_role(guild: discord.Guild, store: dict[str, Any]) -> discord.Role | 
 async def _ensure_members(guild: discord.Guild) -> None:
     """Make sure the member list is loaded so ``role.members`` is accurate before
     building a roster. A no-op when the guild is already cached or the members
-    intent is off — never raises."""
+    intent is off - never raises."""
     try:
         if not guild.chunked:
             await guild.chunk()
@@ -25,11 +25,11 @@ async def _ensure_members(guild: discord.Guild) -> None:
 def _apply_roster_roles(
     guild: discord.Guild, store: dict[str, Any], roles: "list[discord.Role]"
 ) -> list[str]:
-    """Set the roster's ranks to exactly the picked roles — the clean way to choose
+    """Set the roster's ranks to exactly the picked roles - the clean way to choose
     what shows up. Keeps any custom rank name already mapped to a role, else uses
     the role's own name. Highest role first, capped at 25 (Discord's field limit)."""
     old_names = {r["role_id"]: r["name"] for r in store.get("ranks", [])}
-    # drop @everyone / managed (bot, booster, integration) roles — never rostered
+    # drop @everyone / managed (bot, booster, integration) roles - never rostered
     clean = [r for r in roles if not r.is_default() and not r.managed]
     picked = sorted(clean, key=lambda r: r.position, reverse=True)[:25]
     store["ranks"] = [
@@ -42,7 +42,7 @@ def _apply_roster_roles(
 
 def _detect_roster_roles(guild: discord.Guild) -> "list[discord.Role]":
     """Best-guess the roster's rank roles with zero setup: the server's hoisted
-    roles (the ones shown as their own group in the member list — almost always
+    roles (the ones shown as their own group in the member list - almost always
     gang ranks), highest first. Falls back to any role that has real (non-bot)
     members if nothing is hoisted. Skips @everyone and bot/booster/integration
     roles; capped at 25 (Discord's embed-field limit)."""
@@ -145,7 +145,7 @@ ROSTER_REFRESH_VIEW = RosterRefreshView()
 
 
 class RosterRolesPicker(GatedView):
-    """A native Discord role picker — leadership ticks which server roles make up
+    """A native Discord role picker - leadership ticks which server roles make up
     the roster, each becoming a rank ordered by its place in the server. Opens
     pre-filled with the current selection, so it doubles as the editor. Auto-detect
     fills it from the server's rank roles (zero setup), Clear empties it, and the
@@ -175,7 +175,7 @@ class RosterRolesPicker(GatedView):
         if names:
             listing = "\n".join(f"`{i + 1:>2}` {n}" for i, n in enumerate(names))
             return (
-                f"{lead}**Roster roles — {len(names)} rank(s), top to bottom:**\n{listing}\n\n"
+                f"{lead}**Roster roles - {len(names)} rank(s), top to bottom:**\n{listing}\n\n"
                 "Untick any above to remove it, or tick more. Run `/roster view` to see "
                 "everyone grouped by these."
             )
@@ -204,7 +204,7 @@ class RosterRolesPicker(GatedView):
         names = _apply_roster_roles(interaction.guild, store, _detect_roster_roles(interaction.guild))
         save_data(DATA)
         if names:
-            lead = (f"✨ Detected **{len(names)}** rank role(s) from your server — "
+            lead = (f"✨ Detected **{len(names)}** rank role(s) from your server - "
                     "untick any that aren't gang ranks.\n\n")
         else:
             lead = ("Couldn't spot obvious rank roles (none are set to display separately). "
@@ -419,7 +419,7 @@ async def roster_import_roles(interaction: discord.Interaction) -> None:
             f"✅ Imported **{len(added)}** role(s) as ranks: {', '.join(added)}"
         )
     else:
-        lines.append("Nothing new to import — every role is already a rank.")
+        lines.append("Nothing new to import - every role is already a rank.")
     if capped:
         lines.append(
             "⚠️ Hit the 25-rank cap (Discord embeds max out at 25 groups). "
@@ -451,13 +451,13 @@ async def roster_roles(interaction: discord.Interaction) -> None:
         if detected:
             _apply_roster_roles(interaction.guild, store, detected)
             save_data(DATA)
-            auto = (f"✨ Auto-detected **{len(store['ranks'])}** rank role(s) from your server — "
+            auto = (f"✨ Auto-detected **{len(store['ranks'])}** rank role(s) from your server - "
                     "untick any that aren't gang ranks below.\n\n")
     view = RosterRolesPicker(interaction.guild, store)
     await interaction.response.send_message(
         auto +
         "**Roster roles**\n"
-        "Tick every role that should appear on the roster — each becomes a rank, "
+        "Tick every role that should appear on the roster - each becomes a rank, "
         "ordered by its place in your server. Untick to remove. @everyone and bot roles "
         "are ignored. Changes save instantly, and **✨ Auto-detect** refills from your "
         "server any time.",
@@ -485,7 +485,7 @@ async def roster_view(interaction: discord.Interaction) -> None:
 @app_commands.describe(
     member="Member to add (@mention them)",
     more="Paste extra @mentions or IDs here to add many at once (up to 30 total)",
-    rank="Rank to assign — pick from your configured ranks (optional)",
+    rank="Rank to assign - pick from your configured ranks (optional)",
 )
 @app_commands.autocomplete(rank=rank_autocomplete)
 async def roster_add(
@@ -532,17 +532,17 @@ async def roster_add(
         lines.append(f"ℹ️ Already on the roster: {', '.join(skipped)}.")
     if rank and rank_role is None:
         lines.append(
-            f"⚠️ No role is mapped to rank **{rank}** — set one with `/roster rank_set`."
+            f"⚠️ No role is mapped to rank **{rank}** - set one with `/roster rank_set`."
         )
     elif role is None:
         lines.append(
-            "⚠️ No role to give — set a rank with `/roster rank_set`, or set the "
+            "⚠️ No role to give - set a rank with `/roster rank_set`, or set the "
             "**Roster default role** with `/settings role`."
         )
     elif role_fail:
         lines.append(
             f"⚠️ Couldn't give the {role.mention} role to {', '.join(role_fail)} "
-            "— check I have **Manage Roles** and my role sits above it."
+            "- check I have **Manage Roles** and my role sits above it."
         )
     await interaction.followup.send("\n".join(lines)[:2000] or "Nothing to add.")
 
@@ -555,7 +555,7 @@ async def roster_add(
             actor=interaction.user,
             fields=[
                 ("Members", ", ".join(added), False),
-                ("Rank", rank or "—", True),
+                ("Rank", rank or "-", True),
                 ("Roster size", str(len(store["roster"])), True),
             ],
         )
@@ -611,7 +611,7 @@ async def roster_reset(interaction: discord.Interaction) -> None:
     store["roster"] = []
     save_data(DATA)
     await interaction.response.send_message(
-        f"Roster wiped — {count} members cleared. Roles left untouched. 🧹"
+        f"Roster wiped - {count} members cleared. Roles left untouched. 🧹"
     )
     await send_log(
         interaction.guild,

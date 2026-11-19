@@ -1,4 +1,4 @@
-"""/kos — KOS list, sign-up → draw → staff approval → announce flow."""
+"""/kos - KOS list, sign-up → draw → staff approval → announce flow."""
 
 from .core import *  # noqa: F401,F403
 from .roster import *  # noqa: F401,F403
@@ -88,13 +88,13 @@ async def kos_add(
         lines.append(f"ℹ️ Already KOS: {', '.join(skipped)}.")
     if role is None:
         lines.append(
-            "⚠️ No KOS role set — set the **KOS role** with `/settings role` so they "
+            "⚠️ No KOS role set - set the **KOS role** with `/settings role` so they "
             "get one automatically."
         )
     elif role_fail:
         lines.append(
             f"⚠️ Couldn't give the {role.mention} role to {', '.join(role_fail)} "
-            "— check I have **Manage Roles** and my role sits above it."
+            "- check I have **Manage Roles** and my role sits above it."
         )
     await interaction.followup.send("\n".join(lines)[:2000] or "Nothing to add.")
 
@@ -107,7 +107,7 @@ async def kos_add(
             actor=interaction.user,
             fields=[
                 ("Targets", ", ".join(added), False),
-                ("Reason", reason or "—", True),
+                ("Reason", reason or "-", True),
                 ("KOS size", str(len(store["kos"])), True),
             ],
         )
@@ -153,7 +153,7 @@ async def kos_remove(
 
 @kos_group.command(
     name="reset",
-    description="Full KOS roster reset — clears the list and takes the KOS role off everyone (leadership)",
+    description="Full KOS roster reset - clears the list and takes the KOS role off everyone (leadership)",
 )
 async def kos_reset(interaction: discord.Interaction) -> None:
     if await _deny(interaction, "reset the KOS roster"):
@@ -187,12 +187,12 @@ async def kos_reset(interaction: discord.Interaction) -> None:
     store["kos_proposals"] = {}
     save_data(DATA)
 
-    msg = f"💀 KOS roster reset — **{count}** cleared"
+    msg = f"💀 KOS roster reset - **{count}** cleared"
     if role is not None:
         msg += f", {role.mention} taken off **{removed}** member(s)"
     msg += ". Your saved KOS channels are kept. 🧹"
     if failed:
-        msg += f"\n⚠️ Couldn't remove the role from {failed} — check my role is above {role.mention}."
+        msg += f"\n⚠️ Couldn't remove the role from {failed} - check my role is above {role.mention}."
     await interaction.followup.send(msg, allowed_mentions=discord.AllowedMentions.none())
     await send_log(
         guild,
@@ -221,14 +221,14 @@ def _muster_embed(text: str, attendees: list[int], size: int) -> discord.Embed:
     if attendees:
         lst = "\n".join(f"`{i:>2}` <@{uid}>" for i, uid in enumerate(attendees, 1))
     else:
-        lst = "*Nobody yet — tap **Join** below.*"
+        lst = "*Nobody yet - tap **Join** below.*"
     embed.add_field(name=f"✅ In the pool · {len(attendees)}", value=lst[:1024], inline=False)
     embed.set_footer(text=f"Tap to join · tap again to leave · {size} will be drawn")
     return embed
 
 
 class MusterView(GatedView):
-    """Public sign-up — just the Join button."""
+    """Public sign-up - just the Join button."""
 
     def __init__(self) -> None:
         super().__init__(timeout=None)
@@ -273,7 +273,7 @@ MUSTER_VIEW = MusterView()
 
 def _draw_control_embed(target: discord.abc.GuildChannel, size: int) -> discord.Embed:
     return discord.Embed(
-        title="🎲  KOS Roster — Draw",
+        title="🎲  KOS Roster - Draw",
         description=(
             f"Sign-up is live in {target.mention}.\n"
             f"When enough have joined, tap **Draw** to randomly pick **{size}** "
@@ -284,7 +284,7 @@ def _draw_control_embed(target: discord.abc.GuildChannel, size: int) -> discord.
 
 
 class StaffDrawView(GatedView):
-    """Leaders-chat control — the Draw button."""
+    """Leaders-chat control - the Draw button."""
 
     def __init__(self) -> None:
         super().__init__(timeout=None)
@@ -333,7 +333,7 @@ class StaffDrawView(GatedView):
             if link.get("ping_role_id")
             else None
         )
-        head = "🎲 **KOS draw is ready** — pick the members, then approve."
+        head = "🎲 **KOS draw is ready** - pick the members, then approve."
         pmsg = await _send_card(
             interaction.channel,
             [_proposal_embed(interaction.guild, prop)],
@@ -344,7 +344,7 @@ class StaffDrawView(GatedView):
         store["kos_proposals"][str(pmsg.id)] = prop
         save_data(DATA)
         await interaction.followup.send(
-            f"Drawn **{len(prop['roster'])}** from {len(pool)} — approve it below. ✅",
+            f"Drawn **{len(prop['roster'])}** from {len(pool)} - approve it below. ✅",
             ephemeral=True,
         )
 
@@ -357,7 +357,7 @@ STAFF_DRAW_VIEW = StaffDrawView()
 def _proposal_embed(guild: discord.Guild, prop: dict[str, Any]) -> discord.Embed:
     approved = prop.get("status") == "approved"
     embed = discord.Embed(
-        title="💀  KOS Roster — Approved" if approved else "🗳️  KOS Roster — Approve",
+        title="💀  KOS Roster - Approved" if approved else "🗳️  KOS Roster - Approve",
         description=prop.get("text") or "*No details.*",
         color=OK if approved else EMBED_COLOR,
         timestamp=datetime.datetime.now(datetime.timezone.utc),
@@ -407,7 +407,7 @@ def _member_options(guild: discord.Guild, ids: list[int]) -> list[discord.Select
         discord.SelectOption(label=_member_name(guild, uid)[:100], value=str(uid))
         for uid in ids[:25]
     ]
-    return opts or [discord.SelectOption(label="—", value="0")]
+    return opts or [discord.SelectOption(label="-", value="0")]
 
 
 class _ProposalRemoveSelect(discord.ui.Select):
@@ -566,7 +566,7 @@ class RosterProposalView(GatedView):
 
         await _edit_card(interaction.message, [_proposal_embed(guild, prop)], None)
         await interaction.followup.send(
-            f"✅ Approved — posted to {', '.join(posted) or 'nowhere (check my permissions)'} "
+            f"✅ Approved - posted to {', '.join(posted) or 'nowhere (check my permissions)'} "
             f"and gave **{len(prop['roster'])}** the KOS role.",
             ephemeral=True,
         )
@@ -660,9 +660,9 @@ ROSTER_PROPOSAL_VIEW = RosterProposalView()
 @app_commands.describe(
     text="What the sign-up post should say",
     size="How many to draw onto the roster",
-    channel="KOS announcements — sign-up & final roster (remembered after first use)",
+    channel="KOS announcements - sign-up & final roster (remembered after first use)",
     draw_channel="Where the Draw & member picking happens (remembered)",
-    roster_channel="KOS roster channel — approved roster also posts here (remembered)",
+    roster_channel="KOS roster channel - approved roster also posts here (remembered)",
     ping_role="Role to ping on sign-up and when the draw is ready (remembered)",
 )
 async def kos_start(
@@ -714,7 +714,7 @@ async def kos_start(
     ping = ping_role.mention if ping_role else None
     pings = discord.AllowedMentions(roles=True)
     try:
-        # fresh view instance per message — sharing the registered one breaks clicks
+        # fresh view instance per message - sharing the registered one breaks clicks
         msg = await _send_card(
             target,
             [_brand(_muster_embed(text, [], size), guild)],
@@ -724,7 +724,7 @@ async def kos_start(
         )
     except discord.Forbidden:
         await interaction.response.send_message(
-            f"I can't post in {target.mention} — check my permissions there.",
+            f"I can't post in {target.mention} - check my permissions there.",
             ephemeral=True,
         )
         return
@@ -741,7 +741,7 @@ async def kos_start(
     except discord.Forbidden:
         await interaction.response.send_message(
             f"Posted the sign-up, but I can't post the Draw control in {staff.mention} "
-            "— check my permissions there.",
+            "- check my permissions there.",
             ephemeral=True,
         )
         save_data(DATA)
