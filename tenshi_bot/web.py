@@ -5971,7 +5971,7 @@ a.link,.link{color:var(--brand2)}
     }else{go()}
    });
   }
-  var CL_CATS=[['added','✨','Added'],['improved','⚡','Improved'],['fixed','🔧','Fixed'],['changed','🔀','Changed'],['removed','🗑️','Removed']];
+  var CL_CATS=[['added','🎉','Added'],['improved','🔥','Improved'],['fixed','🔨','Fixed'],['changed','🔄','Changed'],['removed','🗑️','Removed']];
   var CL_CHANS=[],CL_BRAND='',CL_BOUND=false,CL_LAST=null;
   function clToday(){try{return new Date().toISOString().slice(0,10)}catch(e){return ''}}
   function clBullets(v){return String(v||'').split('\n').map(function(x){return x.trim()}).filter(Boolean)}
