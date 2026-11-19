@@ -5566,6 +5566,12 @@ a.link,.link{color:var(--brand2)}
       </div>
       <p class=hint id=tbMsg style=margin:9px 0 0></p>
     </div>
+    <div class=card id=testLogCard style=display:none>
+      <h3>🧪 Send test logs</h3>
+      <p class=hint>Fires one sample of every admin log kind - purchases, subscriptions, sign-ins, security, moderation, staff, pool and servers - through the real path, so each lands in its log channel looking exactly like a live log, just with test info.</p>
+      <button class=brand-btn id=tlSend>Send test logs</button>
+      <p class=hint id=tlMsg style=margin:9px 0 0></p>
+    </div>
     <div class=card id=shopCard><h3>Shop log</h3><p class=hint>Every purchase and renewal - email, server, IP and invoice captured at checkout.</p>
       <div class=shopstats id=shopStats></div>
       <div class=shoptools>
@@ -5916,7 +5922,8 @@ a.link,.link{color:var(--brand2)}
     box.querySelectorAll('button[data-u]').forEach(function(x){x.onclick=function(){confirmBox({icon:'♻️',title:'Unban user?',message:'They will be able to use the bot again.',confirmText:'Unban'}).then(function(ok){if(!ok)return;api('/api/admin/unban','POST',{user_id:x.getAttribute('data-u')}).then(function(r){if(r.ok){toast('Unbanned');loadBans();loadSubs()}else toast(r.error||'Failed',true)})})}});
   }
   function doBan(){var id=$('#banId').value.trim(),rs=$('#banReason').value.trim();if(!id){toast('Enter a Discord ID',true);return}api('/api/admin/ban','POST',{user_id:id,reason:rs}).then(function(r){if(r.ok){toast('Banned');$('#banId').value='';$('#banReason').value='';loadBans();loadSubs()}else toast(r.error||'Failed',true)})}
-  function loadShop(){var box=$('#shopList');var tc=$('#testBuyCard');if(tc)tc.style.display=STATE.owner?'':'none';box.innerHTML='<div class=sk style=height:40px></div><div class=sk style=height:40px></div>';api('/api/admin/shop_log').then(function(d){if(!d.ok){box.innerHTML='<div class=pad>Could not load.</div>';return}SHOP=d.log||[];var sel=$('#tbServer');if(sel){var cur=sel.value;var o='<option value="">No specific server</option>';(d.servers||[]).forEach(function(s){o+='<option value="'+esc(s.id)+'">'+(s.active?'🟢 ':'⚪ ')+esc(s.name)+'</option>'});sel.innerHTML=o;if(cur)sel.value=cur}renderShop()})}
+  function sendTestLogs(){confirmBox({icon:'🧪',title:'Send test logs?',message:'Fires one sample of every admin log kind to its log channel. Test info only, nothing real happens.',confirmText:'Send'}).then(function(go){if(!go)return;var btn=$('#tlSend');btn.disabled=true;btn.textContent='Sending…';$('#tlMsg').textContent='';api('/api/admin/test_logs','POST',{}).then(function(r){btn.disabled=false;btn.textContent='Send test logs';if(r&&r.ok){$('#tlMsg').textContent='✅ Sent '+(r.sent||0)+' test log(s) - check your admin log channels.';toast('Test logs sent')}else{toast((r&&r.error)||'Failed',true);$('#tlMsg').textContent=(r&&r.error)||'Failed'}})})}
+  function loadShop(){var box=$('#shopList');var tc=$('#testBuyCard');if(tc)tc.style.display=STATE.owner?'':'none';var tl=$('#testLogCard');if(tl)tl.style.display=STATE.owner?'':'none';box.innerHTML='<div class=sk style=height:40px></div><div class=sk style=height:40px></div>';api('/api/admin/shop_log').then(function(d){if(!d.ok){box.innerHTML='<div class=pad>Could not load.</div>';return}SHOP=d.log||[];var sel=$('#tbServer');if(sel){var cur=sel.value;var o='<option value="">No specific server</option>';(d.servers||[]).forEach(function(s){o+='<option value="'+esc(s.id)+'">'+(s.active?'🟢 ':'⚪ ')+esc(s.name)+'</option>'});sel.innerHTML=o;if(cur)sel.value=cur}renderShop()})}
   function sendTestBuy(){var u=($('#tbUser').value||'').trim();if(!/^\d{5,25}$/.test(u)){toast('Enter a valid Discord user ID',true);return}confirmBox({icon:'🧪',title:'Send a test purchase?',message:'DMs a test invoice to that user and posts a test purchase log. No charge, no record.',confirmText:'Send test'}).then(function(go){if(!go)return;var btn=$('#tbSend');btn.disabled=true;btn.textContent='Sending…';$('#tbMsg').textContent='';api('/api/admin/test_purchase','POST',{user_id:u,server_id:($('#tbServer').value||''),amount:($('#tbAmount').value||'').trim()}).then(function(r){btn.disabled=false;btn.textContent='Send test';if(r&&r.ok){$('#tbMsg').innerHTML=(r.dm==='sent'?'✅ Invoice DM delivered.':'⚠️ Logged, but couldn\'t DM them (their DMs may be closed, or they share no server with the bot).')+' · Invoice <span class="mono copy" data-copy="'+esc(r.invoice||'')+'" title="Click to copy">'+esc(r.invoice||'')+'</span>';toast('Test purchase sent')}else{toast((r&&r.error)||'Failed',true);$('#tbMsg').textContent=(r&&r.error)||'Failed'}})})}
   function relTs(t){if(!t)return '-';var s=Math.floor(Date.now()/1000)-t;if(s<60)return 'just now';var m=Math.floor(s/60);if(m<60)return m+'m ago';var h=Math.floor(m/60);if(h<24)return h+'h ago';var d=Math.floor(h/24);if(d<30)return d+'d ago';try{return new Date(t*1000).toLocaleDateString()}catch(e){return d+'d ago'}}
   function shopFiltered(){var q=SHOPQ.toLowerCase();return SHOP.filter(function(e){if(SHOPKIND!=='all'&&(e.kind||'purchase')!==SHOPKIND)return false;return !q||((e.email||'').toLowerCase().indexOf(q)>=0||(e.ip||'').indexOf(q)>=0||(e.guild_name||'').toLowerCase().indexOf(q)>=0||String(e.guild_id||'').indexOf(q)>=0||String(e.purchaser_id||'').indexOf(q)>=0||(e.session_id||'').toLowerCase().indexOf(q)>=0||(e.customer_id||'').toLowerCase().indexOf(q)>=0)})}
@@ -6182,7 +6189,7 @@ a.link,.link{color:var(--brand2)}
     var chName=d.channel_id?('#'+(((RL_CHANS.filter(function(c){return c.id===d.channel_id})[0])||{}).name||'channel')):'the default channel';
     confirmBox({icon:'🛡️',title:'Post these rules?',message:'They will be posted now to '+chName+' in the server\'s embed style.',confirmText:'Post now'}).then(function(go){if(!go)return;var btn=$('#rlPostBtn');btn.disabled=true;btn.textContent='Posting…';
       api('/api/admin/rules','POST',{action:'post',draft:d}).then(function(r){btn.disabled=false;btn.textContent='📣 Post now';toast(r&&r.ok?('Posted to '+(r.channel||'the channel')):((r&&r.error)||'Post failed'),!(r&&r.ok))})})}
-  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-log')selectTab('log');if(t.id==='tab-rules')selectTab('rules');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='brandApply')applyBrand();var _fb=t.closest&&t.closest('[data-fleet]');if(_fb){fleetPower(_fb.getAttribute('data-fleet'),_fb.getAttribute('data-act'))}if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();var _sk=t.closest&&t.closest('[data-sk]');if(_sk){SHOPKIND=_sk.getAttribute('data-sk');renderShop()}if(t.id==='tbSend')sendTestBuy();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
+  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-log')selectTab('log');if(t.id==='tab-rules')selectTab('rules');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='brandApply')applyBrand();var _fb=t.closest&&t.closest('[data-fleet]');if(_fb){fleetPower(_fb.getAttribute('data-fleet'),_fb.getAttribute('data-act'))}if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();var _sk=t.closest&&t.closest('[data-sk]');if(_sk){SHOPKIND=_sk.getAttribute('data-sk');renderShop()}if(t.id==='tbSend')sendTestBuy();if(t.id==='tlSend')sendTestLogs();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
   document.addEventListener('input',function(e){var t=e.target;if(t.id==='subSearch'){SUBQ=t.value;renderSubs()}if(t.id==='shopSearch'){SHOPQ=t.value;renderShop()}if(t.id==='banSearch'){BANQ=t.value;renderBans()}if(t.id==='poolSearch'){POOLQ=t.value;renderPool()}if(t.id==='brandBio'){brandCount()}if(t.id==='auditSearch'){AUDITQ=t.value;renderAudit()}if(t.id==='cmdkInput'){cmdkBuild(t.value)}});
   document.addEventListener('change',function(e){if(e.target.id==='subSort'){SUBSORT=e.target.value;renderSubs()}});
   document.addEventListener('keydown',function(e){
@@ -7165,6 +7172,56 @@ async def _h_admin_shop_log(request):
     return _admin_json({"ok": True, "log": rows, "servers": srv_list})
 
 
+async def _h_admin_test_logs(request):
+    """Owner-only: fire one sample of every admin log kind through the real
+    forwarder, so each lands in its log channel looking exactly like the live log,
+    just with test info."""
+    uid, err = _admin_owner_only(request)
+    if err is not None:
+        return err
+    if not _origin_ok(request):
+        return _admin_json({"ok": False, "error": "Cross-site request blocked."}, 403)
+    samples = [
+        ("purchase", "🧪 Test - new purchase",
+         "A customer bought a plan. Test info, nothing was charged.",
+         [{"name": "Plan", "value": "Gang Manager Monthly", "inline": True},
+          {"name": "Amount", "value": "$9.99", "inline": True},
+          {"name": "Server", "value": "Test Server", "inline": True}]),
+        ("subscription", "🧪 Test - subscription granted",
+         "An admin granted a subscription to a server.",
+         [{"name": "Server", "value": "Test Server", "inline": True},
+          {"name": "Length", "value": "30 days", "inline": True}]),
+        ("signin", "🧪 Test - admin sign-in",
+         "Someone signed in to the admin panel.",
+         [{"name": "User", "value": f"<@{uid}>", "inline": True},
+          {"name": "IP", "value": "`198.51.100.24`", "inline": True}]),
+        ("security", "🧪 Test - failed sign-in",
+         "A sign-in code was entered wrong a few times.",
+         [{"name": "Attempts", "value": "3", "inline": True},
+          {"name": "Result", "value": "Locked out 10m", "inline": True}]),
+        ("moderation", "🧪 Test - user blocked",
+         "A user was blocked from the bot.",
+         [{"name": "User", "value": "`123456789012345678`", "inline": True},
+          {"name": "Reason", "value": "Chargeback", "inline": True}]),
+        ("staff", "🧪 Test - staff access changed",
+         "Admin staff access was updated.",
+         [{"name": "User", "value": f"<@{uid}>", "inline": True},
+          {"name": "Change", "value": "Added as staff", "inline": True}]),
+        ("pool", "🧪 Test - pool action",
+         "A pool bot was handed out to a server.",
+         [{"name": "Bot", "value": "Bot 3", "inline": True},
+          {"name": "Server", "value": "Test Server", "inline": True}]),
+        ("server", "🧪 Test - server added",
+         "The bot was added to a server.",
+         [{"name": "Server", "value": "Test Server", "inline": True},
+          {"name": "Members", "value": "128", "inline": True}]),
+    ]
+    for kind, title, desc, fields in samples:
+        _fire(_gmlog(kind, title, description=desc, fields=fields))
+    _audit(request, uid, "test_logs", "", f"{len(samples)} kinds")
+    return _admin_json({"ok": True, "sent": len(samples)})
+
+
 async def _h_admin_test_purchase(request):
     """Owner-only: fire the real purchase flow for a chosen user - DM them a test
     invoice and post the purchase log - without charging or recording anything."""
@@ -7390,6 +7447,7 @@ async def start_web_server() -> None:
             _aioweb.post("/api/admin/mfa/verify", _h_admin_mfa_verify),
             _aioweb.get("/api/admin/shop_log", _h_admin_shop_log),
             _aioweb.post("/api/admin/test_purchase", _h_admin_test_purchase),
+            _aioweb.post("/api/admin/test_logs", _h_admin_test_logs),
             _aioweb.get("/api/admin/audit_log", _h_admin_audit_log),
         ]
     )
