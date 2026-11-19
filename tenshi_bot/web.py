@@ -4406,6 +4406,95 @@ async def _h_support_lookup(request):
     return resp
 
 
+async def _h_internal_subscription(request):
+    """Staff-bot subscription control: grant / extend / cancel / status a server's
+    Gang Manager subscription from the GM Support (staff) bot's owner-only slash
+    commands. The subscription data lives here on the main bot, so the staff bot
+    POSTs its admin intent over the shared secret and this performs it. Authed
+    with X-Guard-Token (same MFA_SECRET/WEBHOOK_SECRET as the other /internal
+    staff endpoints). Mirrors the web admin's /api/admin/sub behaviour."""
+    secret = (os.getenv("MFA_SECRET") or os.getenv("WEBHOOK_SECRET") or "").strip()
+    if not secret or request.headers.get("X-Guard-Token", "") != secret:
+        return _aioweb.json_response({"ok": False, "error": "unauthorized"}, status=401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _aioweb.json_response({"ok": False, "error": "bad json"}, status=400)
+
+    try:
+        gid = int(body.get("guild_id"))
+    except (TypeError, ValueError):
+        return _aioweb.json_response({"ok": False, "error": "bad guild"}, status=400)
+
+    action = str(body.get("action") or "").strip().lower()
+    plan = str(body.get("plan") or DEFAULT_PLAN).strip() or DEFAULT_PLAN
+    lifetime = bool(body.get("lifetime"))
+    actor = str(body.get("actor_name") or "the bot owner").strip()[:80] or "the bot owner"
+
+    def _state_payload(st: dict) -> dict:
+        return {k: st.get(k) for k in
+                ("active", "mode", "status", "plan", "days_left", "expires_at", "lifetime")}
+
+    if action == "status":
+        st = subscription_state(gid)
+        target = get_guild_any(gid)
+        return _aioweb.json_response({
+            "ok": True, "action": "status", "guild_id": str(gid),
+            "server_name": (target.name if target is not None else ""),
+            "in_server": target is not None, "state": _state_payload(st),
+        })
+
+    if action in ("grant", "add_days", "extend"):
+        try:
+            days = int(body.get("days", 30))
+        except (TypeError, ValueError):
+            return _aioweb.json_response({"ok": False, "error": "bad days"}, status=400)
+        if lifetime:
+            st = grant(gid, days=None, plan=plan, status="active", lifetime=True)
+            summary = f"lifetime ({plan})"
+        else:
+            days = max(-3650, min(3650, days))
+            if days == 0:
+                return _aioweb.json_response({"ok": False, "error": "days can't be 0"}, status=400)
+            st = grant(gid, days=days, plan=plan, status="active")
+            summary = f"{days:+d} day(s) ({plan})"
+    elif action in ("cancel", "revoke", "expire"):
+        st = expire(gid)
+        summary = "cancelled"
+    else:
+        return _aioweb.json_response({"ok": False, "error": "unknown action"}, status=400)
+
+    target = get_guild_any(gid)
+    name = target.name if target is not None else str(gid)
+    log.info("internal sub action=%s guild=%s by=staff(%s)", action, gid, actor)
+
+    # In-server activity log (matches the old /subscription slash command).
+    if target is not None:
+        verb = "granted" if action in ("grant", "add_days", "extend") else "expired"
+        try:
+            await send_log(target, guild_store(DATA, gid),
+                           f"💳 Subscription {verb} by {actor} (staff bot - {summary}).",
+                           category="web")
+        except discord.HTTPException:
+            pass
+
+    # Staff-bot #subscriptions channel.
+    verb = "Granted" if action in ("grant", "add_days", "extend") else "Cancelled"
+    _fire(_gmlog(
+        "subscription",
+        f"{verb} subscription - {name}",
+        f"{summary} by {actor} via the staff bot.",
+        fields=[{"name": "Server", "value": f"{name} (`{gid}`)", "inline": False}],
+    ))
+
+    return _aioweb.json_response({
+        "ok": True, "action": action, "guild_id": str(gid),
+        "server_name": (target.name if target is not None else ""),
+        "in_server": target is not None, "summary": summary,
+        "state": _state_payload(st),
+    })
+
+
 async def _h_sub_move(request):
     """Move the user's active subscription onto another server they manage - no
     new charge. Releases the old server and repoints the live Stripe sub so
@@ -7377,6 +7466,7 @@ async def start_web_server() -> None:
             _aioweb.get("/api/sub_check", _h_sub_check),
             _aioweb.get("/api/support_lookup", _h_support_lookup),
             _aioweb.get("/api/support_verify", _h_support_verify),
+            _aioweb.post("/internal/subscription", _h_internal_subscription),
             _aioweb.post("/api/sub_move", _h_sub_move),
             _aioweb.post("/billing/webhook", _h_billing_webhook),
             _aioweb.get("/login", _h_login),

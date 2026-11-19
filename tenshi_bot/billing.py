@@ -741,73 +741,13 @@ async def subscription_status(interaction: discord.Interaction) -> None:
     await interaction.response.send_message(embed=_fmt_state(interaction.guild, state), ephemeral=True)
 
 
-def _target_gid(interaction: discord.Interaction, server_id: str | None):
-    if server_id:
-        try:
-            return int(server_id)
-        except ValueError:
-            return None
-    return interaction.guild.id if interaction.guild is not None else None
-
-
-@subscription_group.command(name="grant", description="[Bot owner] Activate/extend a server's subscription")
-@app_commands.describe(
-    days="Days to add (ignored with lifetime:true)",
-    plan="Plan label to record (default monthly)",
-    lifetime="Grant forever instead of for a number of days",
-    server_id="Target server ID (defaults to this server)",
-)
-async def subscription_grant(
-    interaction: discord.Interaction,
-    days: int = 30,
-    plan: str = DEFAULT_PLAN,
-    lifetime: bool = False,
-    server_id: str | None = None,
-) -> None:
-    if not is_owner(interaction.user.id):
-        await interaction.response.send_message(
-            "Only the bot owner (the account that owns the bot application) can do this.", ephemeral=True
-        )
-        return
-    gid = _target_gid(interaction, server_id)
-    if gid is None:
-        await interaction.response.send_message("Pass a valid `server_id` or run this in the server.", ephemeral=True)
-        return
-    state = grant(gid, days=(None if lifetime else max(0, days)), plan=plan, status="active", lifetime=lifetime)
-    target = get_guild_any(gid)
-    if target is not None:
-        try:
-            await send_log(target, guild_store(DATA, gid), f"💳 Subscription granted by the bot owner ({plan}).",
-                           category="web")
-        except discord.HTTPException:
-            pass
-    name = target.name if target is not None else f"`{gid}`"
-    txt = f"✅ Granted **{plan}** to {name}."
-    if target is not None:
-        await interaction.response.send_message(txt, embed=_fmt_state(target, state), ephemeral=True)
-    else:
-        await interaction.response.send_message(
-            txt + " (The bot isn't in that server yet - it applies as soon as it joins.)", ephemeral=True
-        )
-
-
-@subscription_group.command(name="cancel", description="[Bot owner] Expire a server's subscription now")
-@app_commands.describe(server_id="Target server ID (defaults to this server)")
-async def subscription_cancel(interaction: discord.Interaction, server_id: str | None = None) -> None:
-    if not is_owner(interaction.user.id):
-        await interaction.response.send_message("Only the bot owner can do this.", ephemeral=True)
-        return
-    gid = _target_gid(interaction, server_id)
-    if gid is None:
-        await interaction.response.send_message("Pass a valid `server_id` or run this in the server.", ephemeral=True)
-        return
-    state = expire(gid)
-    target = get_guild_any(gid)
-    if target is not None:
-        await interaction.response.send_message("🔒 Subscription expired.", embed=_fmt_state(target, state),
-                                                ephemeral=True)
-    else:
-        await interaction.response.send_message("🔒 Subscription expired.", ephemeral=True)
+# NOTE: the owner-only admin commands - granting, extending and cancelling a
+# server's subscription - used to live here on the distribution bot. They now
+# run on the GM Support (staff) bot instead, so the customer-facing distribution
+# bot carries only `/subscription status`. The staff bot drives grant/cancel
+# over the shared secret against the main bot's POST /internal/subscription
+# endpoint (web.py), which still calls grant()/expire() below. Keeping those
+# helpers here means the subscription data and logic stay in one place.
 
 
 # --------------------------------------------------------------------------- #
