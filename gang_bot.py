@@ -233,7 +233,9 @@ async def on_ready() -> None:
         try:
             await start_pool(
                 views=register_persistent_views,
-                handlers=[("on_member_join", on_member_join), ("on_member_remove", on_member_remove)],
+                handlers=[("on_member_join", on_member_join), ("on_member_remove", on_member_remove),
+                          ("on_member_update", on_member_update), ("on_member_ban", on_member_ban),
+                          ("on_member_unban", on_member_unban)],
                 guild_join=on_guild_join,
             )
         except Exception as exc:  # noqa: BLE001 — the pool must never take the main bot down
@@ -319,18 +321,18 @@ async def on_member_join(member: discord.Member) -> None:
         except discord.HTTPException as exc:
             log.warning("Welcome: send failed in guild %s: %s", guild.id, exc)
 
-    # join log
-    created = int(member.created_at.timestamp())
+    # join log - target= renders member + account age + exact time; add badges,
+    # a new-account flag, and the fleet member count.
+    fields = [("Member #", f"#{guild.member_count}", True)]
+    badges = _user_badges(member)
+    if badges:
+        fields.append(("Badges", badges, True))
+    meta = {}
+    if _is_new_account(member):
+        meta["Heads up"] = "⚠️ Account < 7 days old"
     await send_log(
-        guild,
-        store,
-        f"📥 {member.mention} **joined**.",
-        category="joins",
-        fields=[
-            ("User", f"`{member}` · `{member.id}`", True),
-            ("Account made", f"<t:{created}:R>", True),
-            ("Member #", str(guild.member_count), True),
-        ],
+        guild, store, f"📥 {member.mention} **joined**.",
+        category="joins", target=member, fields=fields, meta=meta or None,
     )
 
 
@@ -344,21 +346,159 @@ async def on_member_remove(member: discord.Member) -> None:
     store = guild_store(DATA, guild.id)
     joined = member.joined_at
     roles = [r.mention for r in member.roles if r.name != "@everyone"]
-    fields = [
-        ("User", f"`{member}` · `{member.id}`", True),
-        ("Member #", str(guild.member_count), True),
-    ]
+    fields = [("Members now", f"#{guild.member_count}", True)]
+    top = getattr(member, "top_role", None)
+    if top is not None and top.name != "@everyone":
+        fields.append(("Top role", top.mention, True))
     if joined is not None:
-        fields.append(("Joined", f"<t:{int(joined.timestamp())}:R>", True))
+        fields.append(("Joined", f"<t:{int(joined.timestamp())}:F> · <t:{int(joined.timestamp())}:R>", False))
+        fields.append(("Time in server", _since(joined), True))
+    fields.append(("Roles held", str(len(roles)), True))
     if roles:
         fields.append(("Roles", " ".join(roles)[:1024], False))
     await send_log(
-        guild,
-        store,
-        f"📤 **{member}** left.",
-        category="joins",
-        fields=fields,
+        guild, store, f"📤 **{member}** left.",
+        category="joins", target=member, fields=fields,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Deeper audit log: role, nickname, timeout, ban and unban changes. These feed
+# the "members" (Role) log channel, which little else writes to. Attribution
+# ("by whom") is best-effort from the server audit log, so a missing View Audit
+# Log permission never breaks logging - it just drops the "By" line.
+# --------------------------------------------------------------------------- #
+
+def _user_badges(user) -> str:
+    """Public badge names from a user's flags, as a compact string (or '')."""
+    try:
+        flags = user.public_flags
+        names = [n.replace("_", " ").title() for n, on in flags if on]
+        return ", ".join(names)[:1024] if names else ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _is_new_account(user, days: int = 7) -> bool:
+    created = getattr(user, "created_at", None)
+    if created is None:
+        return False
+    try:
+        return (discord.utils.utcnow() - created).days < days
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _since(dt) -> str:
+    """Human 'Xd Yh' between dt and now, best-effort."""
+    try:
+        secs = int((discord.utils.utcnow() - dt).total_seconds())
+    except Exception:  # noqa: BLE001
+        return "-"
+    if secs < 60:
+        return f"{secs}s"
+    mins, secs = divmod(secs, 60)
+    hours, mins = divmod(mins, 60)
+    days, hours = divmod(hours, 24)
+    if days:
+        return f"{days}d {hours}h"
+    if hours:
+        return f"{hours}h {mins}m"
+    return f"{mins}m"
+
+
+async def _audit_actor(guild, action, target_id=None, within: int = 20):
+    """Best-effort: who performed `action` (optionally on `target_id`) from the
+    audit log, and that entry's reason. Returns (user|None, reason|None). Never
+    raises - missing perms or rate limits just yield (None, None)."""
+    try:
+        me = getattr(guild, "me", None)
+        perms = getattr(getattr(me, "guild_permissions", None), "view_audit_log", False)
+        if not perms:
+            return None, None
+        async for entry in guild.audit_logs(limit=6, action=action):
+            if target_id is not None and getattr(entry.target, "id", None) != target_id:
+                continue
+            try:
+                age = (discord.utils.utcnow() - entry.created_at).total_seconds()
+            except Exception:  # noqa: BLE001
+                age = 0
+            if age <= within:
+                return entry.user, entry.reason
+            return None, None
+    except (discord.Forbidden, discord.HTTPException):
+        return None, None
+    except Exception as exc:  # noqa: BLE001
+        log.debug("audit actor lookup failed: %s", exc)
+    return None, None
+
+
+@bot.event
+async def on_member_update(before: discord.Member, after: discord.Member) -> None:
+    guild = after.guild
+    if not serves_guild(guild) or not guild_active(guild.id):
+        return
+    store = guild_store(DATA, guild.id)
+
+    # Role changes
+    b_roles, a_roles = set(before.roles), set(after.roles)
+    added = [r for r in after.roles if r not in b_roles and r.name != "@everyone"]
+    removed = [r for r in before.roles if r not in a_roles and r.name != "@everyone"]
+    if added or removed:
+        actor, _ = await _audit_actor(guild, discord.AuditLogAction.member_role_update, after.id)
+        fields = []
+        if added:
+            fields.append(("➕ Added", " ".join(r.mention for r in added)[:1024], False))
+        if removed:
+            fields.append(("➖ Removed", " ".join(r.mention for r in removed)[:1024], False))
+        live = [r for r in after.roles if r.name != "@everyone"]
+        fields.append(("Roles now", str(len(live)), True))
+        top = getattr(after, "top_role", None)
+        if top is not None and top.name != "@everyone":
+            fields.append(("Top role", top.mention, True))
+        await send_log(guild, store, f"🎭 Roles updated for {after.mention}.",
+                       category="members", actor=actor, target=after, fields=fields)
+
+    # Nickname
+    if before.nick != after.nick:
+        actor, _ = await _audit_actor(guild, discord.AuditLogAction.member_update, after.id)
+        await send_log(guild, store, f"✏️ Nickname changed for {after.mention}.",
+                       category="members", actor=actor, target=after, fields=[
+                           ("Before", f"`{before.nick}`" if before.nick else "*(none)*", True),
+                           ("After", f"`{after.nick}`" if after.nick else "*(none)*", True)])
+
+    # Timeout (communication disabled until)
+    bt = getattr(before, "timed_out_until", None)
+    at_ = getattr(after, "timed_out_until", None)
+    if bt != at_:
+        actor, reason = await _audit_actor(guild, discord.AuditLogAction.member_update, after.id)
+        if at_ is not None:
+            await send_log(guild, store, f"⏳ {after.mention} was **timed out**.",
+                           category="members", actor=actor, target=after, reason=reason, fields=[
+                               ("Until", f"<t:{int(at_.timestamp())}:F> · <t:{int(at_.timestamp())}:R>", False)])
+        else:
+            await send_log(guild, store, f"✅ Timeout lifted for {after.mention}.",
+                           category="members", actor=actor, target=after)
+
+
+@bot.event
+async def on_member_ban(guild: discord.Guild, user) -> None:
+    if not serves_guild(guild) or not guild_active(guild.id):
+        return
+    store = guild_store(DATA, guild.id)
+    actor, reason = await _audit_actor(guild, discord.AuditLogAction.ban, getattr(user, "id", None))
+    await send_log(guild, store, f"🔨 **{user}** was **banned**.",
+                   category="members", actor=actor, target=user, reason=reason)
+
+
+@bot.event
+async def on_member_unban(guild: discord.Guild, user) -> None:
+    if not serves_guild(guild) or not guild_active(guild.id):
+        return
+    store = guild_store(DATA, guild.id)
+    actor, reason = await _audit_actor(guild, discord.AuditLogAction.unban, getattr(user, "id", None))
+    await send_log(guild, store, f"♻️ **{user}** was **unbanned**.",
+                   category="members", actor=actor, target=user, reason=reason)
 
 
 def main() -> None:

@@ -105,9 +105,10 @@ async def kos_add(
             f"💀 Added **{len(added)}** to the KOS list.",
             category="kos",
             actor=interaction.user,
+            reason=reason or None,
             fields=[
                 ("Targets", ", ".join(added), False),
-                ("Reason", reason or "-", True),
+                ("Added", str(len(added)), True),
                 ("KOS size", str(len(store["kos"])), True),
             ],
         )
@@ -145,9 +146,11 @@ async def kos_remove(
     await send_log(
         interaction.guild,
         store,
-        f"{interaction.user.mention} removed {member.mention} from the KOS list.",
+        f"💀 {interaction.user.mention} removed {member.mention} from the KOS list.",
         category="kos",
         actor=interaction.user,
+        target=member,
+        fields=[("KOS size", str(len(store.get("kos", []))), True)],
     )
 
 
@@ -764,6 +767,7 @@ async def kos_start(
         f"🎯 {interaction.user.mention} started a KOS roster sign-up in {target.mention}.",
         category="kos",
         actor=interaction.user,
+        channel_ctx=target,
     )
 
 

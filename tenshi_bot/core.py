@@ -898,6 +898,23 @@ LOG_ROUTING = {
 }
 
 
+def _fmt_ts(dt) -> str:
+    """Full date-time plus a live relative stamp, e.g. '20 Nov 2026 14:03 · 2m ago'."""
+    try:
+        t = int(dt.timestamp())
+    except Exception:  # noqa: BLE001
+        return "-"
+    return f"<t:{t}:F> · <t:{t}:R>"
+
+
+def _target_line(target) -> str:
+    """mention · `id` for a user/member/role/channel, best-effort for stubs."""
+    mention = getattr(target, "mention", "")
+    tid = getattr(target, "id", None)
+    label = str(target) if not mention else mention
+    return f"{label} · `{tid}`" if tid is not None else (label or "-")
+
+
 async def send_log(
     guild: "discord.Guild",
     store: dict[str, Any],
@@ -905,8 +922,11 @@ async def send_log(
     *,
     category: str = "activity",
     actor: "discord.abc.User | None" = None,
+    target: "discord.abc.User | None" = None,
+    reason: "str | None" = None,
     fields: "list[tuple[str, str, bool]] | None" = None,
     channel_ctx: "discord.abc.GuildChannel | None" = None,
+    meta: "dict[str, Any] | None" = None,
 ) -> None:
     """Post a categorized, detailed audit entry to the log channel, if one is set.
 
@@ -914,8 +934,13 @@ async def send_log(
     beside it), a quoted detail panel, and a live "x minutes ago" footer. The
     accent colour is the category's. Mentions never ping from a log.
 
-    `fields` is a list of (name, value, inline) tuples for extra detail.
-    `channel_ctx` adds a 'Channel' field pointing at where the action happened.
+    Every entry carries an exact 'When' (full timestamp + relative). Extra depth:
+      `actor`       - who did it (avatar + mention + id, in the footer too).
+      `target`      - who/what it was about (mention + id + account-age).
+      `reason`      - a full-width reason line.
+      `fields`      - (name, value, inline) tuples for structured detail.
+      `channel_ctx` - a 'Channel' field pointing at where it happened.
+      `meta`        - a dict of label -> value, each rendered as an inline field.
     """
     # route to the category's own channel, else fall back to the general log
     key = LOG_ROUTING.get(category)
@@ -926,22 +951,38 @@ async def send_log(
     if channel is None:
         return
     emoji, label, color = LOG_CATEGORIES.get(category, LOG_CATEGORIES["activity"])
-    embed = discord.Embed(
-        description=text,
-        color=color,
-        timestamp=datetime.datetime.now(datetime.timezone.utc),
-    )
+    now = datetime.datetime.now(datetime.timezone.utc)
+    embed = discord.Embed(description=text, color=color, timestamp=now)
     embed.set_author(name=f"{emoji}  {label.upper()}", icon_url=_gm_icon_url())
     if actor is not None:
         avatar = getattr(getattr(actor, "display_avatar", None), "url", None)
         if avatar:
             embed.set_thumbnail(url=avatar)
-        embed.add_field(name="By", value=f"{actor.mention} · `{actor.id}`", inline=True)
-        embed.set_footer(text=str(actor))
+        embed.add_field(name="By", value=_target_line(actor), inline=True)
+    if target is not None:
+        embed.add_field(name="Member", value=_target_line(target), inline=True)
+        created = getattr(target, "created_at", None)
+        if created is not None:
+            embed.add_field(name="Account made", value=_fmt_ts(created), inline=True)
+        bot_flag = getattr(target, "bot", None)
+        if bot_flag:
+            embed.add_field(name="Type", value="Bot account", inline=True)
     if channel_ctx is not None:
-        embed.add_field(name="Channel", value=channel_ctx.mention, inline=True)
+        embed.add_field(name="Channel",
+                        value=getattr(channel_ctx, "mention", str(channel_ctx)), inline=True)
+    # Exact time on every log - more precise than the client-rendered footer stamp.
+    embed.add_field(name="When", value=_fmt_ts(now), inline=True)
     for name, value, inline in fields or []:
-        embed.add_field(name=name, value=(value or "-")[:1024], inline=inline)
+        embed.add_field(name=str(name)[:256], value=(str(value) if value is not None else "-")[:1024],
+                        inline=inline)
+    for mk, mv in (meta or {}).items():
+        embed.add_field(name=str(mk)[:256], value=(str(mv) if mv is not None else "-")[:1024], inline=True)
+    if reason:
+        embed.add_field(name="Reason", value=str(reason)[:1024], inline=False)
+    foot = getattr(guild, "name", None) or "Gang Manager"
+    if actor is not None:
+        foot = f"{foot} · by {actor}"
+    embed.set_footer(text=foot[:2048], icon_url=_gm_icon_url())
     try:
         await _send_card(channel, [embed])
     except discord.HTTPException:
