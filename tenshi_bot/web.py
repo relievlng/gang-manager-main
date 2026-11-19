@@ -5740,7 +5740,7 @@ a.link,.link{color:var(--brand2)}
     #clCard .clprev{background:#2b2d31;border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,.4)}
     #clCard .clp-inner{border-left:4px solid #2f6bff;border-radius:4px;background:#313338;padding:14px 16px}
     #clCard .clp-title{font-weight:700;color:#f2f3f5;font-size:15px;margin-bottom:6px}
-    #clCard .clp-sum{color:#dbdee1;font-size:14px;line-height:1.45;margin-bottom:8px;white-space:pre-wrap}
+    #clCard .clp-sum{color:#b5bac1;font-size:14px;line-height:1.45;margin-bottom:8px;white-space:pre-wrap;border-left:3px solid #4e5058;padding-left:10px}
     #clCard .clp-sec{font-weight:700;color:#f2f3f5;font-size:13px;margin:10px 0 3px}
     #clCard .clp-items{color:#dbdee1;font-size:14px;line-height:1.5}
     #clCard .clp-empty{color:#949ba4;font-size:13px}
