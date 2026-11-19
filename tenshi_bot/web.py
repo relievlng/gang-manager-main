@@ -5807,6 +5807,19 @@ a.link,.link{color:var(--brand2)}
     #rlCard .rlp-rule{color:#dbdee1;font-size:14px;line-height:1.5;margin:4px 0}
     #rlCard .rlp-foot{margin-top:12px;color:#949ba4;font-size:12px;border-top:1px solid rgba(255,255,255,.06);padding-top:8px}
     @media(max-width:860px){#rlCard .rlwrap{grid-template-columns:1fr}}
+    /* styled dropdown (shared by the changelog + rules channel/role pickers) */
+    .cs{position:relative;flex:1;min-width:0}
+    .cs-trig{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.28);color:#ececf1;font:inherit;cursor:pointer;text-align:left}
+    .cs-trig:hover{border-color:rgba(255,255,255,.22)}
+    .cs.open .cs-trig{border-color:#2f6bff;box-shadow:0 0 0 3px rgba(47,107,255,.22)}
+    .cs-ic{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:rgba(255,255,255,.08);color:#9aa0b4;font-weight:800;font-size:12px;flex:none}
+    .cs-lbl{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .cs-arw{color:#8a8f9e;font-size:11px;transition:transform .15s}
+    .cs.open .cs-arw{transform:rotate(180deg)}
+    .cs-menu{position:absolute;z-index:60;top:calc(100% + 6px);left:0;right:0;max-height:260px;overflow:auto;background:#1e1f26;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:6px;box-shadow:0 18px 44px rgba(0,0,0,.55)}
+    .cs-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;color:#dbdee1;font-size:14px}
+    .cs-row:hover{background:rgba(255,255,255,.07)}
+    .cs-row.on{background:rgba(47,107,255,.20);color:#fff}
     </style>
     <div class=card id=rlCard>
       <h3>🛡️ Rules</h3>
@@ -6036,7 +6049,26 @@ a.link,.link{color:var(--brand2)}
   function clRenderHistory(h){var box=$('#clHistory');if(!h||!h.length){box.innerHTML='<div class=hint>No changelogs posted yet.</div>';return}
     box.innerHTML=h.map(function(e){var when='';try{when=e.at?new Date(e.at).toLocaleDateString():''}catch(x){}var lbl=esc(e.version||e.title||'Update');var ch=e.channel?esc(e.channel):'';var lnk=e.url?' · <a href="'+esc(e.url)+'" target=_blank rel=noopener>view</a>':'';
       return '<div class=clh-row><span class=clh-v>'+lbl+'</span><span class=clh-m>'+ch+(when?' · '+esc(when):'')+'</span>'+lnk+'</div>'}).join('')}
+  function csEnhance(sel,icon){
+    if(!sel||sel._cs)return;icon=icon||'#';
+    var strip=new RegExp('^'+icon.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*');
+    var wrap=document.createElement('div');wrap.className='cs';
+    sel.parentNode.insertBefore(wrap,sel);wrap.appendChild(sel);sel.style.display='none';
+    var trig=document.createElement('button');trig.type='button';trig.className='cs-trig';
+    var menu=document.createElement('div');menu.className='cs-menu';menu.style.display='none';
+    wrap.appendChild(trig);wrap.appendChild(menu);
+    function disp(o){return o?String(o.textContent).replace(strip,''):'';}
+    function paint(){var o=sel.options[sel.selectedIndex];trig.innerHTML='<span class=cs-ic>'+icon+'</span><span class=cs-lbl>'+esc(disp(o)||'Select…')+'</span><span class=cs-arw>▾</span>';}
+    function build(){menu.innerHTML='';Array.prototype.forEach.call(sel.options,function(o,i){var row=document.createElement('div');row.className='cs-row'+(i===sel.selectedIndex?' on':'');row.innerHTML='<span class=cs-ic>'+icon+'</span>'+esc(disp(o));row.onclick=function(ev){ev.stopPropagation();sel.selectedIndex=i;try{sel.dispatchEvent(new Event('change',{bubbles:true}))}catch(x){}paint();close();};menu.appendChild(row);});}
+    function open(){build();menu.style.display='';wrap.classList.add('open');}
+    function close(){menu.style.display='none';wrap.classList.remove('open');}
+    trig.onclick=function(e){e.stopPropagation();if(menu.style.display==='none')open();else close();};
+    document.addEventListener('click',function(e){if(!wrap.contains(e.target))close();});
+    sel._cs={sync:paint};paint();
+  }
+  function csSync(id){var s=$('#'+id);if(s&&s._cs)s._cs.sync();}
   function clInit(){if(CL_BOUND)return;CL_BOUND=true;
+    csEnhance($('#clChannel'),'#');csEnhance($('#clPing'),'@');
     ['clTitle','clVersion','clDate','clSummary'].forEach(function(id){var el=$('#'+id);if(el)el.addEventListener('input',clRenderPreview)});
     CL_CATS.forEach(function(c){var el=$('#cl_'+c[0]);if(el)el.addEventListener('input',clRenderPreview)});
     var ch=$('#clChannel');if(ch)ch.addEventListener('change',clRenderPreview);
@@ -6052,7 +6084,7 @@ a.link,.link{color:var(--brand2)}
     CL_CHANS.forEach(function(c){opts+='<option value="'+c.id+'">#'+esc(c.name)+'</option>'});sel.innerHTML=opts;if(dr.channel_id)sel.value=dr.channel_id;
     var psel=$('#clPing');if(psel){var popts='<option value="">No ping</option>';(d.roles||[]).forEach(function(r){popts+='<option value="'+esc(r.id)+'">@'+esc(r.name)+'</option>'});psel.innerHTML=popts;if(dr.ping_role_id)psel.value=dr.ping_role_id}
     $('#clChanHint').textContent=d.staff_ok?('Posts in '+(d.guild||'your server')+' · '+CL_CHANS.length+' channel'+(CL_CHANS.length===1?'':'s')+' available'):'Couldn\'t reach the staff bot - it posts the embed, so it needs to be online.';
-    clRenderHistory(d.history||[]);clRenderPreview()})}
+    csSync('clChannel');csSync('clPing');clRenderHistory(d.history||[]);clRenderPreview()})}
   function clSave(cb){var btn=$('#clSaveBtn');btn.disabled=true;api('/api/admin/changelog','POST',{action:'save',draft:clGather()}).then(function(r){btn.disabled=false;if(r&&r.ok){toast('Draft saved');if(cb)cb()}else{toast((r&&r.error)||'Save failed',true)}})}
   function clChanName(d){return d.channel_id?('#'+(((CL_CHANS.filter(function(c){return c.id===d.channel_id})[0])||{}).name||'channel')):'the default log channel'}
   function clClearBoxes(){['clTitle','clVersion','clSummary'].forEach(function(id){var e=$('#'+id);if(e)e.value=''});CL_CATS.forEach(function(c){var e=$('#cl_'+c[0]);if(e)e.value=''});var dt=$('#clDate');if(dt)dt.value=clToday();clRenderPreview()}
@@ -6133,14 +6165,14 @@ a.link,.link{color:var(--brand2)}
     if(d.rules.length)html+=d.rules.map(function(r,i){return '<div class=rlp-rule><b>'+(i+1)+'.</b>  '+esc(r)+'</div>'}).join('');
     else html+='<div class=rlp-intro style=color:#949ba4>Add a rule per line to see it here…</div>';
     if(d.footer)html+='<div class=rlp-foot>'+esc(d.footer)+'</div>';$('#rlPrev').innerHTML=html}
-  function rlFillChannels(chans){RL_CHANS=chans||[];var sel=$('#rlChannel');if(!sel)return;var cur=sel.value;sel.innerHTML=RL_CHANS.map(function(c){return '<option value="'+c.id+'">#'+esc(c.name)+(c.guild?(' · '+esc(c.guild)):'')+'</option>'}).join('')||'<option value="">No channels</option>';if(cur)sel.value=cur}
-  function rlInit(){if(RL_BOUND)return;RL_BOUND=true;['rlTitle','rlIntro','rlRules','rlFooter'].forEach(function(id){var el=$('#'+id);if(el)el.addEventListener('input',rlRenderPreview)});var sb=$('#rlSaveBtn');if(sb)sb.onclick=rlSave;var pb=$('#rlPostBtn');if(pb)pb.onclick=rlPost;var rb=$('#rlRefresh');if(rb)rb.onclick=function(){loadRules()}}
+  function rlFillChannels(chans){RL_CHANS=chans||[];var sel=$('#rlChannel');if(!sel)return;var cur=sel.value;sel.innerHTML=RL_CHANS.map(function(c){return '<option value="'+c.id+'">#'+esc(c.name)+(c.guild?(' · '+esc(c.guild)):'')+'</option>'}).join('')||'<option value="">No channels</option>';if(cur)sel.value=cur;csSync('rlChannel')}
+  function rlInit(){if(RL_BOUND)return;RL_BOUND=true;csEnhance($('#rlChannel'),'#');['rlTitle','rlIntro','rlRules','rlFooter'].forEach(function(id){var el=$('#'+id);if(el)el.addEventListener('input',rlRenderPreview)});var sb=$('#rlSaveBtn');if(sb)sb.onclick=rlSave;var pb=$('#rlPostBtn');if(pb)pb.onclick=rlPost;var rb=$('#rlRefresh');if(rb)rb.onclick=function(){loadRules()}}
   function loadRules(){rlInit();api('/api/admin/rules').then(function(d){if(!d||!d.ok)return;var dr=d.draft||{};
     if($('#rlTitle')&&!$('#rlTitle').value)$('#rlTitle').value=dr.title||'';
     if($('#rlIntro')&&!$('#rlIntro').value)$('#rlIntro').value=dr.intro||'';
     if($('#rlFooter')&&!$('#rlFooter').value)$('#rlFooter').value=dr.footer||'';
     if($('#rlRules')&&!$('#rlRules').value&&(dr.rules||[]).length)$('#rlRules').value=(dr.rules||[]).join('\n');
-    rlFillChannels(d.channels);if(dr.channel_id&&$('#rlChannel'))$('#rlChannel').value=dr.channel_id;
+    rlFillChannels(d.channels);if(dr.channel_id&&$('#rlChannel'))$('#rlChannel').value=dr.channel_id;csSync('rlChannel');
     var h=$('#rlChanHint');if(h)h.textContent=d.staff_ok?'':'Staff bot offline - channels may be stale.';rlRenderPreview()})}
   function rlSave(){var btn=$('#rlSaveBtn');btn.disabled=true;api('/api/admin/rules','POST',{action:'save',draft:rlGather()}).then(function(r){btn.disabled=false;toast(r&&r.ok?'Draft saved':((r&&r.error)||'Save failed'),!(r&&r.ok))})}
   function rlPost(){var d=rlGather();if(!d.rules.length&&!d.intro.trim()){toast('Add at least one rule first',true);return}
