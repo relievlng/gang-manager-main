@@ -200,6 +200,96 @@ def list_bans() -> list:
     )
 
 
+# ---- Device tracking, for catching ban evasion on alt accounts -------------- #
+# A browser cannot read a real hardware ID, but it does give a persistent device
+# token (localStorage) and a stable fingerprint hash. We remember which accounts
+# signed in from which device, both directions, so a banned user coming back on a
+# fresh Discord from the same machine can be linked back to the original ban.
+
+def _device_store() -> dict:
+    d = DATA.get("signin_devices")
+    if not isinstance(d, dict):
+        d = {}
+    for k in ("by_user", "did", "fp"):
+        if not isinstance(d.get(k), dict):
+            d[k] = {}
+    DATA["signin_devices"] = d
+    return d
+
+
+def _dev_push(lst: list, val: str, cap: int) -> None:
+    if val and val not in lst:
+        lst.append(val)
+        if len(lst) > cap:
+            del lst[:-cap]
+
+
+def record_signin_device(user_id, did: str = "", fp: str = "") -> None:
+    """Remember the device token + fingerprint a user signed in with, mapped both
+    ways (user -> devices, device -> users). Best-effort; never raises."""
+    try:
+        uid = str(int(user_id))
+    except (TypeError, ValueError):
+        return
+    did = (str(did or "").strip())[:64]
+    fp = (str(fp or "").strip())[:32]
+    if not did and not fp:
+        return
+    try:
+        st = _device_store()
+        bu = st["by_user"].setdefault(uid, {"dids": [], "fps": [], "last": 0})
+        if not isinstance(bu, dict):
+            bu = {"dids": [], "fps": [], "last": 0}
+            st["by_user"][uid] = bu
+        for key, val in (("dids", did), ("fps", fp)):
+            bu.setdefault(key, [])
+            _dev_push(bu[key], val, 10)
+        for bucket, val in (("did", did), ("fp", fp)):
+            if not val:
+                continue
+            users = st[bucket].setdefault(val, [])
+            _dev_push(users, uid, 50)
+        bu["last"] = int(_now().timestamp())
+        save_data(DATA)
+    except Exception as exc:  # noqa: BLE001
+        log.info("record_signin_device skipped: %s", exc)
+
+
+def ban_evasion_hits(user_id, did: str = "", fp: str = "") -> dict:
+    """Does this sign-in look like ban evasion? Returns
+    {"self": bool, "alts": [{"id","name","reason","via"}]}, where `self` is True
+    if this account is itself banned and `alts` are BANNED accounts that share this
+    machine's device token or fingerprint. Read-only; call record_signin_device
+    first so the current device is on record."""
+    out = {"self": False, "alts": []}
+    try:
+        uid = str(int(user_id))
+    except (TypeError, ValueError):
+        return out
+    did = (str(did or "").strip())[:64]
+    fp = (str(fp or "").strip())[:32]
+    try:
+        st = _device_store()
+        bans = _ban_store()
+        out["self"] = uid in bans
+        linked: dict = {}
+        for val, bucket, label in ((did, "did", "device token"), (fp, "fp", "fingerprint")):
+            if not val:
+                continue
+            for other in st[bucket].get(val, []):
+                if other != uid and other in bans:
+                    linked.setdefault(other, set()).add(label)
+        for buid, vias in linked.items():
+            info = bans.get(buid) if isinstance(bans.get(buid), dict) else {}
+            out["alts"].append({
+                "id": buid, "name": info.get("name") or "",
+                "reason": info.get("reason") or "", "via": " + ".join(sorted(vias)),
+            })
+    except Exception as exc:  # noqa: BLE001
+        log.info("ban_evasion_hits skipped: %s", exc)
+    return out
+
+
 def _admin_staff_store() -> dict:
     staff = DATA.get("admin_staff")
     if not isinstance(staff, dict):

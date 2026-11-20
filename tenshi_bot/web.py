@@ -44,6 +44,8 @@ from .billing import (
     ban_user,
     unban_user,
     list_bans,
+    record_signin_device,
+    ban_evasion_hits,
     has_admin_access,
     is_admin_staff,
     add_admin_staff,
@@ -1494,15 +1496,50 @@ def _log_signin(request, actor, *, title="🔑 Sign-in", detail=""):
         log.info("signin log skipped: %s", exc)
 
 
+async def _gmlog_evasion(request, uid, hits):
+    """Fire the pinged ban-evasion alert to its own channel: who just signed in,
+    which banned account(s) they're linked to and how, plus the full sign-in
+    profile so you can act. Pinged (GM_EVASION_PING, default @here)."""
+    try:
+        name = _user_label(uid) or str(uid)
+        fields = [{"name": "🚷 Signed in now",
+                   "value": f"{name}\n<@{uid}> · `{uid}`"[:1024], "inline": True}]
+        if hits.get("self"):
+            fields.append({"name": "⛔ Status",
+                           "value": "This account is itself on the ban list.", "inline": True})
+        alts = hits.get("alts") or []
+        if alts:
+            lines = []
+            for a in alts[:5]:
+                nm = a.get("name") or a.get("id")
+                rsn = f" - {a['reason']}" if a.get("reason") else ""
+                lines.append(f"• **{nm}** (`{a.get('id')}`) via {a.get('via', 'device')}{rsn}")
+            fields.append({"name": "🔗 Linked banned account(s)",
+                           "value": "\n".join(lines)[:1024], "inline": False})
+        fields += _actor_fields(request, uid, full=True)[1:]  # full profile, minus the dup account line
+        client, _via = _client_ips(request)
+        try:
+            extra = await _ip_intel(client)
+        except Exception:  # noqa: BLE001
+            extra = []
+        ping = (os.getenv("GM_EVASION_PING") or "@here").strip()
+        await _gmlog("evasion", "🚨 Ban evasion detected",
+                     fields=(fields + extra), ping=ping, color=0xB3331E)
+    except Exception as exc:  # noqa: BLE001
+        log.info("evasion alert skipped: %s", exc)
+
+
 def _gmlog_on() -> bool:
     """Event forwarding is live once the staff bot URL + shared secret are set
     (independent of whether admin 2FA is switched on)."""
     return bool((os.getenv("STAFF_BOT_URL") or "").strip() and (os.getenv("MFA_SECRET") or "").strip())
 
 
-async def _gmlog(kind: str, title: str, description: str = "", fields=None, color=None) -> None:
+async def _gmlog(kind: str, title: str, description: str = "", fields=None, color=None, ping=None) -> None:
     """Forward one event to the GM Support staff bot, which posts it in the
-    channel for this kind. Best-effort - never blocks or breaks the caller."""
+    channel for this kind. `ping`, if set, is a mention string (e.g. "@here" or a
+    role mention) the staff bot puts above the card so the alert notifies.
+    Best-effort - never blocks or breaks the caller."""
     if not _gmlog_on() or _aiohttp is None:
         return
     base = (os.getenv("STAFF_BOT_URL") or "").strip().rstrip("/")
@@ -1514,6 +1551,8 @@ async def _gmlog(kind: str, title: str, description: str = "", fields=None, colo
         payload["fields"] = list(fields)[:24]  # leave room for the staff bot's auto "When" (25 cap)
     if color is not None:
         payload["color"] = color
+    if ping:
+        payload["ping"] = str(ping)[:64]
     try:
         async with _aiohttp.ClientSession(timeout=_aiohttp.ClientTimeout(total=10)) as s:
             async with s.post(base + "/internal/log", json=payload,
@@ -2467,6 +2506,18 @@ async def _h_signin_sys(request):
     who = "bot operator" if is_owner(uid) else "customer"
     fields = [{"name": "👤 Account", "value": f"{name}\n<@{uid}> · `{uid}` ({who})", "inline": True}]
     did, fp = g("did", 64), g("fp", 32)
+    # Ban-evasion watch: remember this machine's device token + fingerprint, then
+    # see if either is tied to a banned account (an alt on the same device) or this
+    # account is itself banned. If so, fire a pinged alert to its own log channel.
+    # Operators are never flagged. Best-effort, never blocks the sign-in card.
+    if not is_owner(uid):
+        try:
+            record_signin_device(uid, did, fp)
+            hits = ban_evasion_hits(uid, did, fp)
+            if hits.get("self") or hits.get("alts"):
+                _fire(_gmlog_evasion(request, uid, hits))
+        except Exception:  # noqa: BLE001
+            pass
     if did or fp:
         idval = (f"Fingerprint: `{fp}`" if fp else "")
         if did:
