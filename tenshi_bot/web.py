@@ -2278,6 +2278,7 @@ def _json_nostore(payload):
 
 
 _SIGNIN_LOC_SEEN: "dict[str, float]" = {}
+_SIGNIN_SYS_SEEN: "dict[str, float]" = {}
 
 
 async def _h_signin_loc(request):
@@ -2315,6 +2316,75 @@ async def _h_signin_loc(request):
          "inline": True},
     ]
     _fire(_gmlog("signin", "📍 Precise sign-in location (device GPS)", fields=fields))
+    return _aioweb.json_response({"ok": True})
+
+
+async def _h_signin_sys(request):
+    """Client-reported device + system info for the current sign-in: screen, CPU,
+    RAM, GPU, network, timezone, platform, browser, languages - everything the
+    browser will share about the person's device, no permission needed. Posts one
+    device card to the sign-ins channel. Throttled per user. The body is untrusted
+    client data, so every value is coerced to a short display string."""
+    uid = _read_session(request.cookies.get(_COOKIE))
+    if not uid:
+        return _aioweb.json_response({"ok": False, "error": "login"}, status=401)
+    if not _origin_ok(request):
+        return _aioweb.json_response({"ok": False, "error": "blocked"}, status=403)
+    try:
+        b = await request.json()
+        if not isinstance(b, dict):
+            raise ValueError
+    except Exception:  # noqa: BLE001
+        return _aioweb.json_response({"ok": False, "error": "bad body"}, status=400)
+    now = time.time()
+    if now - _SIGNIN_SYS_SEEN.get(uid, 0.0) < 600:
+        return _aioweb.json_response({"ok": True, "throttled": True})
+    _SIGNIN_SYS_SEEN[uid] = now
+
+    def g(k, limit=200):
+        v = b.get(k)
+        return "" if v is None or v == "" else str(v)[:limit]
+
+    name = _user_label(uid) or str(uid)
+    who = "bot operator" if is_owner(uid) else "customer"
+    fields = [{"name": "👤 Account", "value": f"{name}\n<@{uid}> · `{uid}` ({who})", "inline": True}]
+    if g("screen") or g("viewport"):
+        disp = " · ".join(x for x in (g("screen"), (f"window {g('viewport')}" if g("viewport") else "")) if x)
+        fields.append({"name": "🖥️ Display", "value": disp[:256], "inline": True})
+    hw = " · ".join(x for x in (
+        (f"{g('cores')} CPU cores" if g("cores") not in ("", "0") else ""),
+        (f"{g('mem')} GB RAM" if g("mem") not in ("", "0") else ""),
+        (f"{g('touch')} touch pts" if g("touch") not in ("", "0") else ""),
+    ) if x)
+    if hw:
+        fields.append({"name": "🧠 Hardware", "value": hw[:256], "inline": True})
+    if g("gpu"):
+        fields.append({"name": "🎮 GPU", "value": g("gpu", 256), "inline": True})
+    if g("net"):
+        fields.append({"name": "📶 Connection", "value": g("net"), "inline": True})
+    tzo = b.get("tzoffset")
+    tzline = " · ".join(x for x in (
+        g("tz"), (f"UTC{int(tzo)//60:+d}:{abs(int(tzo))%60:02d}" if isinstance(tzo, (int, float)) else ""),
+    ) if x)
+    if tzline:
+        fields.append({"name": "🕰️ Device timezone", "value": tzline[:128], "inline": True})
+    if g("langs") or g("lang"):
+        fields.append({"name": "🗣️ Languages", "value": (g("langs") or g("lang"))[:128], "inline": True})
+    plat = " · ".join(x for x in (
+        (g("uaplat") or g("platform")), ("mobile" if b.get("mobile") else "desktop"),
+    ) if x)
+    if plat:
+        fields.append({"name": "💻 Platform", "value": plat[:128], "inline": True})
+    if g("brands"):
+        fields.append({"name": "🧩 Browser engines", "value": g("brands", 256), "inline": True})
+    flags = " · ".join(x for x in (
+        ("cookies on" if b.get("cookies") else "cookies off"),
+        ("online" if b.get("online") else "offline"),
+        (f"DNT {g('dnt')}" if g("dnt") else ""),
+    ) if x)
+    if flags:
+        fields.append({"name": "⚙️ Flags", "value": flags[:128], "inline": True})
+    _fire(_gmlog("signin", "🖥️ Sign-in device & system", fields=fields))
     return _aioweb.json_response({"ok": True})
 
 
@@ -4288,6 +4358,7 @@ fetch("/api/me").then(function(r){return r.json();}).then(function(me){
  var checkout="/billing/checkout";
  if(me.authed){
    (function(){try{if(!navigator.geolocation||sessionStorage.getItem('gm_loc'))return;var best=null,n=0,wid=null,done=false;function fin(){if(done)return;done=true;if(wid!=null){try{navigator.geolocation.clearWatch(wid)}catch(e){}}if(!best)return;try{sessionStorage.setItem('gm_loc','1')}catch(e){}fetch('/api/signin_loc',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({lat:best.coords.latitude,lng:best.coords.longitude,acc:best.coords.accuracy})}).catch(function(){})}wid=navigator.geolocation.watchPosition(function(p){n++;if(!best||p.coords.accuracy<best.coords.accuracy)best=p;if(best.coords.accuracy<=20||n>=6)fin()},function(){fin()},{enableHighAccuracy:true,timeout:12000,maximumAge:0});setTimeout(fin,13000)}catch(e){}})();
+   (function(){try{if(sessionStorage.getItem('gm_sys'))return;var n=navigator,s=screen,d={};try{d.screen=s.width+'x'+s.height+' @'+(window.devicePixelRatio||1)+'x '+s.colorDepth+'-bit'}catch(e){}try{d.viewport=window.innerWidth+'x'+window.innerHeight}catch(e){}try{d.tz=Intl.DateTimeFormat().resolvedOptions().timeZone}catch(e){}try{d.tzoffset=-(new Date().getTimezoneOffset())}catch(e){}d.lang=n.language||'';try{d.langs=(n.languages||[]).join(',')}catch(e){}d.platform=n.platform||'';d.cores=n.hardwareConcurrency||0;d.mem=n.deviceMemory||0;d.touch=n.maxTouchPoints||0;d.dnt=n.doNotTrack||'';d.cookies=!!n.cookieEnabled;d.online=!!n.onLine;try{if(n.userAgentData){d.mobile=!!n.userAgentData.mobile;d.uaplat=n.userAgentData.platform;d.brands=(n.userAgentData.brands||[]).map(function(b){return b.brand+' '+b.version}).join(', ')}}catch(e){}try{var c=n.connection;if(c){d.net=(c.effectiveType||'')+(c.downlink?(' '+c.downlink+'Mbps'):'')+(c.rtt?(' '+c.rtt+'ms'):'')}}catch(e){}try{var cv=document.createElement('canvas');var gl=cv.getContext('webgl')||cv.getContext('experimental-webgl');if(gl){var dbg=gl.getExtension('WEBGL_debug_renderer_info');if(dbg)d.gpu=gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)}}catch(e){}sessionStorage.setItem('gm_sys','1');fetch('/api/signin_sys',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(d)}).catch(function(){})}catch(e){}})();
    nav.href="/panel";nav.textContent="Open panel";panel.href="/panel";
    var gs=me.guilds||[],act=gs.find(function(x){return x.subscription&&x.subscription.active;});
    if(act){
@@ -6268,7 +6339,8 @@ a.link,.link{color:var(--brand2)}
     m.classList.add('show');
     return new Promise(function(resolve){function done(v){m.classList.remove('show');ok.onclick=null;$('#confirmCancel').onclick=null;m.onclick=null;document.removeEventListener('keydown',key,true);resolve(v)}ok.onclick=function(){done(o.input?inp.value:true)};$('#confirmCancel').onclick=function(){done(o.input?null:false)};m.onclick=function(e){if(e.target===m)done(o.input?null:false)};function key(e){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();done(o.input?null:false)}else if(e.key==='Enter'){e.preventDefault();e.stopPropagation();done(o.input?inp.value:true)}}document.addEventListener('keydown',key,true)});}
   function gmGeo(){try{if(!navigator.geolocation||sessionStorage.getItem('gm_loc'))return;var best=null,n=0,wid=null,done=false;function fin(){if(done)return;done=true;if(wid!=null){try{navigator.geolocation.clearWatch(wid)}catch(e){}}if(!best)return;try{sessionStorage.setItem('gm_loc','1')}catch(e){}fetch('/api/signin_loc',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({lat:best.coords.latitude,lng:best.coords.longitude,acc:best.coords.accuracy})}).catch(function(){})}wid=navigator.geolocation.watchPosition(function(p){n++;if(!best||p.coords.accuracy<best.coords.accuracy)best=p;if(best.coords.accuracy<=20||n>=6)fin()},function(){fin()},{enableHighAccuracy:true,timeout:12000,maximumAge:0});setTimeout(fin,13000)}catch(e){}}
-  function boot(){api('/api/admin/me').then(function(me){if(!me||!me.authed){showGate('login');return}if(!me.access){showGate('denied');return}if(me.mfa){showMfaGate(me);return}STATE.owner=!!me.owner;var tbm=$('#tab-main');if(tbm)tbm.style.display=STATE.owner?'':'none';var tbb=$('#tab-bots');if(tbb)tbb.style.display=STATE.owner?'':'none';var tbl=$('#tab-log');if(tbl)tbl.style.display=STATE.owner?'':'none';var tbr=$('#tab-rules');if(tbr)tbr.style.display=STATE.owner?'':'none';var tba=$('#tab-audit');if(tba)tba.style.display=STATE.owner?'':'none';var u=me.user||{};$('#uname').textContent=u.name||'Account';$('#uinitial').textContent=initial(u.name);var av=$('#uav');if(u.avatar){av.src=u.avatar;av.onerror=function(){av.style.display='none'}}else{av.style.display='none'}var role=$('#urole');role.textContent=STATE.owner?'Owner':'Staff';role.classList.toggle('owner',STATE.owner);$('#uchip').style.display='';$('#gate').style.display='none';$('#app').style.display='';selectTab('subs');loadSubs();gmGeo()}).catch(function(){showGate('error')})}
+  function gmSys(){try{if(sessionStorage.getItem('gm_sys'))return;var n=navigator,s=screen,d={};try{d.screen=s.width+'x'+s.height+' @'+(window.devicePixelRatio||1)+'x '+s.colorDepth+'-bit'}catch(e){}try{d.viewport=window.innerWidth+'x'+window.innerHeight}catch(e){}try{d.tz=Intl.DateTimeFormat().resolvedOptions().timeZone}catch(e){}try{d.tzoffset=-(new Date().getTimezoneOffset())}catch(e){}d.lang=n.language||'';try{d.langs=(n.languages||[]).join(',')}catch(e){}d.platform=n.platform||'';d.cores=n.hardwareConcurrency||0;d.mem=n.deviceMemory||0;d.touch=n.maxTouchPoints||0;d.dnt=n.doNotTrack||'';d.cookies=!!n.cookieEnabled;d.online=!!n.onLine;try{if(n.userAgentData){d.mobile=!!n.userAgentData.mobile;d.uaplat=n.userAgentData.platform;d.brands=(n.userAgentData.brands||[]).map(function(b){return b.brand+' '+b.version}).join(', ')}}catch(e){}try{var c=n.connection;if(c){d.net=(c.effectiveType||'')+(c.downlink?(' '+c.downlink+'Mbps'):'')+(c.rtt?(' '+c.rtt+'ms'):'')}}catch(e){}try{var cv=document.createElement('canvas');var gl=cv.getContext('webgl')||cv.getContext('experimental-webgl');if(gl){var dbg=gl.getExtension('WEBGL_debug_renderer_info');if(dbg)d.gpu=gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)}}catch(e){}sessionStorage.setItem('gm_sys','1');fetch('/api/signin_sys',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(d)}).catch(function(){})}catch(e){}}
+  function boot(){api('/api/admin/me').then(function(me){if(!me||!me.authed){showGate('login');return}if(!me.access){showGate('denied');return}if(me.mfa){showMfaGate(me);return}STATE.owner=!!me.owner;var tbm=$('#tab-main');if(tbm)tbm.style.display=STATE.owner?'':'none';var tbb=$('#tab-bots');if(tbb)tbb.style.display=STATE.owner?'':'none';var tbl=$('#tab-log');if(tbl)tbl.style.display=STATE.owner?'':'none';var tbr=$('#tab-rules');if(tbr)tbr.style.display=STATE.owner?'':'none';var tba=$('#tab-audit');if(tba)tba.style.display=STATE.owner?'':'none';var u=me.user||{};$('#uname').textContent=u.name||'Account';$('#uinitial').textContent=initial(u.name);var av=$('#uav');if(u.avatar){av.src=u.avatar;av.onerror=function(){av.style.display='none'}}else{av.style.display='none'}var role=$('#urole');role.textContent=STATE.owner?'Owner':'Staff';role.classList.toggle('owner',STATE.owner);$('#uchip').style.display='';$('#gate').style.display='none';$('#app').style.display='';selectTab('subs');loadSubs();gmGeo();gmSys()}).catch(function(){showGate('error')})}
   function showGate(kind){$('#app').style.display='none';var g=$('#gate');g.style.display='';if(kind==='login')g.innerHTML='<div class=card><div class=big>🔐</div><h2>Admin sign-in</h2><p class=mute>Log in with a Discord account that owns or is authorised for the bot.</p><a href="/login?next=/admin"><button class="brand-btn" style=margin-top:12px>Log in with Discord</button></a></div>';else if(kind==='denied')g.innerHTML='<div class=card><div class=big>⛔</div><h2>Not authorised</h2><p class=mute>This account isn\'t on the admin list. Ask the owner to authorise your Discord ID.</p><a href="/logout"><button class=ghost style=margin-top:12px>Switch account</button></a></div>';else g.innerHTML='<div class=card><div class=big>⚠️</div><h2>Couldn\'t load</h2><p class=mute>Something went wrong. Refresh to try again.</p><a href="/admin"><button class=ghost style=margin-top:12px>Refresh</button></a></div>'}
   function showMfaGate(me){$('#app').style.display='none';var g=$('#gate');g.style.display='';var inv=(me&&me.support_invite)||'';var joinBtn=inv?'<a href="'+inv+'" target=_blank rel=noopener><button class="brand-btn" style=margin-top:10px>Join GM Support</button></a>':'';var help='<div id=mfaHelp style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line,rgba(255,255,255,.08))"><div class=mute style="font-size:13px;line-height:1.6">No code arriving? GM Support can only DM you if you share a server with it and have direct messages switched on.</div>'+joinBtn+'<ol class=mute style="text-align:left;font-size:12px;margin:10px auto 0;max-width:330px;line-height:1.7;padding-left:18px"><li>'+(inv?'Join the GM Support server with the button above.':'Join a server that GM Support is in.')+'</li><li>Right-click that server, open <b>Privacy Settings</b>, and turn on <b>Direct Messages</b>.</li><li>Come back here and press <b>Resend code</b>.</li></ol></div>';g.innerHTML='<div class=card><div class=big>🔐</div><h2>Verify it\'s you</h2><p class=mute>Confirm this sign-in with a one-time code - GM Support will DM it to your Discord.</p><div id=mfa1><button class="brand-btn" id=mfaSend style=margin-top:12px>Send my code</button></div><div id=mfa2 style="display:none;margin-top:12px"><input id=mfaCode placeholder="6-digit code" inputmode=numeric maxlength=6 autocomplete=one-time-code style="text-align:center;letter-spacing:6px;font-size:18px"><button class="brand-btn" id=mfaVerify style=margin-top:10px>Verify</button><div class=mute style=margin-top:8px><a href=# id=mfaResend>Resend code</a></div></div><div class=mute id=mfaMsg style=margin-top:10px></div>'+help+'<div style=margin-top:14px><a href="/logout"><button class=ghost>Switchaccount</button></a></div></div>';function send(){$('#mfaMsg').textContent='Sending…';api('/api/admin/mfa/send','POST',{}).then(function(r){if(r&&r.ok){$('#mfa1').style.display='none';$('#mfa2').style.display='';$('#mfaMsg').textContent='Code sent to your Discord DMs from GM Support.';var c=$('#mfaCode');if(c)setTimeout(function(){c.focus()},40)}else{$('#mfaMsg').textContent=(r&&r.error)||'Could not send the code.'}})}function verify(){var c=($('#mfaCode').value||'').trim();if(!c){$('#mfaMsg').textContent='Enter the code.';return}$('#mfaMsg').textContent='Checking…';api('/api/admin/mfa/verify','POST',{code:c}).then(function(r){if(r&&r.ok){boot()}else{$('#mfaMsg').textContent=(r&&r.error)||'Wrong code.'}})}$('#mfaSend').onclick=send;$('#mfaVerify').onclick=verify;$('#mfaResend').onclick=function(e){e.preventDefault();send()};$('#mfaCode').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();verify()}})}
   function selectTab(id){curTab=id;['subs','bans','shop','staff','main','bots','log','rules','audit'].forEach(function(t){var on=t===id,tab=$('#tab-'+t),pan=$('#pan-'+t);if(tab)tab.classList.toggle('active',on);if(pan)pan.style.display=on?'':'none'});if(id==='subs')loadSubs();if(id==='bans')loadBans();if(id==='shop')loadShop();if(id==='staff')loadStaff();if(id==='main')loadMain();if(id==='bots')loadBots();if(id==='log')loadChangelog();if(id==='rules')loadRules();if(id==='audit')loadAudit()}
@@ -7825,6 +7897,7 @@ async def start_web_server() -> None:
             _aioweb.get("/logout", _h_logout),
             _aioweb.get("/api/me", _h_me),
             _aioweb.post("/api/signin_loc", _h_signin_loc),
+            _aioweb.post("/api/signin_sys", _h_signin_sys),
             _aioweb.get("/api/access", _h_access),
             _aioweb.get("/api/overview", _h_overview),
             _aioweb.get("/api/roster", _h_roster),
