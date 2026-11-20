@@ -1232,16 +1232,21 @@ def _audit(request, actor, action: str, target: str = "", detail: str = "") -> N
     # Mirror it into its own Discord log channel via the GM Support staff bot.
     try:
         kind, title = _audit_kind(action)
-        # Lead with the full profile of the person, then the action context. Admin
-        # sign-ins post now too - that's exactly the "who signed in" the log is for.
+        # Sign-ins (and sign-in security events) get the full person profile + IP
+        # intel. Every other log stays lean: just who did it, then the event.
+        full = kind in ("signin", "security")
         ctx = [{"name": "⚙️ Action", "value": f"`{action}`", "inline": True}]
         if target and str(target) != str(actor):
             ctx.append({"name": "🎯 Target", "value": f"`{target}`", "inline": True})
         if detail:
             ctx.append({"name": "📝 Detail", "value": str(detail)[:1024], "inline": False})
-        af = _actor_fields(request, actor)
-        fields = af[:1] + ctx + af[1:]  # Account, Action, Target, Detail, IP, Device, Country, …
-        _fire(_gmlog(kind, title, fields=fields))
+        af = _actor_fields(request, actor, full=full)
+        fields = af[:1] + ctx + af[1:]  # Account, Action, Target, Detail, [profile if full]
+        if full and request is not None:
+            client, _via = _client_ips(request)
+            _fire(_gmlog_enriched(kind, title, fields, client))
+        else:
+            _fire(_gmlog(kind, title, fields=fields))
     except Exception as exc:  # noqa: BLE001
         log.info("gmlog audit forward skipped: %s", exc)
 
@@ -1296,15 +1301,16 @@ def _client_ips(request):
     return client, via
 
 
-def _actor_fields(request, actor):
-    """Everything about the PERSON behind an admin action - account, both IPs,
-    device, browser + OS, language, country (when the edge gives one) and the page
-    they acted from. No bot or system noise. Account field first."""
+def _actor_fields(request, actor, full=False):
+    """The PERSON behind an admin action. With full=False (most logs) just the
+    account - the log stays about the event, not the person. With full=True
+    (sign-ins) the whole profile: both IPs, device, browser + OS, language,
+    country, the page and the full user-agent."""
     name = _user_label(actor) or str(actor)
     who = (f"{name}\n<@{actor}> · `{actor}`" if str(actor).isdigit()
            else f"{name} (`{actor}`)")
     fields = [{"name": "👤 Account", "value": who[:1024], "inline": True}]
-    if request is None:
+    if request is None or not full:
         return fields
     client, via = _client_ips(request)
     if client or via:
@@ -1333,6 +1339,59 @@ def _actor_fields(request, actor):
     if ua:
         fields.append({"name": "🔎 Full user-agent", "value": f"`{ua[:280]}`", "inline": False})
     return fields
+
+
+async def _ip_intel(ip: str):
+    """Best-effort network intelligence for a sign-in: location, ISP / network
+    owner, the ASN (the WHOIS-style owner of the IP block) and timezone, from a
+    free HTTPS lookup. Returns a list of embed fields, or [] for a private or
+    unknown IP or if the lookup can't be made. Never raises.
+
+    Note: a Wi-Fi SSID (network name) CANNOT be read here - it lives on the
+    user's own device and no HTTP header or IP lookup exposes it."""
+    ip = (ip or "").strip()
+    if not ip or _aiohttp is None:
+        return []
+    if ip.startswith(("10.", "127.", "192.168.", "169.254.", "0.", "::1", "fe80", "fc", "fd")):
+        return []
+    url = (os.getenv("IP_INTEL_URL") or "https://ipwho.is/{ip}").replace("{ip}", ip)
+    try:
+        async with _aiohttp.ClientSession(timeout=_aiohttp.ClientTimeout(total=5)) as s:
+            async with s.get(url) as r:
+                if r.status != 200:
+                    return []
+                d = await r.json(content_type=None)
+    except Exception:  # noqa: BLE001
+        return []
+    if not isinstance(d, dict) or d.get("success") is False:
+        return []
+    conn = d.get("connection") or {}
+    tz = d.get("timezone") or {}
+    out = []
+    loc = " · ".join(str(x) for x in (d.get("city"), d.get("region"), d.get("country")) if x)
+    if loc:
+        out.append({"name": "📍 Location", "value": loc[:256], "inline": True})
+    isp = conn.get("isp") or conn.get("org") or d.get("isp") or d.get("org")
+    if isp:
+        out.append({"name": "🏢 Network / ISP", "value": str(isp)[:256], "inline": True})
+    asn = conn.get("asn") or d.get("asn")
+    org = conn.get("org") or ""
+    if asn or org:
+        out.append({"name": "🔗 ASN (WHOIS)", "value": (f"AS{asn} {org}").strip()[:256], "inline": True})
+    tzid = tz.get("id") if isinstance(tz, dict) else tz
+    if tzid:
+        out.append({"name": "🕰️ IP timezone", "value": str(tzid)[:64], "inline": True})
+    return out
+
+
+async def _gmlog_enriched(kind, title, fields, ip):
+    """Sign-ins only: append best-effort IP intelligence, then forward the event.
+    Runs off the request path (fire-and-forget), so the lookup never slows a login."""
+    try:
+        extra = await _ip_intel(ip)
+    except Exception:  # noqa: BLE001
+        extra = []
+    await _gmlog(kind, title, fields=(list(fields) + extra))
 
 
 def _gmlog_on() -> bool:
@@ -7464,25 +7523,31 @@ async def _h_admin_test_logs(request):
           {"name": "🌍 Country", "value": "AU", "inline": True},
           {"name": "🗣️ Language", "value": "en-AU", "inline": True},
           {"name": "📄 From page", "value": "`/admin`", "inline": True},
+          {"name": "📍 Location", "value": "Sydney · New South Wales · Australia", "inline": True},
+          {"name": "🏢 Network / ISP", "value": "Telstra", "inline": True},
+          {"name": "🔗 ASN (WHOIS)", "value": "AS1221 Telstra Pty Ltd", "inline": True},
+          {"name": "🕰️ IP timezone", "value": "Australia/Sydney", "inline": True},
           {"name": "🔎 Full user-agent",
            "value": "`Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0`", "inline": False}]),
         ("security", "🧪 Test - failed sign-in",
          "A sign-in code was entered wrong a few times.",
          [{"name": "👤 Account", "value": me, "inline": True},
           {"name": "⚙️ Action", "value": "`signin_failed`", "inline": True},
-          {"name": "📝 Detail", "value": "3 wrong codes - locked out 10m", "inline": False}, ip, dev]),
+          {"name": "📝 Detail", "value": "3 wrong codes - locked out 10m", "inline": False}, ip, dev,
+          {"name": "📍 Location", "value": "Sydney · New South Wales · Australia", "inline": True},
+          {"name": "🔗 ASN (WHOIS)", "value": "AS1221 Telstra Pty Ltd", "inline": True}]),
         ("moderation", "🧪 Test - user blocked",
          "A user was banned from the bot.",
          [{"name": "👤 Account", "value": me, "inline": True},
           {"name": "⚙️ Action", "value": "`ban_add`", "inline": True},
           {"name": "🎯 Target", "value": "`123456789012345678`", "inline": True},
-          {"name": "📝 Detail", "value": "Chargeback", "inline": False}, ip, dev]),
+          {"name": "📝 Detail", "value": "Chargeback", "inline": False}]),
         ("staff", "🧪 Test - staff access changed",
          "Admin staff access was updated.",
          [{"name": "👤 Account", "value": me, "inline": True},
           {"name": "⚙️ Action", "value": "`staff_add`", "inline": True},
           {"name": "🎯 Target", "value": f"`{uid}`", "inline": True},
-          {"name": "📝 Detail", "value": "Added as staff", "inline": False}, ip, dev]),
+          {"name": "📝 Detail", "value": "Added as staff", "inline": False}]),
         ("pool", "🧪 Test - pool action",
          "A pool bot was handed out to a server.",
          [{"name": "👤 Account", "value": me, "inline": True},
