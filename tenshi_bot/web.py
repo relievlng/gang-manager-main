@@ -4905,37 +4905,55 @@ async def _h_is_banned(request):
 _VERIFY_HTML = """<!doctype html><html lang=en><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
 <title>Verify &middot; __BRAND__</title>
+<link rel=preconnect href="https://fonts.googleapis.com"><link rel=preconnect href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel=stylesheet>
 <style>
-:root{color-scheme:dark}*{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;
- font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
- background:#0b0b0f;color:#ececf1}
-.card{width:100%;max-width:440px;background:#15151c;border:1px solid #26262f;border-radius:16px;
- padding:28px 26px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.4)}
-.big{font-size:44px;line-height:1;margin-bottom:10px}
-h1{font-size:20px;margin:6px 0 4px}
-p{color:#a9a9b6;font-size:14px;line-height:1.5;margin:8px 0}
-.spin{width:38px;height:38px;border:3px solid #2a2a34;border-top-color:#8a63ff;border-radius:50%;
- margin:14px auto;animation:sp 0.8s linear infinite}
+:root{color-scheme:dark;--bg:#07070a;--card:rgba(20,20,26,.72);--line:rgba(255,255,255,.08);
+ --text:#f2f2f6;--mute:#9a9aa8;--brand:#2f6bff;--brand2:#5b93ff;--ok:#22c55e;--bad:#ef4444}
+*{box-sizing:border-box}html,body{margin:0}
+body{min-height:100vh;display:grid;place-items:center;padding:24px;background:var(--bg);color:var(--text);
+ font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:-20%;z-index:-1;pointer-events:none;
+ background:radial-gradient(760px 520px at 15% -8%,rgba(47,107,255,.22),transparent 60%),
+ radial-gradient(640px 520px at 100% 4%,rgba(91,147,255,.14),transparent 55%),
+ radial-gradient(620px 620px at 50% 118%,rgba(47,107,255,.12),transparent 62%)}
+.card{position:relative;width:100%;max-width:430px;background:var(--card);border:1px solid var(--line);
+ border-radius:16px;padding:30px 26px;text-align:center;backdrop-filter:blur(14px);
+ box-shadow:0 20px 60px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.05)}
+.logo{width:68px;height:68px;border-radius:16px;object-fit:cover;margin:0 auto 4px;display:grid;place-items:center;
+ border:1px solid var(--line);box-shadow:0 8px 24px rgba(47,107,255,.25)}
+.logo.ph{font-size:34px;background:linear-gradient(135deg,rgba(47,107,255,.25),rgba(20,20,26,.6))}
+.ic{font-size:40px;line-height:1;margin:14px 0 6px}
+h1{font-size:19px;font-weight:700;margin:4px 0 2px;letter-spacing:-.01em}
+.sub{color:var(--mute);font-size:12px;text-transform:uppercase;letter-spacing:.14em;margin:0 0 6px}
+p{color:var(--mute);font-size:14px;line-height:1.55;margin:8px 4px}
+.spin{width:40px;height:40px;border:3px solid rgba(255,255,255,.1);border-top-color:var(--brand2);
+ border-radius:50%;margin:16px auto 6px;animation:sp .8s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 .hide{display:none}
-.rsn{background:#211318;border:1px solid #4a2230;border-radius:10px;padding:10px 12px;color:#f0b4c0;
- font-size:13px;margin-top:12px;word-break:break-word}
+.rsn{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:10px;
+ padding:10px 12px;color:#f6b1b8;font-size:13px;margin-top:14px;word-break:break-word;text-align:left}
+.ok .ic~#ttl{color:var(--ok)}
+.foot{margin-top:18px;color:var(--mute);font-size:11px;letter-spacing:.04em;opacity:.8}
 </style></head><body>
-<div class=card>
- <div id=ic class=big>🛡️</div>
+<div class=card id=card>
+ __LOGO__
+ <p class=sub>__BRAND__</p>
+ <div id=ic class=ic style=display:none></div>
  <h1 id=ttl>Verifying your device</h1>
  <div id=spin class=spin></div>
- <p id=msg>Hold on a moment while we check this device for __BRAND__.</p>
+ <p id=msg>Hold on a moment while we check this device.</p>
  <div id=rsn class="rsn hide"></div>
+ <div class=foot>Secured by __BRAND__</div>
 </div>
 <script>
 (function(){
- function set(ic,ttl,msg,reason){
-  document.getElementById('ic').textContent=ic;
+ function set(ic,ttl,msg,reason,ok){
+  var ie=document.getElementById('ic');ie.textContent=ic;ie.style.display='block';
   document.getElementById('ttl').textContent=ttl;
   document.getElementById('msg').textContent=msg;
   document.getElementById('spin').classList.add('hide');
+  if(ok)document.getElementById('card').classList.add('ok');
   var r=document.getElementById('rsn');
   if(reason){r.textContent=reason;r.classList.remove('hide')}else{r.classList.add('hide')}
  }
@@ -4957,7 +4975,7 @@ p{color:#a9a9b6;font-size:14px;line-height:1.5;margin:8px 0}
   .then(function(r){return r.json().catch(function(){return{}})})
   .then(function(j){
    if(j&&j.banned){set('⛔','Access denied','You are not able to verify on this server.',j.reason||'')}
-   else if(j&&j.verified){set('✅','You are verified','All done. You can head back to Discord now - your role has been added.')}
+   else if(j&&j.verified){set('✅','You are verified','All done. You can head back to Discord now - your role has been added.','',true)}
    else{set('⚠️','Could not verify',(j&&j.error)||'Something went wrong. Click Verify again in Discord to retry.')}
   })
   .catch(function(){set('⚠️','Could not verify','Could not reach the server. Click Verify again in Discord to retry.')});
@@ -5020,8 +5038,11 @@ async def _h_verify_page(request):
     user, and on success the verified role is granted."""
     brand = _brand_info()
     bname = html.escape(str((brand or {}).get("name") or "Gang Manager"))
-    return _aioweb.Response(text=_VERIFY_HTML.replace("__BRAND__", bname),
-                            content_type="text/html")
+    icon = str((brand or {}).get("icon") or "")
+    logo = (f'<img class=logo src="{html.escape(icon)}" alt="">' if icon
+            else '<div class="logo ph">🛡️</div>')
+    page = (_VERIFY_HTML.replace("__BRAND__", bname).replace("__LOGO__", logo))
+    return _aioweb.Response(text=page, content_type="text/html")
 
 
 async def _h_verify_complete(request):
@@ -6465,9 +6486,12 @@ a.link,.link{color:var(--brand2)}
       <div class=poolhead>
         <div><h3 style=margin:0>📋 Admin logs</h3><p class=hint style="margin:4px 0 0">Your operator logs on the <b>staff bot</b> - purchases, subscriptions, admin sign-ins, security, bans, staff changes, pool actions and servers added/removed. Each one posts to its own channel.</p></div>
       </div>
-      <button class=ghost id=mainLogSetup style="margin-top:12px">✨ Create the admin log channels</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button class=ghost id=mainLogSetup>✨ Create the admin log channels</button>
+        <button class=ghost id=mainLogFix title="Rebuild anything missing or deleted, and add new log channels">🔧 Fix log channels</button>
+      </div>
       <p class=hint id=mainLogSetupMsg style="margin:8px 0 0"></p>
-      <p class=hint style="margin:6px 0 0;opacity:.7">Builds a <b>📋 Gang Manager Logs</b> category on the staff bot with a channel per admin event, and skips any already set. The staff bot needs Manage Channels in its server (your support server).</p>
+      <p class=hint style="margin:6px 0 0;opacity:.7">Builds a <b>📋 Gang Manager Logs</b> category on the staff bot with a channel per admin event, and skips any already set. <b>Fix</b> re-checks them all and recreates any that were deleted or are new (like <b>ban-evasion</b>). The staff bot needs Manage Channels in its server (your support server).</p>
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08)">
         <button class=ghost id=mainTestLogs>🧪 Send test logs</button>
         <p class=hint id=mainTestLogsMsg style="margin:8px 0 0"></p>
@@ -7042,6 +7066,7 @@ a.link,.link{color:var(--brand2)}
   function saveHub(){var v=(($('#poolHub').value)||'').replace(/[^0-9]/g,'');api('/api/admin/pool/action','POST',{action:'hub',guild:v}).then(function(r){if(r.ok){if(POOL){POOL.admin_guild=r.admin_guild;POOL.main_hub_invite=r.main_hub_invite}$('#poolHubMsg').textContent=r.admin_guild?'Hub saved. Add the bots with the button, or the 🏠 link on each bot.':'Hub server cleared.';loadBots()}else toast(r.error||'Failed',true)})}
   function renderMain(){var d=POOL;if(!d)return;var hb=$('#mainHub');if(hb&&document.activeElement!==hb)hb.value=d.admin_guild||'';var sw=$('#hubCmdSwitch');if(sw){sw.classList.toggle('on',!d.hub_commands_off);var tx=$('#hubCmdSwitchTxt');if(tx)tx.textContent=d.hub_commands_off?'Sub-bot commands off':'Sub-bot commands on'}}
   function setupMainLogs(){var b=$('#mainLogSetup');if(b)b.disabled=true;$('#mainLogSetupMsg').textContent='Creating the admin log channels on the staff bot...';api('/api/admin/pool/action','POST',{action:'hub_logs_setup'}).then(function(r){if(b)b.disabled=false;if(r.ok){$('#mainLogSetupMsg').textContent='Created '+r.created+' admin log channel'+(r.created===1?'':'s')+(r.kept?(', '+r.kept+' already there'):'')+(r.server?(' in '+r.server):'')+'.';toast('Admin log channels ready ('+r.created+' new)')}else{$('#mainLogSetupMsg').textContent='';toast(r.error||'Failed',true)}})}
+  function fixMainLogs(){var b=$('#mainLogFix');if(b)b.disabled=true;$('#mainLogSetupMsg').textContent='Repairing the admin log channels on the staff bot...';api('/api/admin/pool/action','POST',{action:'hub_logs_setup'}).then(function(r){if(b)b.disabled=false;if(r.ok){var fixed=r.created||0;$('#mainLogSetupMsg').textContent=(fixed?('Rebuilt '+fixed+' missing or new log channel'+(fixed===1?'':'s')):'All log channels were already in place')+(r.kept?(' · '+r.kept+' already fine'):'')+(r.server?(' in '+r.server):'')+'.';toast(fixed?('Fixed '+fixed+' log channel'+(fixed===1?'':'s')):'Logs already healthy')}else{$('#mainLogSetupMsg').textContent='';toast(r.error||'Failed',true)}})}
   function sendAdminTestLogs(){var b=$('#mainTestLogs');if(b)b.disabled=true;$('#mainTestLogsMsg').textContent='Sending...';api('/api/admin/test_logs','POST',{}).then(function(r){if(b)b.disabled=false;if(r&&r.ok){$('#mainTestLogsMsg').textContent='Sent '+(r.sent||0)+' test log(s) - check your admin log channels.';toast('Test logs sent')}else{$('#mainTestLogsMsg').textContent='';toast((r&&r.error)||'Failed',true)}})}
   function loadMain(){api('/api/admin/pool').then(function(d){if(!d||!d.ok){toast((d&&d.error)||'Could not load.',true);return}POOL=d;renderMain()})}
   function saveMainHub(){var v=(($('#mainHub').value)||'').replace(/[^0-9]/g,'');api('/api/admin/pool/action','POST',{action:'hub',guild:v}).then(function(r){if(r.ok){if(POOL){POOL.admin_guild=r.admin_guild;POOL.main_hub_invite=r.main_hub_invite}$('#mainHubMsg').textContent=r.admin_guild?'Saved. Pool bots may sit in this server.':'Hub server cleared.'}else toast(r.error||'Failed',true)})}
@@ -7083,7 +7108,7 @@ a.link,.link{color:var(--brand2)}
     var chName=d.channel_id?('#'+(((RL_CHANS.filter(function(c){return c.id===d.channel_id})[0])||{}).name||'channel')):'the default channel';
     confirmBox({icon:'🛡️',title:'Post these rules?',message:'They will be posted now to '+chName+' in the server\'s embed style.',confirmText:'Post now'}).then(function(go){if(!go)return;var btn=$('#rlPostBtn');btn.disabled=true;btn.textContent='Posting…';
       api('/api/admin/rules','POST',{action:'post',draft:d}).then(function(r){btn.disabled=false;btn.textContent='📣 Post now';toast(r&&r.ok?('Posted to '+(r.channel||'the channel')):((r&&r.error)||'Post failed'),!(r&&r.ok))})})}
-  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-main')selectTab('main');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-log')selectTab('log');if(t.id==='tab-rules')selectTab('rules');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='brandApply')applyBrand();var _fb=t.closest&&t.closest('[data-fleet]');if(_fb){fleetPower(_fb.getAttribute('data-fleet'),_fb.getAttribute('data-act'))}if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='mainHubSave')saveMainHub();if(t.id==='mainLogSetup')setupMainLogs();if(t.id==='mainTestLogs')sendAdminTestLogs();if(t.id==='hubCmdSwitch'||(t.closest&&t.closest('#hubCmdSwitch')))toggleHubCmds();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();var _sk=t.closest&&t.closest('[data-sk]');if(_sk){SHOPKIND=_sk.getAttribute('data-sk');renderShop()}if(t.id==='tbSend')sendTestBuy();if(t.id==='tlSend')sendTestLogs();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
+  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-main')selectTab('main');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-log')selectTab('log');if(t.id==='tab-rules')selectTab('rules');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='brandApply')applyBrand();var _fb=t.closest&&t.closest('[data-fleet]');if(_fb){fleetPower(_fb.getAttribute('data-fleet'),_fb.getAttribute('data-act'))}if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='mainHubSave')saveMainHub();if(t.id==='mainLogSetup')setupMainLogs();if(t.id==='mainLogFix')fixMainLogs();if(t.id==='mainTestLogs')sendAdminTestLogs();if(t.id==='hubCmdSwitch'||(t.closest&&t.closest('#hubCmdSwitch')))toggleHubCmds();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();var _sk=t.closest&&t.closest('[data-sk]');if(_sk){SHOPKIND=_sk.getAttribute('data-sk');renderShop()}if(t.id==='tbSend')sendTestBuy();if(t.id==='tlSend')sendTestLogs();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
   document.addEventListener('input',function(e){var t=e.target;if(t.id==='subSearch'){SUBQ=t.value;renderSubs()}if(t.id==='shopSearch'){SHOPQ=t.value;renderShop()}if(t.id==='banSearch'){BANQ=t.value;renderBans()}if(t.id==='poolSearch'){POOLQ=t.value;renderPool()}if(t.id==='brandBio'){brandCount()}if(t.id==='auditSearch'){AUDITQ=t.value;renderAudit()}if(t.id==='cmdkInput'){cmdkBuild(t.value)}});
   document.addEventListener('change',function(e){if(e.target.id==='subSort'){SUBSORT=e.target.value;renderSubs()}});
   document.addEventListener('keydown',function(e){
