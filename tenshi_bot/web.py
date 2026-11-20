@@ -1232,27 +1232,15 @@ def _audit(request, actor, action: str, target: str = "", detail: str = "") -> N
     # Mirror it into its own Discord log channel via the GM Support staff bot.
     try:
         kind, title = _audit_kind(action)
-        if kind == "signin":
-            return  # admin sign-ins stay in the on-site audit log, not posted to Discord
-        actor_name = _user_label(actor) or str(actor)
-        who = f"<@{actor}>\n`{actor}`" if str(actor).isdigit() else f"{actor_name} (`{actor}`)"
-        fields = [
-            {"name": "👤 Who", "value": who, "inline": True},
-            {"name": "⚙️ Action", "value": f"`{action}`", "inline": True},
-        ]
-        if target:
-            fields.append({"name": "🎯 Target", "value": f"`{target}`", "inline": True})
+        # Lead with the full profile of the person, then the action context. Admin
+        # sign-ins post now too - that's exactly the "who signed in" the log is for.
+        ctx = [{"name": "⚙️ Action", "value": f"`{action}`", "inline": True}]
+        if target and str(target) != str(actor):
+            ctx.append({"name": "🎯 Target", "value": f"`{target}`", "inline": True})
         if detail:
-            fields.append({"name": "📝 Detail", "value": str(detail)[:1024], "inline": False})
-        client, via = _client_ips(request) if request is not None else ("", "")
-        if client or via:
-            ipval = f"Client: `{client or '-'}`"
-            if via and via != client:
-                ipval += f"\nVia: `{via}`"
-            fields.append({"name": "🌐 IP", "value": ipval, "inline": True})
-        ua = (request.headers.get("User-Agent") or "") if request is not None else ""
-        if ua:
-            fields.append({"name": "🖥️ Device", "value": _ua_label(ua), "inline": True})
+            ctx.append({"name": "📝 Detail", "value": str(detail)[:1024], "inline": False})
+        af = _actor_fields(request, actor)
+        fields = af[:1] + ctx + af[1:]  # Account, Action, Target, Detail, IP, Device, Country, …
         _fire(_gmlog(kind, title, fields=fields))
     except Exception as exc:  # noqa: BLE001
         log.info("gmlog audit forward skipped: %s", exc)
@@ -1286,46 +1274,6 @@ def _fire(coro) -> None:
             pass
 
 
-_BOOT_TS = time.time()
-
-
-def _fmt_dur(secs: float) -> str:
-    s = int(max(0, secs)); d, s = divmod(s, 86400); h, s = divmod(s, 3600); m, _ = divmod(s, 60)
-    return f"{d}d {h}h {m}m" if d else (f"{h}h {m}m" if h else f"{m}m")
-
-
-def _ping_ms():
-    try:
-        lat = bot.latency
-        if lat is not None and lat == lat and lat not in (float("inf"), float("-inf")):
-            return max(0, round(lat * 1000))
-    except Exception:  # noqa: BLE001
-        pass
-    return None
-
-
-def _host_ips():
-    """Best-effort (IPv4, IPv6) of the host - no network calls. Either may be ''."""
-    import socket
-    v4 = v6 = ""
-    try:
-        for fam, _t, _p, _c, sa in socket.getaddrinfo(socket.gethostname(), None):
-            ip = sa[0]
-            if fam == socket.AF_INET and not v4:
-                v4 = ip
-            elif fam == socket.AF_INET6 and not v6 and not ip.startswith(("fe80", "::1")):
-                v6 = ip
-    except Exception:  # noqa: BLE001
-        pass
-    if not v4:
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("10.255.255.255", 1)); v4 = s.getsockname()[0]; s.close()
-        except Exception:  # noqa: BLE001
-            pass
-    return v4, v6
-
-
 def _client_ips(request):
     """(client, via): the real client IP (first forwarded hop) and the edge/proxy
     hop it reached us through (socket peer, else the last forwarded hop)."""
@@ -1348,51 +1296,43 @@ def _client_ips(request):
     return client, via
 
 
-def _system_fields():
-    """Heaps of main-bot system context attached to every admin log: uptime, ping,
-    servers, active subs, the pool fleet, memory, host, runtime, region, version."""
-    import platform
-    sysl, hostl = [], []
-    sysl.append(f"Uptime: {_fmt_dur(time.time() - _BOOT_TS)}")
-    p = _ping_ms()
-    sysl.append(f"Gateway ping: {p} ms" if p is not None else "Gateway ping: -")
-    try:
-        gl = list(all_guilds()); servers = len(gl)
-        active = sum(1 for g in gl if guild_active(g.id))
-    except Exception:  # noqa: BLE001
-        servers = active = 0
-    sysl.append(f"Servers: {servers} · Active subs: {active}")
-    try:
-        c = (pool_overview() or {}).get("counts", {}) or {}
-        sysl.append(f"Pool: {c.get('total', 0)} bots · {c.get('online', 0)} online · serving {c.get('serving', 0)}")
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        import resource
-        rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        mb = rss / (1024.0 * 1024.0) if platform.system() == "Darwin" else rss / 1024.0  # macOS bytes, Linux KB
-        sysl.append(f"Memory: {mb:.0f} MB")
-    except Exception:  # noqa: BLE001
-        pass
-
-    hostl.append(f"Host: {platform.system()} {platform.machine()} · {platform.node()}"[:200])
-    hostl.append(f"Runtime: Python {platform.python_version()} · discord.py {getattr(discord, '__version__', '?')}")
-    v4, v6 = _host_ips()
-    hostl.append(f"Host IPv4: `{v4 or '-'}`  ·  IPv6: `{v6 or '-'}`")
-    reg = " · ".join(x for x in (
-        (os.getenv("RAILWAY_REPLICA_REGION") or os.getenv("RAILWAY_REGION") or "").strip(),
-        (os.getenv("RAILWAY_SERVICE_NAME") or "").strip(),
-    ) if x)
-    if reg:
-        hostl.append(f"Env: {reg}")
-    commit = (os.getenv("RAILWAY_GIT_COMMIT_SHA") or os.getenv("GIT_COMMIT") or "").strip()[:7]
-    if commit:
-        hostl.append(f"Version: `{commit}`")
-
-    return [
-        {"name": "🖥️ System", "value": "\n".join(sysl)[:1024], "inline": False},
-        {"name": "🧭 Host & runtime", "value": "\n".join(hostl)[:1024], "inline": False},
-    ]
+def _actor_fields(request, actor):
+    """Everything about the PERSON behind an admin action - account, both IPs,
+    device, browser + OS, language, country (when the edge gives one) and the page
+    they acted from. No bot or system noise. Account field first."""
+    name = _user_label(actor) or str(actor)
+    who = (f"{name}\n<@{actor}> · `{actor}`" if str(actor).isdigit()
+           else f"{name} (`{actor}`)")
+    fields = [{"name": "👤 Account", "value": who[:1024], "inline": True}]
+    if request is None:
+        return fields
+    client, via = _client_ips(request)
+    if client or via:
+        ipval = f"Client: `{client or '-'}`"
+        if via and via != client:
+            ipval += f"\nVia (edge): `{via}`"
+        fields.append({"name": "🌐 IP", "value": ipval, "inline": True})
+    ua = request.headers.get("User-Agent", "") or ""
+    if ua:
+        fields.append({"name": "🖥️ Device", "value": _ua_label(ua), "inline": True})
+    country = (request.headers.get("CF-IPCountry") or request.headers.get("X-Vercel-IP-Country")
+               or request.headers.get("X-Country-Code") or "").strip()
+    if country and country.lower() not in ("xx", "t1"):
+        fields.append({"name": "🌍 Country", "value": country.upper()[:8], "inline": True})
+    lang = (request.headers.get("Accept-Language") or "").split(",")[0].strip()
+    if lang:
+        fields.append({"name": "🗣️ Language", "value": lang[:32], "inline": True})
+    ref = (request.headers.get("Referer") or "").strip()
+    if ref:
+        try:
+            from urllib.parse import urlparse
+            ref = urlparse(ref).path or ref
+        except Exception:  # noqa: BLE001
+            pass
+        fields.append({"name": "📄 From page", "value": f"`{ref[:120]}`", "inline": True})
+    if ua:
+        fields.append({"name": "🔎 Full user-agent", "value": f"`{ua[:280]}`", "inline": False})
+    return fields
 
 
 def _gmlog_on() -> bool:
@@ -1410,14 +1350,9 @@ async def _gmlog(kind: str, title: str, description: str = "", fields=None, colo
     secret = (os.getenv("MFA_SECRET") or "").strip()
     ts = str(int(time.time()))
     sig = hmac.new(secret.encode(), f"{ts}.{kind}".encode(), hashlib.sha256).hexdigest()
-    flds = list(fields or [])
-    try:
-        flds = flds + _system_fields()
-    except Exception:  # noqa: BLE001
-        pass
     payload: dict = {"kind": kind, "title": str(title)[:256], "description": str(description or "")[:4000]}
-    if flds:
-        payload["fields"] = flds[:23]  # leave room for the staff bot's auto "When"
+    if fields:
+        payload["fields"] = list(fields)[:23]  # leave room for the staff bot's auto "When"
     if color is not None:
         payload["color"] = color
     try:
@@ -7501,9 +7436,9 @@ async def _h_admin_test_logs(request):
         return err
     if not _origin_ok(request):
         return _admin_json({"ok": False, "error": "Cross-site request blocked."}, 403)
-    me = f"<@{uid}>\n`{uid}`"
+    me = f"You\n<@{uid}> · `{uid}`"
     tsrv = "Test Server\n`123456789012345678`"
-    ip = {"name": "🌐 IP", "value": "`198.51.100.24`", "inline": True}
+    ip = {"name": "🌐 IP", "value": "Client: `198.51.100.24`\nVia (edge): `172.16.0.5`", "inline": True}
     dev = {"name": "🖥️ Device", "value": "Chrome · Windows", "inline": True}
     samples = [
         ("purchase", "🧪 Test - new purchase",
@@ -7524,27 +7459,33 @@ async def _h_admin_test_logs(request):
           {"name": "🏷️ Plan", "value": "monthly", "inline": True}]),
         ("signin", "🧪 Test - admin sign-in",
          "Someone signed in to the admin panel.",
-         [{"name": "👤 Who", "value": me, "inline": True}, ip, dev]),
+         [{"name": "👤 Account", "value": me, "inline": True},
+          {"name": "⚙️ Action", "value": "`admin_signin`", "inline": True}, ip, dev,
+          {"name": "🌍 Country", "value": "AU", "inline": True},
+          {"name": "🗣️ Language", "value": "en-AU", "inline": True},
+          {"name": "📄 From page", "value": "`/admin`", "inline": True},
+          {"name": "🔎 Full user-agent",
+           "value": "`Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0`", "inline": False}]),
         ("security", "🧪 Test - failed sign-in",
          "A sign-in code was entered wrong a few times.",
-         [{"name": "👤 Who", "value": me, "inline": True},
+         [{"name": "👤 Account", "value": me, "inline": True},
           {"name": "⚙️ Action", "value": "`signin_failed`", "inline": True},
           {"name": "📝 Detail", "value": "3 wrong codes - locked out 10m", "inline": False}, ip, dev]),
         ("moderation", "🧪 Test - user blocked",
          "A user was banned from the bot.",
-         [{"name": "👤 Who", "value": me, "inline": True},
+         [{"name": "👤 Account", "value": me, "inline": True},
           {"name": "⚙️ Action", "value": "`ban_add`", "inline": True},
           {"name": "🎯 Target", "value": "`123456789012345678`", "inline": True},
           {"name": "📝 Detail", "value": "Chargeback", "inline": False}, ip, dev]),
         ("staff", "🧪 Test - staff access changed",
          "Admin staff access was updated.",
-         [{"name": "👤 Who", "value": me, "inline": True},
+         [{"name": "👤 Account", "value": me, "inline": True},
           {"name": "⚙️ Action", "value": "`staff_add`", "inline": True},
           {"name": "🎯 Target", "value": f"`{uid}`", "inline": True},
           {"name": "📝 Detail", "value": "Added as staff", "inline": False}, ip, dev]),
         ("pool", "🧪 Test - pool action",
          "A pool bot was handed out to a server.",
-         [{"name": "👤 Who", "value": me, "inline": True},
+         [{"name": "👤 Account", "value": me, "inline": True},
           {"name": "⚙️ Action", "value": "`pool_assign`", "inline": True},
           {"name": "🤖 Bot", "value": "Bot 3", "inline": True},
           {"name": "🏠 Server", "value": tsrv, "inline": True}]),
