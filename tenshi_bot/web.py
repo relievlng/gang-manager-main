@@ -1244,12 +1244,12 @@ def _audit(request, actor, action: str, target: str = "", detail: str = "") -> N
             fields.append({"name": "🎯 Target", "value": f"`{target}`", "inline": True})
         if detail:
             fields.append({"name": "📝 Detail", "value": str(detail)[:1024], "inline": False})
-        try:
-            ip = _client_ip(request)
-        except Exception:  # noqa: BLE001
-            ip = ""
-        if ip:
-            fields.append({"name": "🌐 IP", "value": f"`{ip}`", "inline": True})
+        client, via = _client_ips(request) if request is not None else ("", "")
+        if client or via:
+            ipval = f"Client: `{client or '-'}`"
+            if via and via != client:
+                ipval += f"\nVia: `{via}`"
+            fields.append({"name": "🌐 IP", "value": ipval, "inline": True})
         ua = (request.headers.get("User-Agent") or "") if request is not None else ""
         if ua:
             fields.append({"name": "🖥️ Device", "value": _ua_label(ua), "inline": True})
@@ -1286,6 +1286,115 @@ def _fire(coro) -> None:
             pass
 
 
+_BOOT_TS = time.time()
+
+
+def _fmt_dur(secs: float) -> str:
+    s = int(max(0, secs)); d, s = divmod(s, 86400); h, s = divmod(s, 3600); m, _ = divmod(s, 60)
+    return f"{d}d {h}h {m}m" if d else (f"{h}h {m}m" if h else f"{m}m")
+
+
+def _ping_ms():
+    try:
+        lat = bot.latency
+        if lat is not None and lat == lat and lat not in (float("inf"), float("-inf")):
+            return max(0, round(lat * 1000))
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _host_ips():
+    """Best-effort (IPv4, IPv6) of the host - no network calls. Either may be ''."""
+    import socket
+    v4 = v6 = ""
+    try:
+        for fam, _t, _p, _c, sa in socket.getaddrinfo(socket.gethostname(), None):
+            ip = sa[0]
+            if fam == socket.AF_INET and not v4:
+                v4 = ip
+            elif fam == socket.AF_INET6 and not v6 and not ip.startswith(("fe80", "::1")):
+                v6 = ip
+    except Exception:  # noqa: BLE001
+        pass
+    if not v4:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("10.255.255.255", 1)); v4 = s.getsockname()[0]; s.close()
+        except Exception:  # noqa: BLE001
+            pass
+    return v4, v6
+
+
+def _client_ips(request):
+    """(client, via): the real client IP (first forwarded hop) and the edge/proxy
+    hop it reached us through (socket peer, else the last forwarded hop)."""
+    client = ""
+    try:
+        client = _client_ip(request)
+    except Exception:  # noqa: BLE001
+        client = ""
+    via = ""
+    try:
+        peer = request.transport.get_extra_info("peername") if getattr(request, "transport", None) else None
+        if peer:
+            via = str(peer[0])
+    except Exception:  # noqa: BLE001
+        via = ""
+    if not via:
+        hops = [h.strip() for h in (request.headers.get("X-Forwarded-For", "") or "").split(",") if h.strip()]
+        if len(hops) > 1:
+            via = hops[-1]
+    return client, via
+
+
+def _system_fields():
+    """Heaps of main-bot system context attached to every admin log: uptime, ping,
+    servers, active subs, the pool fleet, memory, host, runtime, region, version."""
+    import platform
+    sysl, hostl = [], []
+    sysl.append(f"Uptime: {_fmt_dur(time.time() - _BOOT_TS)}")
+    p = _ping_ms()
+    sysl.append(f"Gateway ping: {p} ms" if p is not None else "Gateway ping: -")
+    try:
+        gl = list(all_guilds()); servers = len(gl)
+        active = sum(1 for g in gl if guild_active(g.id))
+    except Exception:  # noqa: BLE001
+        servers = active = 0
+    sysl.append(f"Servers: {servers} · Active subs: {active}")
+    try:
+        c = (pool_overview() or {}).get("counts", {}) or {}
+        sysl.append(f"Pool: {c.get('total', 0)} bots · {c.get('online', 0)} online · serving {c.get('serving', 0)}")
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import resource
+        rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        mb = rss / (1024.0 * 1024.0) if platform.system() == "Darwin" else rss / 1024.0  # macOS bytes, Linux KB
+        sysl.append(f"Memory: {mb:.0f} MB")
+    except Exception:  # noqa: BLE001
+        pass
+
+    hostl.append(f"Host: {platform.system()} {platform.machine()} · {platform.node()}"[:200])
+    hostl.append(f"Runtime: Python {platform.python_version()} · discord.py {getattr(discord, '__version__', '?')}")
+    v4, v6 = _host_ips()
+    hostl.append(f"Host IPv4: `{v4 or '-'}`  ·  IPv6: `{v6 or '-'}`")
+    reg = " · ".join(x for x in (
+        (os.getenv("RAILWAY_REPLICA_REGION") or os.getenv("RAILWAY_REGION") or "").strip(),
+        (os.getenv("RAILWAY_SERVICE_NAME") or "").strip(),
+    ) if x)
+    if reg:
+        hostl.append(f"Env: {reg}")
+    commit = (os.getenv("RAILWAY_GIT_COMMIT_SHA") or os.getenv("GIT_COMMIT") or "").strip()[:7]
+    if commit:
+        hostl.append(f"Version: `{commit}`")
+
+    return [
+        {"name": "🖥️ System", "value": "\n".join(sysl)[:1024], "inline": False},
+        {"name": "🧭 Host & runtime", "value": "\n".join(hostl)[:1024], "inline": False},
+    ]
+
+
 def _gmlog_on() -> bool:
     """Event forwarding is live once the staff bot URL + shared secret are set
     (independent of whether admin 2FA is switched on)."""
@@ -1301,9 +1410,14 @@ async def _gmlog(kind: str, title: str, description: str = "", fields=None, colo
     secret = (os.getenv("MFA_SECRET") or "").strip()
     ts = str(int(time.time()))
     sig = hmac.new(secret.encode(), f"{ts}.{kind}".encode(), hashlib.sha256).hexdigest()
+    flds = list(fields or [])
+    try:
+        flds = flds + _system_fields()
+    except Exception:  # noqa: BLE001
+        pass
     payload: dict = {"kind": kind, "title": str(title)[:256], "description": str(description or "")[:4000]}
-    if fields:
-        payload["fields"] = fields
+    if flds:
+        payload["fields"] = flds[:23]  # leave room for the staff bot's auto "When"
     if color is not None:
         payload["color"] = color
     try:
