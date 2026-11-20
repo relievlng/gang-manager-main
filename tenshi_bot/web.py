@@ -7755,7 +7755,9 @@ async def start_web_server() -> None:
             h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
             h.setdefault("Cross-Origin-Opener-Policy", "same-origin")
             h.setdefault("X-Permitted-Cross-Domain-Policies", "none")
-            h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), browsing-topics=()")
+            # geolocation=(self) lets our own sign-in pages request the device's
+            # precise location (the browser still asks the user); camera/mic stay off.
+            h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(self), browsing-topics=()")
             # Enforcing CSP. Scripts keep 'unsafe-inline' because the panel uses
             # inline on* handlers, but everything else is locked down: no plugins,
             # no framing, no base-tag hijack, forms/XHR only to our own origin,
