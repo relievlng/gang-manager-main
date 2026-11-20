@@ -4902,6 +4902,172 @@ async def _h_is_banned(request):
     })
 
 
+_VERIFY_HTML = """<!doctype html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>Verify &middot; __BRAND__</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;
+ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+ background:#0b0b0f;color:#ececf1}
+.card{width:100%;max-width:440px;background:#15151c;border:1px solid #26262f;border-radius:16px;
+ padding:28px 26px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.4)}
+.big{font-size:44px;line-height:1;margin-bottom:10px}
+h1{font-size:20px;margin:6px 0 4px}
+p{color:#a9a9b6;font-size:14px;line-height:1.5;margin:8px 0}
+.spin{width:38px;height:38px;border:3px solid #2a2a34;border-top-color:#8a63ff;border-radius:50%;
+ margin:14px auto;animation:sp 0.8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.hide{display:none}
+.rsn{background:#211318;border:1px solid #4a2230;border-radius:10px;padding:10px 12px;color:#f0b4c0;
+ font-size:13px;margin-top:12px;word-break:break-word}
+</style></head><body>
+<div class=card>
+ <div id=ic class=big>🛡️</div>
+ <h1 id=ttl>Verifying your device</h1>
+ <div id=spin class=spin></div>
+ <p id=msg>Hold on a moment while we check this device for __BRAND__.</p>
+ <div id=rsn class="rsn hide"></div>
+</div>
+<script>
+(function(){
+ function set(ic,ttl,msg,reason){
+  document.getElementById('ic').textContent=ic;
+  document.getElementById('ttl').textContent=ttl;
+  document.getElementById('msg').textContent=msg;
+  document.getElementById('spin').classList.add('hide');
+  var r=document.getElementById('rsn');
+  if(reason){r.textContent=reason;r.classList.remove('hide')}else{r.classList.add('hide')}
+ }
+ var t='';try{t=new URLSearchParams(location.search).get('t')||''}catch(e){}
+ if(!t){set('⚠️','Link problem','This verification link is missing its code. Click Verify again in Discord.');return}
+ var n=navigator,s=screen,d={};
+ try{d.screen=s.width+'x'+s.height+' @'+(window.devicePixelRatio||1)+'x '+s.colorDepth+'-bit'}catch(e){}
+ try{d.tz=Intl.DateTimeFormat().resolvedOptions().timeZone}catch(e){}
+ d.platform=n.platform||'';
+ try{d.langs=(n.languages||[]).join(',')}catch(e){}
+ d.cores=n.hardwareConcurrency||0;d.mem=n.deviceMemory||0;
+ try{if(n.userAgentData){d.uaplat=n.userAgentData.platform;d.brands=(n.userAgentData.brands||[]).map(function(b){return b.brand+' '+b.version}).join(', ')}}catch(e){}
+ try{var cv=document.createElement('canvas');var gl=cv.getContext('webgl')||cv.getContext('experimental-webgl');if(gl){var dbg=gl.getExtension('WEBGL_debug_renderer_info');if(dbg){d.gpu=gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)}}}catch(e){}
+ try{var _did=localStorage.getItem('gm_did');if(!_did){_did=(window.crypto&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));localStorage.setItem('gm_did',_did)}d.did=_did}catch(e){}
+ var _cfp='';try{var fc=document.createElement('canvas');fc.width=200;fc.height=50;var cx=fc.getContext('2d');cx.textBaseline='top';cx.font='14px Arial';cx.fillStyle='#f60';cx.fillRect(10,10,100,30);cx.fillStyle='#069';cx.fillText('GM-device',15,20);_cfp=fc.toDataURL()}catch(e){}
+ function _cyrb(str){var h1=0xdeadbeef,h2=0x41c6ce57;for(var i=0,ch;i<str.length;i++){ch=str.charCodeAt(i);h1=Math.imul(h1^ch,2654435761);h2=Math.imul(h2^ch,1597334677)}h1=Math.imul(h1^(h1>>>16),2246822507);h1^=Math.imul(h2^(h2>>>13),3266489909);h2=Math.imul(h2^(h2>>>16),2246822507);h2^=Math.imul(h1^(h1>>>13),3266489909);return(4294967296*(2097151&h2)+(h1>>>0)).toString(16)}
+ try{d.fp=_cyrb([d.screen,d.platform,d.uaplat,d.tz,d.langs,d.cores,d.mem,d.gpu,d.brands,n.userAgent,_cfp].join('|'))}catch(e){}
+ fetch('/api/verify_complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:t,did:d.did,fp:d.fp})})
+  .then(function(r){return r.json().catch(function(){return{}})})
+  .then(function(j){
+   if(j&&j.banned){set('⛔','Access denied','You are not able to verify on this server.',j.reason||'')}
+   else if(j&&j.verified){set('✅','You are verified','All done. You can head back to Discord now - your role has been added.')}
+   else{set('⚠️','Could not verify',(j&&j.error)||'Something went wrong. Click Verify again in Discord to retry.')}
+  })
+  .catch(function(){set('⚠️','Could not verify','Could not reach the server. Click Verify again in Discord to retry.')});
+})();
+</script></body></html>"""
+
+
+def _verify_secrets() -> list:
+    """The secret(s) a guardbot-signed verify token could be signed with (the shared
+    cross-service secret, under either env name)."""
+    out = []
+    for v in (os.getenv("MFA_SECRET"), os.getenv("WEBHOOK_SECRET")):
+        v = (v or "").strip()
+        if v and v not in out:
+            out.append(v)
+    return out
+
+
+def _verify_token_ok(tok: str):
+    """Validate a guardbot-signed verify token 'uid.gid.exp.sig'. Returns (uid, gid)
+    if the signature is good and it hasn't expired, else None."""
+    try:
+        uid, gid, exp, sig = str(tok or "").split(".")
+        if not (uid.isdigit() and gid.isdigit()):
+            return None
+        if int(exp) < int(time.time()):
+            return None
+        body = f"{uid}.{gid}.{exp}".encode()
+        for secret in _verify_secrets():
+            good = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()[:32]
+            if hmac.compare_digest(sig, good):
+                return (uid, gid)
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
+async def _staff_verify_grant(uid, gid, banned, reason):
+    """Ask the GM Support staff bot to finish verification: grant the verified role,
+    or ban the user if device verification flagged them. Returns its JSON or None."""
+    base = _staff_base()
+    secret = (os.getenv("MFA_SECRET") or os.getenv("WEBHOOK_SECRET") or "").strip()
+    if not base or not secret or _aiohttp is None:
+        return None
+    payload = {"user_id": str(uid), "guild_id": str(gid),
+               "banned": bool(banned), "reason": str(reason or "")}
+    try:
+        async with _aiohttp.ClientSession(timeout=_aiohttp.ClientTimeout(total=12)) as s:
+            async with s.post(base + "/internal/verify_grant", json=payload,
+                              headers={"X-Guard-Token": secret}) as r:
+                return await r.json(content_type=None)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def _h_verify_page(request):
+    """The device-verification page. The staff bot's Verify button links here with a
+    signed token; this page fingerprints the device (same device token + fingerprint
+    the sign-in uses, so an alt on this machine links later), ties it to the Discord
+    user, and on success the verified role is granted."""
+    brand = _brand_info()
+    bname = html.escape(str((brand or {}).get("name") or "Gang Manager"))
+    return _aioweb.Response(text=_VERIFY_HTML.replace("__BRAND__", bname),
+                            content_type="text/html")
+
+
+async def _h_verify_complete(request):
+    """The verification page posts its signed token + device signals here. Record the
+    device against the Discord user, check for ban evasion, then ask the staff bot to
+    grant the verified role (or ban, if flagged). Returns {ok, verified, banned, reason}."""
+    try:
+        b = await request.json()
+        if not isinstance(b, dict):
+            raise ValueError
+    except Exception:  # noqa: BLE001
+        return _aioweb.json_response({"ok": False, "error": "bad body"}, status=400)
+    who = _verify_token_ok(str(b.get("t") or ""))
+    if not who:
+        return _aioweb.json_response(
+            {"ok": False, "error": "This verification link is invalid or has expired. Click Verify again in Discord."},
+            status=401)
+    uid, gid = who
+    did = str(b.get("did") or "").strip()[:64]
+    fp = str(b.get("fp") or "").strip()[:32]
+    banned, reason = False, ""
+    try:
+        record_signin_device(uid, did, fp)
+        hits = ban_evasion_hits(uid, did, fp)
+        if hits.get("self") or hits.get("alts"):
+            _fire(_gmlog_evasion(request, uid, hits))
+            strong = any("device token" in (a.get("via") or "") for a in hits.get("alts") or [])
+            if strong and not is_banned(uid):
+                a = next(a for a in hits["alts"] if "device token" in (a.get("via") or ""))
+                ban_user(uid, by="system", name="",
+                         reason=f"Alt of {a.get('name') or a.get('id')} ({a.get('via')})")
+        if is_banned(uid):
+            banned = True
+            reason = ban_record(uid).get("reason") or "You're banned from using the bot."
+    except Exception:  # noqa: BLE001
+        pass
+    grant = await _staff_verify_grant(uid, gid, banned, reason)
+    if banned:
+        return _aioweb.json_response({"ok": True, "verified": False, "banned": True, "reason": reason})
+    ok = bool(grant and grant.get("granted"))
+    return _aioweb.json_response({
+        "ok": True, "verified": ok,
+        "error": (None if ok else ((grant or {}).get("error") or "Couldn't grant the role - tell an admin.")),
+    })
+
+
 async def _h_support_lookup(request):
     """Staff-bot lookup: one Discord user's Gang Manager billing, matched by the
     purchaser recorded at checkout (or by server ownership). Authed with the
@@ -8171,6 +8337,8 @@ async def start_web_server() -> None:
             _aioweb.get("/api/support_lookup", _h_support_lookup),
             _aioweb.get("/api/support_verify", _h_support_verify),
             _aioweb.get("/api/is_banned", _h_is_banned),
+            _aioweb.get("/verify", _h_verify_page),
+            _aioweb.post("/api/verify_complete", _h_verify_complete),
             _aioweb.post("/internal/subscription", _h_internal_subscription),
             _aioweb.post("/api/sub_move", _h_sub_move),
             _aioweb.post("/billing/webhook", _h_billing_webhook),
