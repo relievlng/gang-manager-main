@@ -1232,11 +1232,10 @@ def _audit(request, actor, action: str, target: str = "", detail: str = "") -> N
     # Mirror it into its own Discord log channel via the GM Support staff bot.
     try:
         kind, title = _audit_kind(action)
-        if kind == "signin":
-            return  # the full sign-in card is built client-side at /api/signin_sys
-        # Sign-in security events (lockouts) still post server-side with the profile;
+        # Sign-ins and security events post server-side with the full profile + WHOIS,
+        # so a sign-in is always logged even if the browser never runs the collectors;
         # every other log stays lean: just who did it, then the event.
-        full = kind == "security"
+        full = kind in ("signin", "security")
         ctx = [{"name": "⚙️ Action", "value": f"`{action}`", "inline": True}]
         if target and str(target) != str(actor):
             ctx.append({"name": "🎯 Target", "value": f"`{target}`", "inline": True})
@@ -1424,6 +1423,23 @@ async def _gmlog_enriched(kind, title, fields, ip):
     except Exception:  # noqa: BLE001
         extra = []
     await _gmlog(kind, title, fields=(list(fields) + extra))
+
+
+def _log_signin(request, actor, *, title="🔑 Sign-in", detail=""):
+    """The reliable, server-side sign-in card: who signed in, from where, on what,
+    plus WHOIS - built from the request alone, so it ALWAYS fires on a login even if
+    the browser never runs the device / GPS collectors. Fire-and-forget; the device
+    and GPS cards post separately from the client when it can."""
+    try:
+        fields = _actor_fields(request, actor, full=True)
+        if detail:
+            fields = (fields[:1]
+                      + [{"name": "📝 Detail", "value": str(detail)[:1024], "inline": False}]
+                      + fields[1:])
+        client, _via = _client_ips(request)
+        _fire(_gmlog_enriched("signin", title, fields, client))
+    except Exception as exc:  # noqa: BLE001
+        log.info("signin log skipped: %s", exc)
 
 
 def _gmlog_on() -> bool:
@@ -2369,11 +2385,11 @@ def _ua_os_browser(ua: str):
 
 
 async def _h_signin_sys(request):
-    """THE sign-in card. The client posts its device + system info, and here that's
-    combined with the request's own IP, WHOIS and profile into ONE comprehensive
-    "Website sign-in" card - account, IP, location, device, browser, hardware, the
-    lot. (The GPS location stays its own separate card.) Throttled per user; the
-    body is untrusted client data coerced to short display strings."""
+    """The sign-in DEVICE + system card. The browser posts what only it can see -
+    hardware, GPU, screen, device IDs, timezone, browser internals - and this posts
+    it as its own card. Account / IP / WHOIS live on the reliable server-side login
+    card, and the GPS fix is its own card too, so this one stays about the device.
+    Throttled per user; the body is untrusted client data coerced to short strings."""
     uid = _read_session(request.cookies.get(_COOKIE))
     if not uid:
         return _aioweb.json_response({"ok": False, "error": "login"}, status=401)
@@ -2398,10 +2414,6 @@ async def _h_signin_sys(request):
     name = _user_label(uid) or str(uid)
     who = "bot operator" if is_owner(uid) else "customer"
     fields = [{"name": "👤 Account", "value": f"{name}\n<@{uid}> · `{uid}` ({who})", "inline": True}]
-    client, via = _client_ips(request)
-    if client or via:
-        ipval = f"Client: `{client or '-'}`" + (f"\nVia (edge): `{via}`" if via and via != client else "")
-        fields.append({"name": "🌐 IP", "value": ipval, "inline": True})
     did, fp = g("did", 64), g("fp", 32)
     if did or fp:
         idval = (f"Fingerprint: `{fp}`" if fp else "")
@@ -2484,19 +2496,9 @@ async def _h_signin_sys(request):
     ) if x)
     if flags:
         fields.append({"name": "⚙️ Flags", "value": flags[:128], "inline": True})
-    ref = (request.headers.get("Referer") or "").strip()
-    if ref:
-        try:
-            from urllib.parse import urlparse
-            ref = urlparse(ref).path or ref
-        except Exception:  # noqa: BLE001
-            pass
-        fields.append({"name": "📄 From page", "value": f"`{ref[:120]}`", "inline": True})
-    if ua_hdr:
-        fields.append({"name": "🔎 Full user-agent", "value": f"`{ua_hdr[:280]}`", "inline": False})
-    # One comprehensive sign-in card: profile + device + system here, WHOIS appended
-    # by the enriched forwarder. The GPS location stays its own separate card.
-    _fire(_gmlog_enriched("signin", "🔐 Website sign-in", fields, client))
+    # Device + system only - this is its own card. Account / IP / WHOIS ride on the
+    # reliable server-side login card, and the GPS fix is a third, separate card.
+    _fire(_gmlog("signin", "🖥️ Sign-in device & system", fields=fields))
     return _aioweb.json_response({"ok": True})
 
 
@@ -2676,9 +2678,11 @@ async def _h_callback(request):
                 )
             except (discord.HTTPException, ValueError, KeyError, TypeError):
                 pass
-    # The comprehensive sign-in card (profile + device + system + WHOIS) is built
-    # client-side once the page loads and posts to /api/signin_sys - one card, not
-    # a thin server-side one here and a device one later.
+    # Reliable server-side sign-in card (profile + WHOIS) - always fires on a login,
+    # even if the browser never runs the collectors. The device + system card and the
+    # GPS card post separately from the client when it can.
+    _log_signin(request, uid, title="🔑 Website sign-in",
+                detail=f"{uname} ({'bot operator' if is_owner(uid) else 'customer'})")
     _nxt = request.cookies.get("tenshi_next", "")
     _dest = _nxt if (_nxt.startswith("/") and not _nxt.startswith("//")) else "/panel"
     resp = _aioweb.HTTPFound(_dest)
