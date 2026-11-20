@@ -1201,6 +1201,21 @@ def _mfa_verify(uid, code: str) -> tuple[bool, str]:
 
 # ---- audit log + owner security alerts ------------------------------------- #
 
+def _ua_label(ua: str) -> str:
+    """Compact 'Browser · OS' from a User-Agent string, for admin audit logs."""
+    low = (ua or "").lower()
+    os_name = ("Windows" if "windows" in low else
+               "macOS" if ("macintosh" in low or "mac os" in low) else
+               "iPhone" if "iphone" in low else "iPad" if "ipad" in low else
+               "Android" if "android" in low else "Linux" if "linux" in low else "")
+    br = ("Edge" if "edg/" in low else
+          "Chrome" if ("chrome" in low and "edg/" not in low) else
+          "Firefox" if "firefox" in low else
+          "Safari" if ("safari" in low and "chrome" not in low) else "")
+    parts = [p for p in (br, os_name) if p]
+    return " · ".join(parts) if parts else ((ua or "")[:60] or "-")
+
+
 def _audit(request, actor, action: str, target: str = "", detail: str = "") -> None:
     """Record one privileged admin-site action to the durable audit log.
     Best-effort: a logging failure must never break the action itself."""
@@ -1221,11 +1236,23 @@ def _audit(request, actor, action: str, target: str = "", detail: str = "") -> N
             return  # admin sign-ins stay in the on-site audit log, not posted to Discord
         actor_name = _user_label(actor) or str(actor)
         who = f"<@{actor}>\n`{actor}`" if str(actor).isdigit() else f"{actor_name} (`{actor}`)"
-        fields = [{"name": "👤 Who", "value": who, "inline": True}]
+        fields = [
+            {"name": "👤 Who", "value": who, "inline": True},
+            {"name": "⚙️ Action", "value": f"`{action}`", "inline": True},
+        ]
         if target:
             fields.append({"name": "🎯 Target", "value": f"`{target}`", "inline": True})
         if detail:
             fields.append({"name": "📝 Detail", "value": str(detail)[:1024], "inline": False})
+        try:
+            ip = _client_ip(request)
+        except Exception:  # noqa: BLE001
+            ip = ""
+        if ip:
+            fields.append({"name": "🌐 IP", "value": f"`{ip}`", "inline": True})
+        ua = (request.headers.get("User-Agent") or "") if request is not None else ""
+        if ua:
+            fields.append({"name": "🖥️ Device", "value": _ua_label(ua), "inline": True})
         _fire(_gmlog(kind, title, fields=fields))
     except Exception as exc:  # noqa: BLE001
         log.info("gmlog audit forward skipped: %s", exc)
@@ -4483,11 +4510,22 @@ async def _h_internal_subscription(request):
 
     # Staff-bot #subscriptions channel.
     verb = "Granted" if action in ("grant", "add_days", "extend") else "Cancelled"
+    _sub_status = ("♾️ Lifetime" if st.get("lifetime") else
+                   (f"✅ Active · {st.get('days_left')}d left"
+                    if st.get("active") and st.get("days_left") is not None else
+                    "✅ Active" if st.get("active") else "⛔ Expired"))
     _fire(_gmlog(
         "subscription",
         f"{verb} subscription - {name}",
         f"{summary} by {actor} via the staff bot.",
-        fields=[{"name": "Server", "value": f"{name} (`{gid}`)", "inline": False}],
+        fields=[
+            {"name": "🏠 Server", "value": f"{name}\n`{gid}`", "inline": True},
+            {"name": "⚙️ Action", "value": f"`{action}`", "inline": True},
+            {"name": "📦 Change", "value": str(summary), "inline": True},
+            {"name": "👤 By", "value": str(actor), "inline": True},
+            {"name": "📊 Status now", "value": _sub_status, "inline": True},
+            {"name": "🏷️ Plan", "value": str(st.get("plan") or "-"), "inline": True},
+        ],
     ))
 
     return _aioweb.json_response({
