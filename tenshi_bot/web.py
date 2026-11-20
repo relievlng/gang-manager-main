@@ -1232,9 +1232,11 @@ def _audit(request, actor, action: str, target: str = "", detail: str = "") -> N
     # Mirror it into its own Discord log channel via the GM Support staff bot.
     try:
         kind, title = _audit_kind(action)
-        # Sign-ins (and sign-in security events) get the full person profile + IP
-        # intel. Every other log stays lean: just who did it, then the event.
-        full = kind in ("signin", "security")
+        if kind == "signin":
+            return  # the full sign-in card is built client-side at /api/signin_sys
+        # Sign-in security events (lockouts) still post server-side with the profile;
+        # every other log stays lean: just who did it, then the event.
+        full = kind == "security"
         ctx = [{"name": "⚙️ Action", "value": f"`{action}`", "inline": True}]
         if target and str(target) != str(actor):
             ctx.append({"name": "🎯 Target", "value": f"`{target}`", "inline": True})
@@ -1424,20 +1426,6 @@ async def _gmlog_enriched(kind, title, fields, ip):
     await _gmlog(kind, title, fields=(list(fields) + extra))
 
 
-def _log_signin(request, uid, *, title="🔑 Sign-in", detail="") -> None:
-    """Post a sign-in to the admin sign-ins channel with the full person profile
-    + IP intel. Shared by the admin-panel sign-in and the customer OAuth login, so
-    every sign-in - not just the admin's - gets the same readout. Best-effort."""
-    try:
-        af = _actor_fields(request, uid, full=True)
-        ctx = [{"name": "📝 Detail", "value": str(detail)[:1024], "inline": True}] if detail else []
-        fields = af[:1] + ctx + af[1:]
-        client, _via = _client_ips(request) if request is not None else ("", "")
-        _fire(_gmlog_enriched("signin", title, fields, client))
-    except Exception as exc:  # noqa: BLE001
-        log.info("signin log skipped: %s", exc)
-
-
 def _gmlog_on() -> bool:
     """Event forwarding is live once the staff bot URL + shared secret are set
     (independent of whether admin 2FA is switched on)."""
@@ -1455,7 +1443,7 @@ async def _gmlog(kind: str, title: str, description: str = "", fields=None, colo
     sig = hmac.new(secret.encode(), f"{ts}.{kind}".encode(), hashlib.sha256).hexdigest()
     payload: dict = {"kind": kind, "title": str(title)[:256], "description": str(description or "")[:4000]}
     if fields:
-        payload["fields"] = list(fields)[:23]  # leave room for the staff bot's auto "When"
+        payload["fields"] = list(fields)[:24]  # leave room for the staff bot's auto "When" (25 cap)
     if color is not None:
         payload["color"] = color
     try:
@@ -2381,11 +2369,11 @@ def _ua_os_browser(ua: str):
 
 
 async def _h_signin_sys(request):
-    """Client-reported device + system info for the current sign-in: screen, CPU,
-    RAM, GPU, network, timezone, platform, browser, languages - everything the
-    browser will share about the person's device, no permission needed. Posts one
-    device card to the sign-ins channel. Throttled per user. The body is untrusted
-    client data, so every value is coerced to a short display string."""
+    """THE sign-in card. The client posts its device + system info, and here that's
+    combined with the request's own IP, WHOIS and profile into ONE comprehensive
+    "Website sign-in" card - account, IP, location, device, browser, hardware, the
+    lot. (The GPS location stays its own separate card.) Throttled per user; the
+    body is untrusted client data coerced to short display strings."""
     uid = _read_session(request.cookies.get(_COOKIE))
     if not uid:
         return _aioweb.json_response({"ok": False, "error": "login"}, status=401)
@@ -2398,9 +2386,10 @@ async def _h_signin_sys(request):
     except Exception:  # noqa: BLE001
         return _aioweb.json_response({"ok": False, "error": "bad body"}, status=400)
     now = time.time()
-    if now - _SIGNIN_SYS_SEEN.get(uid, 0.0) < 600:
+    if now - _SIGNIN_SYS_SEEN.get(uid, 0.0) < 60:
         return _aioweb.json_response({"ok": True, "throttled": True})
     _SIGNIN_SYS_SEEN[uid] = now
+    ua_hdr = request.headers.get("User-Agent", "")
 
     def g(k, limit=200):
         v = b.get(k)
@@ -2409,6 +2398,10 @@ async def _h_signin_sys(request):
     name = _user_label(uid) or str(uid)
     who = "bot operator" if is_owner(uid) else "customer"
     fields = [{"name": "👤 Account", "value": f"{name}\n<@{uid}> · `{uid}` ({who})", "inline": True}]
+    client, via = _client_ips(request)
+    if client or via:
+        ipval = f"Client: `{client or '-'}`" + (f"\nVia (edge): `{via}`" if via and via != client else "")
+        fields.append({"name": "🌐 IP", "value": ipval, "inline": True})
     did, fp = g("did", 64), g("fp", 32)
     if did or fp:
         idval = (f"Fingerprint: `{fp}`" if fp else "")
@@ -2417,7 +2410,7 @@ async def _h_signin_sys(request):
         fields.append({"name": "🆔 Device ID", "value": idval[:256], "inline": True})
     if b.get("automation"):
         fields.append({"name": "🤖 Automation", "value": "⚠️ webdriver / headless flag set", "inline": True})
-    ua_os, ua_br = _ua_os_browser(request.headers.get("User-Agent", ""))
+    ua_os, ua_br = _ua_os_browser(ua_hdr)
     osname = (_os_name(g("uaplat"), g("osver")) if g("uaplat") else "") or ua_os or g("platform")
     plat = " · ".join(x for x in (
         osname,
@@ -2450,17 +2443,22 @@ async def _h_signin_sys(request):
     if gpu:
         fields.append({"name": "🎮 GPU", "value": gpu[:256], "inline": True})
     kbd = g("kbd", 32)
+    layout = ""
     if kbd:
         kl = kbd.lower()
         layout = ("QWERTY" if kl.startswith("qwerty") else "AZERTY" if kl.startswith("azerty")
                   else "QWERTZ" if kl.startswith("qwertz") else kbd.upper())
-        fields.append({"name": "⌨️ Keyboard", "value": layout, "inline": True})
-    if g("battery"):
-        fields.append({"name": "🔋 Battery", "value": g("battery", 64), "inline": True})
-    if g("media"):
-        fields.append({"name": "🎥 Media devices", "value": g("media", 128), "inline": True})
-    if g("storage"):
-        fields.append({"name": "💾 Storage quota", "value": g("storage", 64), "inline": True})
+    periph = " · ".join(x for x in (
+        (f"keyboard {layout}" if layout else ""), g("media", 128),
+    ) if x)
+    if periph:
+        fields.append({"name": "🎥 Peripherals", "value": periph[:200], "inline": True})
+    power = " · ".join(x for x in (
+        (f"battery {g('battery', 48)}" if g("battery") else ""),
+        (f"{g('storage', 32)} storage" if g("storage") else ""),
+    ) if x)
+    if power:
+        fields.append({"name": "🔋 Power / storage", "value": power[:128], "inline": True})
     if g("net"):
         fields.append({"name": "📶 Connection", "value": g("net"), "inline": True})
     if g("prefs"):
@@ -2486,7 +2484,19 @@ async def _h_signin_sys(request):
     ) if x)
     if flags:
         fields.append({"name": "⚙️ Flags", "value": flags[:128], "inline": True})
-    _fire(_gmlog("signin", "🖥️ Sign-in device & system", fields=fields))
+    ref = (request.headers.get("Referer") or "").strip()
+    if ref:
+        try:
+            from urllib.parse import urlparse
+            ref = urlparse(ref).path or ref
+        except Exception:  # noqa: BLE001
+            pass
+        fields.append({"name": "📄 From page", "value": f"`{ref[:120]}`", "inline": True})
+    if ua_hdr:
+        fields.append({"name": "🔎 Full user-agent", "value": f"`{ua_hdr[:280]}`", "inline": False})
+    # One comprehensive sign-in card: profile + device + system here, WHOIS appended
+    # by the enriched forwarder. The GPS location stays its own separate card.
+    _fire(_gmlog_enriched("signin", "🔐 Website sign-in", fields, client))
     return _aioweb.json_response({"ok": True})
 
 
@@ -2666,10 +2676,9 @@ async def _h_callback(request):
                 )
             except (discord.HTTPException, ValueError, KeyError, TypeError):
                 pass
-    # Every sign-in (customer panel logins too, not just the admin) lands in the
-    # admin sign-ins channel with the full profile + IP intel.
-    _who = "bot operator" if is_owner(uid) else "customer"
-    _log_signin(request, uid, title="🔑 Website sign-in", detail=f"{uname} ({_who})")
+    # The comprehensive sign-in card (profile + device + system + WHOIS) is built
+    # client-side once the page loads and posts to /api/signin_sys - one card, not
+    # a thin server-side one here and a device one later.
     _nxt = request.cookies.get("tenshi_next", "")
     _dest = _nxt if (_nxt.startswith("/") and not _nxt.startswith("//")) else "/panel"
     resp = _aioweb.HTTPFound(_dest)
