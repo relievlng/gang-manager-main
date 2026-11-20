@@ -5083,6 +5083,18 @@ async def _h_verify_complete(request):
     if banned:
         return _aioweb.json_response({"ok": True, "verified": False, "banned": True, "reason": reason})
     ok = bool(grant and grant.get("granted"))
+    if ok:
+        # Log the verification with the full device + WHOIS profile, exactly like a
+        # sign-in card (account, IP, OS, CPU, browser build, location, ASN, ...), so
+        # invite-joins get the same record a website login would.
+        try:
+            name = _user_label(uid) or str(uid)
+            vf = [{"name": "✅ Verified", "value": f"{name}\n<@{uid}> · `{uid}`", "inline": True}]
+            vf += _actor_fields(request, uid, full=True)[1:]  # device/profile, minus dup account
+            client, _via = _client_ips(request)
+            _fire(_gmlog_enriched("verify", "🛡️ Member verified", vf, client))
+        except Exception:  # noqa: BLE001
+            pass
     return _aioweb.json_response({
         "ok": True, "verified": ok,
         "error": (None if ok else ((grant or {}).get("error") or "Couldn't grant the role - tell an admin.")),
