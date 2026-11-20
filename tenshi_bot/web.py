@@ -1423,6 +1423,20 @@ async def _gmlog_enriched(kind, title, fields, ip):
     await _gmlog(kind, title, fields=(list(fields) + extra))
 
 
+def _log_signin(request, uid, *, title="🔑 Sign-in", detail="") -> None:
+    """Post a sign-in to the admin sign-ins channel with the full person profile
+    + IP intel. Shared by the admin-panel sign-in and the customer OAuth login, so
+    every sign-in - not just the admin's - gets the same readout. Best-effort."""
+    try:
+        af = _actor_fields(request, uid, full=True)
+        ctx = [{"name": "📝 Detail", "value": str(detail)[:1024], "inline": True}] if detail else []
+        fields = af[:1] + ctx + af[1:]
+        client, _via = _client_ips(request) if request is not None else ("", "")
+        _fire(_gmlog_enriched("signin", title, fields, client))
+    except Exception as exc:  # noqa: BLE001
+        log.info("signin log skipped: %s", exc)
+
+
 def _gmlog_on() -> bool:
     """Event forwarding is live once the staff bot URL + shared secret are set
     (independent of whether admin 2FA is switched on)."""
@@ -2428,8 +2442,8 @@ async def _h_callback(request):
     _remember_user(uid, user, await _oauth_guilds(access))
     # Sign in even with no accessible server yet - the panel shows the next step
     # (add the bot to one of your servers / ask an owner to add you).
+    uname = user.get("global_name") or user.get("username") or uid
     if not is_owner(uid):  # operator support visits don't spam customers' logs
-        uname = user.get("global_name") or user.get("username") or uid
         for g in await _accessible_guilds(uid):
             try:
                 await send_log(
@@ -2438,6 +2452,10 @@ async def _h_callback(request):
                 )
             except (discord.HTTPException, ValueError, KeyError, TypeError):
                 pass
+    # Every sign-in (customer panel logins too, not just the admin) lands in the
+    # admin sign-ins channel with the full profile + IP intel.
+    _who = "bot operator" if is_owner(uid) else "customer"
+    _log_signin(request, uid, title="🔑 Website sign-in", detail=f"{uname} ({_who})")
     _nxt = request.cookies.get("tenshi_next", "")
     _dest = _nxt if (_nxt.startswith("/") and not _nxt.startswith("//")) else "/panel"
     resp = _aioweb.HTTPFound(_dest)
