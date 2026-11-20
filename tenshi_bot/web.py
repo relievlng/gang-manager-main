@@ -1302,11 +1302,62 @@ def _client_ips(request):
     return client, via
 
 
+def _ch(request, name: str) -> str:
+    """One Sec-CH-UA-* client-hint header, unquoted ('' if the browser didn't send it)."""
+    v = (request.headers.get(name) or "").strip()
+    return v.strip('"').strip() if v else ""
+
+
+def _ch_browser(fvl: str) -> str:
+    """Real browser + version from a Sec-CH-UA-Full-Version-List header, skipping the
+    'Not.A/Brand' greasing and preferring a named browser (Chrome/Edge) over 'Chromium'."""
+    try:
+        parts = re.findall(r'"([^"]+)";\s*v="([^"]+)"', fvl or "")
+    except Exception:  # noqa: BLE001
+        return ""
+    real = [(b, v) for b, v in parts if "brand" not in b.lower()]
+    named = [(b, v) for b, v in real if "chromium" not in b.lower()]
+    pick = named or real
+    return f"{pick[0][0]} {pick[0][1]}" if pick else ""
+
+
+def _client_hint_fields(request) -> list:
+    """Device detail the SERVER itself can read from Chromium's client-hint headers
+    (sent after our Accept-CH): OS + version, CPU architecture, form factor, device
+    model, exact browser build. Empty on Safari / Firefox, which don't send hints -
+    the client-side device card still covers those. This keeps the login card BOTH
+    rich and reliable, since none of it needs the page's JavaScript to run."""
+    if request is None:
+        return []
+    out = []
+    plat, pver = _ch(request, "Sec-CH-UA-Platform"), _ch(request, "Sec-CH-UA-Platform-Version")
+    if plat:
+        osn = _os_name(plat, pver) or plat
+        out.append({"name": "💻 Operating system",
+                    "value": (osn + (f" · v{pver}" if pver and pver not in osn else ""))[:128],
+                    "inline": True})
+    arch, bits = _ch(request, "Sec-CH-UA-Arch"), _ch(request, "Sec-CH-UA-Bitness")
+    cpu = " ".join(x for x in (arch, (f"{bits}-bit" if bits else "")) if x)
+    if cpu:
+        out.append({"name": "⚙️ CPU", "value": cpu[:64], "inline": True})
+    model = _ch(request, "Sec-CH-UA-Model")
+    if model:
+        out.append({"name": "📱 Device model", "value": model[:128], "inline": True})
+    mob = _ch(request, "Sec-CH-UA-Mobile")
+    if mob:
+        out.append({"name": "🧱 Form factor",
+                    "value": ("mobile" if mob == "?1" else "desktop / PC"), "inline": True})
+    brow = _ch_browser(request.headers.get("Sec-CH-UA-Full-Version-List", ""))
+    if brow:
+        out.append({"name": "🧩 Browser build", "value": brow[:128], "inline": True})
+    return out
+
+
 def _actor_fields(request, actor, full=False):
     """The PERSON behind an admin action. With full=False (most logs) just the
     account - the log stays about the event, not the person. With full=True
     (sign-ins) the whole profile: both IPs, device, browser + OS, language,
-    country, the page and the full user-agent."""
+    country, the page, the full user-agent and server-read client-hint device detail."""
     name = _user_label(actor) or str(actor)
     who = (f"{name}\n<@{actor}> · `{actor}`" if str(actor).isdigit()
            else f"{name} (`{actor}`)")
@@ -1322,6 +1373,7 @@ def _actor_fields(request, actor, full=False):
     ua = request.headers.get("User-Agent", "") or ""
     if ua:
         fields.append({"name": "🖥️ Device", "value": _ua_label(ua), "inline": True})
+    fields.extend(_client_hint_fields(request))  # OS version, CPU, model, browser build (Chromium)
     country = (request.headers.get("CF-IPCountry") or request.headers.get("X-Vercel-IP-Country")
                or request.headers.get("X-Country-Code") or "").strip()
     if country and country.lower() not in ("xx", "t1"):
@@ -7945,6 +7997,16 @@ async def start_web_server() -> None:
             # geolocation=(self) lets our own sign-in pages request the device's
             # precise location (the browser still asks the user); camera/mic stay off.
             h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(self), browsing-topics=()")
+            # Ask Chromium to send high-entropy device client hints (OS version, CPU
+            # arch/bitness, model, exact browser build) so the server-side sign-in card
+            # can show real device detail without relying on page JavaScript. Critical-CH
+            # makes the browser re-send the first navigation with them, so even the very
+            # first login card is complete. Safari/Firefox ignore these (no hints sent).
+            h.setdefault("Accept-CH", "Sec-CH-UA-Platform, Sec-CH-UA-Platform-Version, "
+                         "Sec-CH-UA-Arch, Sec-CH-UA-Bitness, Sec-CH-UA-Model, "
+                         "Sec-CH-UA-Mobile, Sec-CH-UA-Full-Version-List")
+            h.setdefault("Critical-CH", "Sec-CH-UA-Platform-Version, Sec-CH-UA-Arch, "
+                         "Sec-CH-UA-Full-Version-List")
             # Enforcing CSP. Scripts keep 'unsafe-inline' because the panel uses
             # inline on* handlers, but everything else is locked down: no plugins,
             # no framing, no base-tag hijack, forms/XHR only to our own origin,
