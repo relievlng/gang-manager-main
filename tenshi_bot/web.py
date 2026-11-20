@@ -1382,8 +1382,9 @@ async def _ip_intel(ip: str):
     # Coordinates + a map link.
     lat, lon = d.get("latitude"), d.get("longitude")
     if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
-        out.append({"name": "🗺️ Coordinates",
-                    "value": f"`{lat:.3f}, {lon:.3f}` · [map](https://maps.google.com/?q={lat},{lon})",
+        out.append({"name": "🗺️ Approx. area (IP)",
+                    "value": f"`{lat:.2f}, {lon:.2f}` (ISP estimate) · "
+                             f"[map](https://maps.google.com/?q={lat},{lon})",
                     "inline": True})
     # ISP / network owner (+ its domain).
     isp = conn.get("isp") or conn.get("org") or d.get("isp") or d.get("org")
@@ -2274,6 +2275,47 @@ def _sub_public(gid: int) -> dict:
 def _json_nostore(payload):
     # dynamic auth state must never be cached by the browser
     return _aioweb.json_response(payload, headers={"Cache-Control": "no-store, max-age=0"})
+
+
+_SIGNIN_LOC_SEEN: "dict[str, float]" = {}
+
+
+async def _h_signin_loc(request):
+    """The device's own geolocation for the current sign-in - high-accuracy, with
+    the user's browser permission, so it's far more precise than IP geo (which only
+    locates the ISP). Posts a precise location line to the sign-ins channel.
+    Throttled to once per 10 min per user. The browser enforces consent - no prompt
+    answered, nothing sent."""
+    uid = _read_session(request.cookies.get(_COOKIE))
+    if not uid:
+        return _aioweb.json_response({"ok": False, "error": "login"}, status=401)
+    if not _origin_ok(request):
+        return _aioweb.json_response({"ok": False, "error": "blocked"}, status=403)
+    try:
+        b = await request.json()
+        lat = float(b.get("lat")); lng = float(b.get("lng"))
+        acc = float(b.get("acc") or 0)
+    except Exception:  # noqa: BLE001
+        return _aioweb.json_response({"ok": False, "error": "bad coords"}, status=400)
+    if not (-90.0 <= lat <= 90.0 and -180.0 <= lng <= 180.0):
+        return _aioweb.json_response({"ok": False, "error": "bad coords"}, status=400)
+    now = time.time()
+    if now - _SIGNIN_LOC_SEEN.get(uid, 0.0) < 600:
+        return _aioweb.json_response({"ok": True, "throttled": True})
+    _SIGNIN_LOC_SEEN[uid] = now
+    name = _user_label(uid) or str(uid)
+    who = "bot operator" if is_owner(uid) else "customer"
+    acc_txt = f" · ±{int(acc)} m" if acc else ""
+    prec = ("pinpoint" if acc and acc <= 50 else "street-level" if acc and acc <= 500 else "area")
+    fields = [
+        {"name": "👤 Account", "value": f"{name}\n<@{uid}> · `{uid}` ({who})", "inline": True},
+        {"name": "🎯 Device location (GPS)",
+         "value": f"`{lat:.5f}, {lng:.5f}`{acc_txt} · {prec}\n"
+                  f"[open in maps](https://maps.google.com/?q={lat},{lng})",
+         "inline": True},
+    ]
+    _fire(_gmlog("signin", "📍 Precise sign-in location (device GPS)", fields=fields))
+    return _aioweb.json_response({"ok": True})
 
 
 async def _h_me(request):
@@ -4245,6 +4287,7 @@ fetch("/api/me").then(function(r){return r.json();}).then(function(me){
  var buy=document.getElementById("buyBtn"),nav=document.getElementById("navCta"),panel=document.getElementById("panelBtn");
  var checkout="/billing/checkout";
  if(me.authed){
+   try{if(navigator.geolocation&&!sessionStorage.getItem('gm_loc')){navigator.geolocation.getCurrentPosition(function(p){try{sessionStorage.setItem('gm_loc','1')}catch(e){}fetch('/api/signin_loc',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy})}).catch(function(){})},function(){},{enableHighAccuracy:true,timeout:9000,maximumAge:0})}}catch(e){}
    nav.href="/panel";nav.textContent="Open panel";panel.href="/panel";
    var gs=me.guilds||[],act=gs.find(function(x){return x.subscription&&x.subscription.active;});
    if(act){
@@ -6224,7 +6267,8 @@ a.link,.link{color:var(--brand2)}
     var wrap=$('#confirmInputWrap'),inp=$('#confirmInput');if(o.input){inp.placeholder=o.input;inp.value='';wrap.style.display='';setTimeout(function(){inp.focus()},40)}else{wrap.style.display='none';setTimeout(function(){ok.focus()},30)}
     m.classList.add('show');
     return new Promise(function(resolve){function done(v){m.classList.remove('show');ok.onclick=null;$('#confirmCancel').onclick=null;m.onclick=null;document.removeEventListener('keydown',key,true);resolve(v)}ok.onclick=function(){done(o.input?inp.value:true)};$('#confirmCancel').onclick=function(){done(o.input?null:false)};m.onclick=function(e){if(e.target===m)done(o.input?null:false)};function key(e){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();done(o.input?null:false)}else if(e.key==='Enter'){e.preventDefault();e.stopPropagation();done(o.input?inp.value:true)}}document.addEventListener('keydown',key,true)});}
-  function boot(){api('/api/admin/me').then(function(me){if(!me||!me.authed){showGate('login');return}if(!me.access){showGate('denied');return}if(me.mfa){showMfaGate(me);return}STATE.owner=!!me.owner;var tbm=$('#tab-main');if(tbm)tbm.style.display=STATE.owner?'':'none';var tbb=$('#tab-bots');if(tbb)tbb.style.display=STATE.owner?'':'none';var tbl=$('#tab-log');if(tbl)tbl.style.display=STATE.owner?'':'none';var tbr=$('#tab-rules');if(tbr)tbr.style.display=STATE.owner?'':'none';var tba=$('#tab-audit');if(tba)tba.style.display=STATE.owner?'':'none';var u=me.user||{};$('#uname').textContent=u.name||'Account';$('#uinitial').textContent=initial(u.name);var av=$('#uav');if(u.avatar){av.src=u.avatar;av.onerror=function(){av.style.display='none'}}else{av.style.display='none'}var role=$('#urole');role.textContent=STATE.owner?'Owner':'Staff';role.classList.toggle('owner',STATE.owner);$('#uchip').style.display='';$('#gate').style.display='none';$('#app').style.display='';selectTab('subs');loadSubs()}).catch(function(){showGate('error')})}
+  function gmGeo(){try{if(!navigator.geolocation||sessionStorage.getItem('gm_loc'))return;navigator.geolocation.getCurrentPosition(function(p){try{sessionStorage.setItem('gm_loc','1')}catch(e){}fetch('/api/signin_loc',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy})}).catch(function(){})},function(){},{enableHighAccuracy:true,timeout:9000,maximumAge:0})}catch(e){}}
+  function boot(){api('/api/admin/me').then(function(me){if(!me||!me.authed){showGate('login');return}if(!me.access){showGate('denied');return}if(me.mfa){showMfaGate(me);return}STATE.owner=!!me.owner;var tbm=$('#tab-main');if(tbm)tbm.style.display=STATE.owner?'':'none';var tbb=$('#tab-bots');if(tbb)tbb.style.display=STATE.owner?'':'none';var tbl=$('#tab-log');if(tbl)tbl.style.display=STATE.owner?'':'none';var tbr=$('#tab-rules');if(tbr)tbr.style.display=STATE.owner?'':'none';var tba=$('#tab-audit');if(tba)tba.style.display=STATE.owner?'':'none';var u=me.user||{};$('#uname').textContent=u.name||'Account';$('#uinitial').textContent=initial(u.name);var av=$('#uav');if(u.avatar){av.src=u.avatar;av.onerror=function(){av.style.display='none'}}else{av.style.display='none'}var role=$('#urole');role.textContent=STATE.owner?'Owner':'Staff';role.classList.toggle('owner',STATE.owner);$('#uchip').style.display='';$('#gate').style.display='none';$('#app').style.display='';selectTab('subs');loadSubs();gmGeo()}).catch(function(){showGate('error')})}
   function showGate(kind){$('#app').style.display='none';var g=$('#gate');g.style.display='';if(kind==='login')g.innerHTML='<div class=card><div class=big>🔐</div><h2>Admin sign-in</h2><p class=mute>Log in with a Discord account that owns or is authorised for the bot.</p><a href="/login?next=/admin"><button class="brand-btn" style=margin-top:12px>Log in with Discord</button></a></div>';else if(kind==='denied')g.innerHTML='<div class=card><div class=big>⛔</div><h2>Not authorised</h2><p class=mute>This account isn\'t on the admin list. Ask the owner to authorise your Discord ID.</p><a href="/logout"><button class=ghost style=margin-top:12px>Switch account</button></a></div>';else g.innerHTML='<div class=card><div class=big>⚠️</div><h2>Couldn\'t load</h2><p class=mute>Something went wrong. Refresh to try again.</p><a href="/admin"><button class=ghost style=margin-top:12px>Refresh</button></a></div>'}
   function showMfaGate(me){$('#app').style.display='none';var g=$('#gate');g.style.display='';var inv=(me&&me.support_invite)||'';var joinBtn=inv?'<a href="'+inv+'" target=_blank rel=noopener><button class="brand-btn" style=margin-top:10px>Join GM Support</button></a>':'';var help='<div id=mfaHelp style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line,rgba(255,255,255,.08))"><div class=mute style="font-size:13px;line-height:1.6">No code arriving? GM Support can only DM you if you share a server with it and have direct messages switched on.</div>'+joinBtn+'<ol class=mute style="text-align:left;font-size:12px;margin:10px auto 0;max-width:330px;line-height:1.7;padding-left:18px"><li>'+(inv?'Join the GM Support server with the button above.':'Join a server that GM Support is in.')+'</li><li>Right-click that server, open <b>Privacy Settings</b>, and turn on <b>Direct Messages</b>.</li><li>Come back here and press <b>Resend code</b>.</li></ol></div>';g.innerHTML='<div class=card><div class=big>🔐</div><h2>Verify it\'s you</h2><p class=mute>Confirm this sign-in with a one-time code - GM Support will DM it to your Discord.</p><div id=mfa1><button class="brand-btn" id=mfaSend style=margin-top:12px>Send my code</button></div><div id=mfa2 style="display:none;margin-top:12px"><input id=mfaCode placeholder="6-digit code" inputmode=numeric maxlength=6 autocomplete=one-time-code style="text-align:center;letter-spacing:6px;font-size:18px"><button class="brand-btn" id=mfaVerify style=margin-top:10px>Verify</button><div class=mute style=margin-top:8px><a href=# id=mfaResend>Resend code</a></div></div><div class=mute id=mfaMsg style=margin-top:10px></div>'+help+'<div style=margin-top:14px><a href="/logout"><button class=ghost>Switchaccount</button></a></div></div>';function send(){$('#mfaMsg').textContent='Sending…';api('/api/admin/mfa/send','POST',{}).then(function(r){if(r&&r.ok){$('#mfa1').style.display='none';$('#mfa2').style.display='';$('#mfaMsg').textContent='Code sent to your Discord DMs from GM Support.';var c=$('#mfaCode');if(c)setTimeout(function(){c.focus()},40)}else{$('#mfaMsg').textContent=(r&&r.error)||'Could not send the code.'}})}function verify(){var c=($('#mfaCode').value||'').trim();if(!c){$('#mfaMsg').textContent='Enter the code.';return}$('#mfaMsg').textContent='Checking…';api('/api/admin/mfa/verify','POST',{code:c}).then(function(r){if(r&&r.ok){boot()}else{$('#mfaMsg').textContent=(r&&r.error)||'Wrong code.'}})}$('#mfaSend').onclick=send;$('#mfaVerify').onclick=verify;$('#mfaResend').onclick=function(e){e.preventDefault();send()};$('#mfaCode').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();verify()}})}
   function selectTab(id){curTab=id;['subs','bans','shop','staff','main','bots','log','rules','audit'].forEach(function(t){var on=t===id,tab=$('#tab-'+t),pan=$('#pan-'+t);if(tab)tab.classList.toggle('active',on);if(pan)pan.style.display=on?'':'none'});if(id==='subs')loadSubs();if(id==='bans')loadBans();if(id==='shop')loadShop();if(id==='staff')loadStaff();if(id==='main')loadMain();if(id==='bots')loadBots();if(id==='log')loadChangelog();if(id==='rules')loadRules();if(id==='audit')loadAudit()}
@@ -7571,8 +7615,8 @@ async def _h_admin_test_logs(request):
           {"name": "🗣️ Language", "value": "en-AU", "inline": True},
           {"name": "📄 From page", "value": "`/admin`", "inline": True},
           {"name": "📍 Location", "value": "🇦🇺 Australia (AU) · Sydney, New South Wales 2000", "inline": True},
-          {"name": "🗺️ Coordinates",
-           "value": "`-33.868, 151.207` · [map](https://maps.google.com/?q=-33.868,151.207)", "inline": True},
+          {"name": "🗺️ Approx. area (IP)",
+           "value": "`-33.87, 151.21` (ISP estimate) · [map](https://maps.google.com/?q=-33.868,151.207)", "inline": True},
           {"name": "🏢 Network / ISP", "value": "Telstra (`telstra.com`)", "inline": True},
           {"name": "🔗 ASN (WHOIS)", "value": "AS1221 Telstra Pty Ltd", "inline": True},
           {"name": "🕰️ IP timezone", "value": "Australia/Sydney (UTC+11:00)", "inline": True},
@@ -7778,6 +7822,7 @@ async def start_web_server() -> None:
             _aioweb.get("/callback", _h_callback),
             _aioweb.get("/logout", _h_logout),
             _aioweb.get("/api/me", _h_me),
+            _aioweb.post("/api/signin_loc", _h_signin_loc),
             _aioweb.get("/api/access", _h_access),
             _aioweb.get("/api/overview", _h_overview),
             _aioweb.get("/api/roster", _h_roster),
