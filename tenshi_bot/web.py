@@ -1367,20 +1367,49 @@ async def _ip_intel(ip: str):
         return []
     conn = d.get("connection") or {}
     tz = d.get("timezone") or {}
+    flag = (d.get("flag") or {}).get("emoji", "") if isinstance(d.get("flag"), dict) else ""
     out = []
-    loc = " · ".join(str(x) for x in (d.get("city"), d.get("region"), d.get("country")) if x)
+    # Location: flag + country (code), then city / region / postal.
+    country = d.get("country") or ""
+    cc = d.get("country_code") or ""
+    head = " ".join(x for x in (flag, country, (f"({cc})" if cc else "")) if x).strip()
+    where = ", ".join(str(x) for x in (d.get("city"), d.get("region")) if x)
+    if d.get("postal"):
+        where = (where + " " + str(d.get("postal"))).strip(", ")
+    loc = " · ".join(x for x in (head, where) if x)
     if loc:
         out.append({"name": "📍 Location", "value": loc[:256], "inline": True})
+    # Coordinates + a map link.
+    lat, lon = d.get("latitude"), d.get("longitude")
+    if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+        out.append({"name": "🗺️ Coordinates",
+                    "value": f"`{lat:.3f}, {lon:.3f}` · [map](https://maps.google.com/?q={lat},{lon})",
+                    "inline": True})
+    # ISP / network owner (+ its domain).
     isp = conn.get("isp") or conn.get("org") or d.get("isp") or d.get("org")
+    dom = conn.get("domain")
     if isp:
-        out.append({"name": "🏢 Network / ISP", "value": str(isp)[:256], "inline": True})
+        out.append({"name": "🏢 Network / ISP",
+                    "value": (f"{isp}" + (f" (`{dom}`)" if dom else ""))[:256], "inline": True})
+    # ASN - the WHOIS owner of the IP block.
     asn = conn.get("asn") or d.get("asn")
     org = conn.get("org") or ""
     if asn or org:
         out.append({"name": "🔗 ASN (WHOIS)", "value": (f"AS{asn} {org}").strip()[:256], "inline": True})
+    # Timezone + current local time offset.
     tzid = tz.get("id") if isinstance(tz, dict) else tz
+    tzutc = tz.get("utc") if isinstance(tz, dict) else ""
     if tzid:
-        out.append({"name": "🕰️ IP timezone", "value": str(tzid)[:64], "inline": True})
+        out.append({"name": "🕰️ IP timezone",
+                    "value": (f"{tzid}" + (f" (UTC{tzutc})" if tzutc else ""))[:64], "inline": True})
+    # Extra IP facts: type, dialling code, EU.
+    misc = " · ".join(x for x in (
+        str(d.get("type") or ""),
+        (f"+{d.get('calling_code')}" if d.get("calling_code") else ""),
+        ("EU" if d.get("is_eu") else ""),
+    ) if x)
+    if misc:
+        out.append({"name": "🧩 IP details", "value": misc[:64], "inline": True})
     return out
 
 
@@ -7523,10 +7552,13 @@ async def _h_admin_test_logs(request):
           {"name": "🌍 Country", "value": "AU", "inline": True},
           {"name": "🗣️ Language", "value": "en-AU", "inline": True},
           {"name": "📄 From page", "value": "`/admin`", "inline": True},
-          {"name": "📍 Location", "value": "Sydney · New South Wales · Australia", "inline": True},
-          {"name": "🏢 Network / ISP", "value": "Telstra", "inline": True},
+          {"name": "📍 Location", "value": "🇦🇺 Australia (AU) · Sydney, New South Wales 2000", "inline": True},
+          {"name": "🗺️ Coordinates",
+           "value": "`-33.868, 151.207` · [map](https://maps.google.com/?q=-33.868,151.207)", "inline": True},
+          {"name": "🏢 Network / ISP", "value": "Telstra (`telstra.com`)", "inline": True},
           {"name": "🔗 ASN (WHOIS)", "value": "AS1221 Telstra Pty Ltd", "inline": True},
-          {"name": "🕰️ IP timezone", "value": "Australia/Sydney", "inline": True},
+          {"name": "🕰️ IP timezone", "value": "Australia/Sydney (UTC+11:00)", "inline": True},
+          {"name": "🧩 IP details", "value": "IPv4 · +61", "inline": True},
           {"name": "🔎 Full user-agent",
            "value": "`Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0`", "inline": False}]),
         ("security", "🧪 Test - failed sign-in",
