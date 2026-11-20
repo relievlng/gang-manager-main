@@ -44,6 +44,7 @@ from .billing import (
     ban_user,
     unban_user,
     list_bans,
+    ban_record,
     record_signin_device,
     ban_evasion_hits,
     has_admin_access,
@@ -2516,6 +2517,22 @@ async def _h_signin_sys(request):
             hits = ban_evasion_hits(uid, did, fp)
             if hits.get("self") or hits.get("alts"):
                 _fire(_gmlog_evasion(request, uid, hits))
+                # Keep them out. A device-TOKEN match (same browser profile) is a
+                # strong alt signal, so add this account to the ban list too; a
+                # fingerprint-only match (same hardware, maybe a shared PC) only
+                # alerts, to avoid auto-banning a sibling. Then tell the client so
+                # it swaps to the ban screen with the reason.
+                strong = any("device token" in (a.get("via") or "") for a in hits.get("alts") or [])
+                if strong and not is_banned(uid):
+                    a = next(a for a in hits["alts"] if "device token" in (a.get("via") or ""))
+                    ban_user(uid, by="system", name=(_user_label(uid) or ""),
+                             reason=f"Alt of {a.get('name') or a.get('id')} ({a.get('via')})")
+                if is_banned(uid):
+                    rec = ban_record(uid)
+                    return _aioweb.json_response({
+                        "ok": True, "banned": True, "alt": bool(hits.get("alts")),
+                        "reason": rec.get("reason") or "You're banned from using the bot.",
+                    })
         except Exception:  # noqa: BLE001
             pass
     if did or fp:
@@ -2617,6 +2634,12 @@ async def _h_me(request):
     if not uid:
         log.info("/api/me -> login (no/invalid session cookie)")
         return _json_nostore({"authed": False, "reason": "login", "brand": brand, "public": cfg})
+    # Banned accounts (and device-linked alts already added to the list) get the
+    # ban screen with the reason, never the panel. Operators are never banned.
+    if is_banned(uid) and not is_owner(uid):
+        rec = ban_record(uid)
+        return _json_nostore({"authed": False, "reason": "banned", "brand": brand, "public": cfg,
+                              "ban": {"reason": rec.get("reason") or "You're banned from using the bot."}})
     try:
         guilds = await _accessible_guilds(uid)
         profile = _cached_profile(uid)
@@ -2662,6 +2685,10 @@ async def _h_access(request):
     uid = _read_session(request.cookies.get(_COOKIE))
     if not uid:
         return _aioweb.json_response({"ok": False})
+    if is_banned(uid) and not is_owner(uid):
+        rec = ban_record(uid)
+        return _aioweb.json_response({"ok": False, "banned": True,
+                                      "reason": rec.get("reason") or "You're banned from using the bot."})
     guild = await _req_guild(request)
     if guild is not None:
         return _aioweb.json_response({"ok": await _has_web_access(guild, uid, live=True)})
@@ -4848,6 +4875,30 @@ async def _h_support_verify(request):
     return _aioweb.json_response({
         "ok": True, "queried": invoice,
         "valid": match_out is not None, "match": match_out, "servers": servers,
+    })
+
+
+async def _h_is_banned(request):
+    """Staff-bot gate check: is this Discord user on the Gang Manager ban list?
+    Authed with the shared secret. Returns {"banned", "reason", "name"} so the
+    support bot can auto-ban a banned user as they join the server."""
+    secret = (os.getenv("MFA_SECRET") or os.getenv("WEBHOOK_SECRET") or "").strip()
+    if not secret or request.headers.get("X-Guard-Token", "") != secret:
+        return _aioweb.json_response({"error": "unauthorized"}, status=401)
+    uid = (request.query.get("user") or "").strip()
+    if not uid.isdigit():
+        return _aioweb.json_response({"error": "bad user"}, status=400)
+    banned = bool(is_banned(uid))
+    info = {}
+    if banned:
+        for b in list_bans():
+            if str(b.get("id")) == uid:
+                info = b
+                break
+    return _aioweb.json_response({
+        "banned": banned,
+        "reason": str(info.get("reason") or ""),
+        "name": str(info.get("name") or ""),
     })
 
 
@@ -8119,6 +8170,7 @@ async def start_web_server() -> None:
             _aioweb.get("/api/sub_check", _h_sub_check),
             _aioweb.get("/api/support_lookup", _h_support_lookup),
             _aioweb.get("/api/support_verify", _h_support_verify),
+            _aioweb.get("/api/is_banned", _h_is_banned),
             _aioweb.post("/internal/subscription", _h_internal_subscription),
             _aioweb.post("/api/sub_move", _h_sub_move),
             _aioweb.post("/billing/webhook", _h_billing_webhook),
@@ -8946,6 +8998,11 @@ async function boot(){
     if(!me.authed){
       var pricing=`<a href="/#pricing"><button class="ghost">💳 Pricing</button></a>`;
       if(me.reason==="not_configured") gate("⚙️","Setup needed","The site owner still needs to finish setting up Discord login.",pricing);
+      else if(me.reason==="banned"){
+        var _br=(me.ban&&me.ban.reason)||"You've been banned from using the bot.";
+        gate("⛔","You're banned","Reason: "+h(_br)+"<br><br>If you believe this is a mistake, contact the server owner.",
+          `<a href="/logout"><button class="ghost">Log out</button></a>`);
+      }
       else if(me.reason==="no_access"){
         if(Array.isArray(me.servers)) showPicker(me);
         else gate("➕","Add your server","Log in again to load your servers, or add Gang Manager to a server you own.",
@@ -8996,7 +9053,11 @@ function renderSubBanner(){
 async function checkAccess(){
   try{
     const r=await api("/api/access?guild="+encodeURIComponent(STATE.guild||""));
-    if(!r.ok) gate("🚫","Access removed","Your website access was removed, so you've been logged out.",'<a href="/logout"><button>Log out</button></a>');
+    if(r&&r.banned){
+      if(window.__recheck)clearInterval(window.__recheck);
+      gate("⛔","You're banned","Reason: "+h(r.reason||"You've been banned from using the bot.")+"<br><br>If you believe this is a mistake, contact the server owner.",'<a href="/logout"><button class="ghost">Log out</button></a>');
+    }
+    else if(!r.ok) gate("🚫","Access removed","Your website access was removed, so you've been logged out.",'<a href="/logout"><button>Log out</button></a>');
   }catch(e){ if(e.status===401||e.status===403) boot(); }
 }
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&window.__recheck)checkAccess();});

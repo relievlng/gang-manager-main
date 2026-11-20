@@ -166,6 +166,15 @@ def is_banned(user_id) -> bool:
         return False
 
 
+def ban_record(user_id) -> dict:
+    """The ban entry for a user ({by, name, reason, ts}), or {} if not banned."""
+    try:
+        rec = _ban_store().get(str(int(user_id)))
+        return dict(rec) if isinstance(rec, dict) else ({} if rec is None else {"reason": ""})
+    except (TypeError, ValueError):
+        return {}
+
+
 def ban_user(user_id, *, by=None, name: str = "", reason: str = "") -> bool:
     try:
         uid = str(int(user_id))
