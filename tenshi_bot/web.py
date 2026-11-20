@@ -5762,6 +5762,11 @@ a.link,.link{color:var(--brand2)}
       <button class=ghost id=mainLogSetup style="margin-top:12px">✨ Create the admin log channels</button>
       <p class=hint id=mainLogSetupMsg style="margin:8px 0 0"></p>
       <p class=hint style="margin:6px 0 0;opacity:.7">Builds a <b>📋 Gang Manager Logs</b> category on the staff bot with a channel per admin event, and skips any already set. The staff bot needs Manage Channels in its server (your support server).</p>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08)">
+        <button class=ghost id=mainTestLogs>🧪 Send test logs</button>
+        <p class=hint id=mainTestLogsMsg style="margin:8px 0 0"></p>
+        <p class=hint style="margin:6px 0 0;opacity:.7">Fires one sample of every admin event into its channel - same depth as the real logs, just test info. Create the channels first.</p>
+      </div>
     </div>
   </div>
   <div id=pan-bots style=display:none>
@@ -6329,6 +6334,7 @@ a.link,.link{color:var(--brand2)}
   function saveHub(){var v=(($('#poolHub').value)||'').replace(/[^0-9]/g,'');api('/api/admin/pool/action','POST',{action:'hub',guild:v}).then(function(r){if(r.ok){if(POOL){POOL.admin_guild=r.admin_guild;POOL.main_hub_invite=r.main_hub_invite}$('#poolHubMsg').textContent=r.admin_guild?'Hub saved. Add the bots with the button, or the 🏠 link on each bot.':'Hub server cleared.';loadBots()}else toast(r.error||'Failed',true)})}
   function renderMain(){var d=POOL;if(!d)return;var hb=$('#mainHub');if(hb&&document.activeElement!==hb)hb.value=d.admin_guild||'';var sw=$('#hubCmdSwitch');if(sw){sw.classList.toggle('on',!d.hub_commands_off);var tx=$('#hubCmdSwitchTxt');if(tx)tx.textContent=d.hub_commands_off?'Sub-bot commands off':'Sub-bot commands on'}}
   function setupMainLogs(){var b=$('#mainLogSetup');if(b)b.disabled=true;$('#mainLogSetupMsg').textContent='Creating the admin log channels on the staff bot...';api('/api/admin/pool/action','POST',{action:'hub_logs_setup'}).then(function(r){if(b)b.disabled=false;if(r.ok){$('#mainLogSetupMsg').textContent='Created '+r.created+' admin log channel'+(r.created===1?'':'s')+(r.kept?(', '+r.kept+' already there'):'')+(r.server?(' in '+r.server):'')+'.';toast('Admin log channels ready ('+r.created+' new)')}else{$('#mainLogSetupMsg').textContent='';toast(r.error||'Failed',true)}})}
+  function sendAdminTestLogs(){var b=$('#mainTestLogs');if(b)b.disabled=true;$('#mainTestLogsMsg').textContent='Sending...';api('/api/admin/test_logs','POST',{}).then(function(r){if(b)b.disabled=false;if(r&&r.ok){$('#mainTestLogsMsg').textContent='Sent '+(r.sent||0)+' test log(s) - check your admin log channels.';toast('Test logs sent')}else{$('#mainTestLogsMsg').textContent='';toast((r&&r.error)||'Failed',true)}})}
   function loadMain(){api('/api/admin/pool').then(function(d){if(!d||!d.ok){toast((d&&d.error)||'Could not load.',true);return}POOL=d;renderMain()})}
   function saveMainHub(){var v=(($('#mainHub').value)||'').replace(/[^0-9]/g,'');api('/api/admin/pool/action','POST',{action:'hub',guild:v}).then(function(r){if(r.ok){if(POOL){POOL.admin_guild=r.admin_guild;POOL.main_hub_invite=r.main_hub_invite}$('#mainHubMsg').textContent=r.admin_guild?'Saved. Pool bots may sit in this server.':'Hub server cleared.'}else toast(r.error||'Failed',true)})}
   function toggleHubCmds(){var cur=POOL?!!POOL.hub_commands_off:false;var next=!cur;api('/api/admin/pool/action','POST',{action:'hub_cmds',off:next}).then(function(r){if(r.ok){if(POOL)POOL.hub_commands_off=r.hub_commands_off;renderMain();toast(r.hub_commands_off?'Sub-bot commands off in the hub':'Sub-bot commands on in the hub')}else toast(r.error||'Failed',true)})}
@@ -6369,7 +6375,7 @@ a.link,.link{color:var(--brand2)}
     var chName=d.channel_id?('#'+(((RL_CHANS.filter(function(c){return c.id===d.channel_id})[0])||{}).name||'channel')):'the default channel';
     confirmBox({icon:'🛡️',title:'Post these rules?',message:'They will be posted now to '+chName+' in the server\'s embed style.',confirmText:'Post now'}).then(function(go){if(!go)return;var btn=$('#rlPostBtn');btn.disabled=true;btn.textContent='Posting…';
       api('/api/admin/rules','POST',{action:'post',draft:d}).then(function(r){btn.disabled=false;btn.textContent='📣 Post now';toast(r&&r.ok?('Posted to '+(r.channel||'the channel')):((r&&r.error)||'Post failed'),!(r&&r.ok))})})}
-  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-main')selectTab('main');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-log')selectTab('log');if(t.id==='tab-rules')selectTab('rules');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='brandApply')applyBrand();var _fb=t.closest&&t.closest('[data-fleet]');if(_fb){fleetPower(_fb.getAttribute('data-fleet'),_fb.getAttribute('data-act'))}if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='mainHubSave')saveMainHub();if(t.id==='mainLogSetup')setupMainLogs();if(t.id==='hubCmdSwitch'||(t.closest&&t.closest('#hubCmdSwitch')))toggleHubCmds();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();var _sk=t.closest&&t.closest('[data-sk]');if(_sk){SHOPKIND=_sk.getAttribute('data-sk');renderShop()}if(t.id==='tbSend')sendTestBuy();if(t.id==='tlSend')sendTestLogs();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
+  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-main')selectTab('main');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-log')selectTab('log');if(t.id==='tab-rules')selectTab('rules');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='brandApply')applyBrand();var _fb=t.closest&&t.closest('[data-fleet]');if(_fb){fleetPower(_fb.getAttribute('data-fleet'),_fb.getAttribute('data-act'))}if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='mainHubSave')saveMainHub();if(t.id==='mainLogSetup')setupMainLogs();if(t.id==='mainTestLogs')sendAdminTestLogs();if(t.id==='hubCmdSwitch'||(t.closest&&t.closest('#hubCmdSwitch')))toggleHubCmds();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();var _sk=t.closest&&t.closest('[data-sk]');if(_sk){SHOPKIND=_sk.getAttribute('data-sk');renderShop()}if(t.id==='tbSend')sendTestBuy();if(t.id==='tlSend')sendTestLogs();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
   document.addEventListener('input',function(e){var t=e.target;if(t.id==='subSearch'){SUBQ=t.value;renderSubs()}if(t.id==='shopSearch'){SHOPQ=t.value;renderShop()}if(t.id==='banSearch'){BANQ=t.value;renderBans()}if(t.id==='poolSearch'){POOLQ=t.value;renderPool()}if(t.id==='brandBio'){brandCount()}if(t.id==='auditSearch'){AUDITQ=t.value;renderAudit()}if(t.id==='cmdkInput'){cmdkBuild(t.value)}});
   document.addEventListener('change',function(e){if(e.target.id==='subSort'){SUBSORT=e.target.value;renderSubs()}});
   document.addEventListener('keydown',function(e){
@@ -7381,40 +7387,58 @@ async def _h_admin_test_logs(request):
         return err
     if not _origin_ok(request):
         return _admin_json({"ok": False, "error": "Cross-site request blocked."}, 403)
+    me = f"<@{uid}>\n`{uid}`"
+    tsrv = "Test Server\n`123456789012345678`"
+    ip = {"name": "🌐 IP", "value": "`198.51.100.24`", "inline": True}
+    dev = {"name": "🖥️ Device", "value": "Chrome · Windows", "inline": True}
     samples = [
         ("purchase", "🧪 Test - new purchase",
-         "A customer bought a plan. Test info, nothing was charged.",
-         [{"name": "Plan", "value": "Gang Manager Monthly", "inline": True},
-          {"name": "Amount", "value": "$9.99", "inline": True},
-          {"name": "Server", "value": "Test Server", "inline": True}]),
+         "A customer bought a plan. Test info - nothing was charged.",
+         [{"name": "🏠 Server", "value": tsrv, "inline": True},
+          {"name": "👤 Buyer", "value": me, "inline": True},
+          {"name": "💵 Amount", "value": "**$9.99 USD**", "inline": True},
+          {"name": "📦 Plan", "value": "Gang Manager Monthly", "inline": True},
+          {"name": "📧 Email", "value": "buyer@example.com", "inline": True},
+          {"name": "🌍 Country", "value": "US", "inline": True}, ip]),
         ("subscription", "🧪 Test - subscription granted",
-         "An admin granted a subscription to a server.",
-         [{"name": "Server", "value": "Test Server", "inline": True},
-          {"name": "Length", "value": "30 days", "inline": True}]),
+         "An admin granted a subscription to a server via the staff bot.",
+         [{"name": "🏠 Server", "value": tsrv, "inline": True},
+          {"name": "⚙️ Action", "value": "`grant`", "inline": True},
+          {"name": "📦 Change", "value": "+30 day(s) (monthly)", "inline": True},
+          {"name": "👤 By", "value": f"<@{uid}>", "inline": True},
+          {"name": "📊 Status now", "value": "✅ Active · 30d left", "inline": True},
+          {"name": "🏷️ Plan", "value": "monthly", "inline": True}]),
         ("signin", "🧪 Test - admin sign-in",
          "Someone signed in to the admin panel.",
-         [{"name": "User", "value": f"<@{uid}>", "inline": True},
-          {"name": "IP", "value": "`198.51.100.24`", "inline": True}]),
+         [{"name": "👤 Who", "value": me, "inline": True}, ip, dev]),
         ("security", "🧪 Test - failed sign-in",
          "A sign-in code was entered wrong a few times.",
-         [{"name": "Attempts", "value": "3", "inline": True},
-          {"name": "Result", "value": "Locked out 10m", "inline": True}]),
+         [{"name": "👤 Who", "value": me, "inline": True},
+          {"name": "⚙️ Action", "value": "`signin_failed`", "inline": True},
+          {"name": "📝 Detail", "value": "3 wrong codes - locked out 10m", "inline": False}, ip, dev]),
         ("moderation", "🧪 Test - user blocked",
-         "A user was blocked from the bot.",
-         [{"name": "User", "value": "`123456789012345678`", "inline": True},
-          {"name": "Reason", "value": "Chargeback", "inline": True}]),
+         "A user was banned from the bot.",
+         [{"name": "👤 Who", "value": me, "inline": True},
+          {"name": "⚙️ Action", "value": "`ban_add`", "inline": True},
+          {"name": "🎯 Target", "value": "`123456789012345678`", "inline": True},
+          {"name": "📝 Detail", "value": "Chargeback", "inline": False}, ip, dev]),
         ("staff", "🧪 Test - staff access changed",
          "Admin staff access was updated.",
-         [{"name": "User", "value": f"<@{uid}>", "inline": True},
-          {"name": "Change", "value": "Added as staff", "inline": True}]),
+         [{"name": "👤 Who", "value": me, "inline": True},
+          {"name": "⚙️ Action", "value": "`staff_add`", "inline": True},
+          {"name": "🎯 Target", "value": f"`{uid}`", "inline": True},
+          {"name": "📝 Detail", "value": "Added as staff", "inline": False}, ip, dev]),
         ("pool", "🧪 Test - pool action",
          "A pool bot was handed out to a server.",
-         [{"name": "Bot", "value": "Bot 3", "inline": True},
-          {"name": "Server", "value": "Test Server", "inline": True}]),
-        ("server", "🧪 Test - server added",
+         [{"name": "👤 Who", "value": me, "inline": True},
+          {"name": "⚙️ Action", "value": "`pool_assign`", "inline": True},
+          {"name": "🤖 Bot", "value": "Bot 3", "inline": True},
+          {"name": "🏠 Server", "value": tsrv, "inline": True}]),
+        ("server", "🧪 Test - bot added to a server",
          "The bot was added to a server.",
-         [{"name": "Server", "value": "Test Server", "inline": True},
-          {"name": "Members", "value": "128", "inline": True}]),
+         [{"name": "🏠 Server", "value": tsrv, "inline": True},
+          {"name": "👥 Members", "value": "128", "inline": True},
+          {"name": "👑 Owner", "value": f"<@{uid}>", "inline": True}]),
     ]
     for kind, title, desc, fields in samples:
         _fire(_gmlog(kind, title, description=desc, fields=fields))
