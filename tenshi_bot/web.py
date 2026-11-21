@@ -47,6 +47,10 @@ from .billing import (
     ban_record,
     record_signin_device,
     ban_evasion_hits,
+    log_whitelisted,
+    log_whitelist_add,
+    log_whitelist_remove,
+    log_whitelist_list,
     has_admin_access,
     is_admin_staff,
     add_admin_staff,
@@ -1232,7 +1236,10 @@ def _audit(request, actor, action: str, target: str = "", detail: str = "") -> N
         })
     except Exception as exc:  # noqa: BLE001
         log.warning("audit write failed (%s): %s", action, exc)
-    # Mirror it into its own Discord log channel via the GM Support staff bot.
+    # Mirror it into its own Discord log channel via the GM Support staff bot -
+    # unless this person is on the log whitelist (the durable record above stays).
+    if log_whitelisted(actor):
+        return
     try:
         kind, title = _audit_kind(action)
         # Sign-ins and security events post server-side with the full profile + WHOIS,
@@ -1470,6 +1477,8 @@ def _log_signin(request, actor, *, title="🔑 Sign-in", detail=""):
     plus WHOIS - built from the request alone, so it ALWAYS fires on a login even if
     the browser never runs the device / GPS collectors. Fire-and-forget; the device
     and GPS cards post separately from the client when it can."""
+    if log_whitelisted(actor):
+        return
     try:
         fields = _actor_fields(request, actor, full=True)
         if detail:
@@ -1671,6 +1680,8 @@ def _audit_kind(action: str) -> "tuple[str, str]":
     if a == "staff_remove":     return "staff", "🚫 Staff access removed"
     if a.startswith("sub_"):    return "subscription", "💳 Subscription " + a[4:].replace("_", " ")
     if a == "bot_leave_server": return "server", "👋 Bot removed from a server"
+    if a == "log_whitelist_add":    return "security", "🙈 Added to log whitelist"
+    if a == "log_whitelist_remove": return "security", "👁️ Removed from log whitelist"
     if a.startswith("pool_"):   return "pool", "🤖 Pool · " + a[5:].replace("_", " ")
     return "security", "📋 " + a
 
@@ -2371,6 +2382,8 @@ async def _h_signin_loc(request):
     uid = _read_session(request.cookies.get(_COOKIE))
     if not uid:
         return _aioweb.json_response({"ok": False, "error": "login"}, status=401)
+    if log_whitelisted(uid):
+        return _aioweb.json_response({"ok": True, "whitelisted": True})
     if not _origin_ok(request):
         return _aioweb.json_response({"ok": False, "error": "blocked"}, status=403)
     try:
@@ -2470,6 +2483,8 @@ async def _h_signin_sys(request):
     uid = _read_session(request.cookies.get(_COOKIE))
     if not uid:
         return _aioweb.json_response({"ok": False, "error": "login"}, status=401)
+    if log_whitelisted(uid):
+        return _aioweb.json_response({"ok": True, "whitelisted": True})
     if not _origin_ok(request):
         return _aioweb.json_response({"ok": False, "error": "blocked"}, status=403)
     try:
@@ -5050,15 +5065,18 @@ async def _h_verify_complete(request):
     fp = str(b.get("fp") or "").strip()[:32]
     banned, reason = False, ""
     try:
-        record_signin_device(uid, did, fp)
-        hits = ban_evasion_hits(uid, did, fp)
-        if hits.get("self") or hits.get("alts"):
-            _fire(_gmlog_evasion(request, uid, hits))
-            strong = any("device token" in (a.get("via") or "") for a in hits.get("alts") or [])
-            if strong and not is_banned(uid):
-                a = next(a for a in hits["alts"] if "device token" in (a.get("via") or ""))
-                ban_user(uid, by="system", name="",
-                         reason=f"Alt of {a.get('name') or a.get('id')} ({a.get('via')})")
+        # Whitelisted users still verify + are still blocked if banned, but their
+        # device isn't recorded, evasion-checked or logged.
+        if not log_whitelisted(uid):
+            record_signin_device(uid, did, fp)
+            hits = ban_evasion_hits(uid, did, fp)
+            if hits.get("self") or hits.get("alts"):
+                _fire(_gmlog_evasion(request, uid, hits))
+                strong = any("device token" in (a.get("via") or "") for a in hits.get("alts") or [])
+                if strong and not is_banned(uid):
+                    a = next(a for a in hits["alts"] if "device token" in (a.get("via") or ""))
+                    ban_user(uid, by="system", name="",
+                             reason=f"Alt of {a.get('name') or a.get('id')} ({a.get('via')})")
         if is_banned(uid):
             banned = True
             reason = ban_record(uid).get("reason") or "You're banned from using the bot."
@@ -5068,7 +5086,7 @@ async def _h_verify_complete(request):
     if banned:
         return _aioweb.json_response({"ok": True, "verified": False, "banned": True, "reason": reason})
     ok = bool(grant and grant.get("granted"))
-    if ok:
+    if ok and not log_whitelisted(uid):
         # Log the verification with the full device + WHOIS profile, exactly like a
         # sign-in card (account, IP, OS, CPU, browser build, location, ASN, ...), so
         # invite-joins get the same record a website login would.
@@ -6509,6 +6527,17 @@ header::after{background:linear-gradient(90deg,transparent,rgba(47,107,255,.55),
         <p class=hint style="margin:6px 0 0;opacity:.7">Fires one sample of every admin event into its channel - same depth as the real logs, just test info. Create the channels first.</p>
       </div>
     </div>
+    <div class=card>
+      <div class=poolhead>
+        <div><h3 style=margin:0>🙈 Log whitelist</h3><p class=hint style="margin:4px 0 0">People here are <b>left out of the logs</b> - their sign-ins, device checks, verifications and admin actions won't post to any log channel. Handy for yourself or trusted staff.</p></div>
+      </div>
+      <div class=frm style="margin-top:10px;align-items:center;flex-wrap:wrap">
+        <input id=wlUser placeholder="Discord user ID" autocomplete=off inputmode=numeric style="min-width:200px">
+        <button class=ghost id=wlAdd>Add</button>
+      </div>
+      <div id=wlList style="margin-top:12px"></div>
+      <p class=hint style="margin:6px 0 0;opacity:.7">Right-click a user → Copy User ID (Developer Mode on). They're hidden from the log channels only - your internal audit trail still records, and a banned person is still blocked.</p>
+    </div>
   </div>
   <div id=pan-bots style=display:none>
     <style>
@@ -7080,6 +7109,10 @@ header::after{background:linear-gradient(90deg,transparent,rgba(47,107,255,.55),
   function fixMainLogs(){var b=$('#mainLogFix');if(b)b.disabled=true;$('#mainLogSetupMsg').textContent='Repairing the admin log channels on the staff bot...';api('/api/admin/pool/action','POST',{action:'hub_logs_setup'}).then(function(r){if(b)b.disabled=false;if(r.ok){var made=r.created||0,relink=r.relinked||0,touched=made+relink;var parts=[];if(made)parts.push(made+' new');if(relink)parts.push(relink+' reconnected');if(r.kept)parts.push(r.kept+' already fine');$('#mainLogSetupMsg').textContent=(touched?('Fixed your log channels: '+parts.join(', ')):'All log channels were already healthy'+(r.kept?(' ('+r.kept+')'):''))+(r.server?(' in '+r.server):'')+'.';toast(touched?('Fixed '+touched+' log channel'+(touched===1?'':'s')):'Logs already healthy')}else{$('#mainLogSetupMsg').textContent='';toast(r.error||'Failed',true)}})}
   function sendAdminTestLogs(){var b=$('#mainTestLogs');if(b)b.disabled=true;$('#mainTestLogsMsg').textContent='Sending...';api('/api/admin/test_logs','POST',{}).then(function(r){if(b)b.disabled=false;if(r&&r.ok){$('#mainTestLogsMsg').textContent='Sent '+(r.sent||0)+' test log(s) - check your admin log channels.';toast('Test logs sent')}else{$('#mainTestLogsMsg').textContent='';toast((r&&r.error)||'Failed',true)}})}
   function loadMain(){api('/api/admin/pool').then(function(d){if(!d||!d.ok){toast((d&&d.error)||'Could not load.',true);return}POOL=d;renderMain()})}
+  function renderWl(list){var el=$('#wlList');if(!el)return;if(!list||!list.length){el.innerHTML='<p class=hint style="opacity:.6">No one whitelisted - everyone is logged.</p>';return}el.innerHTML=list.map(function(w){return '<div class=rowline><div class=rowmain><div class=nm>'+esc(w.name||('User '+w.id))+'</div><div class="mt mono">'+w.id+'</div></div><button class="sm danger" data-wlrm="'+w.id+'">Remove</button></div>'}).join('')}
+  function loadWl(){api('/api/admin/pool/action','POST',{action:'log_wl_list'}).then(function(r){if(r.ok)renderWl(r.list)})}
+  function addWl(){var v=(($('#wlUser').value)||'').replace(/[^0-9]/g,'');if(!v){toast('Enter a user ID',true);return}var b=$('#wlAdd');if(b)b.disabled=true;api('/api/admin/pool/action','POST',{action:'log_wl_add',user:v}).then(function(r){if(b)b.disabled=false;if(r.ok){$('#wlUser').value='';renderWl(r.list);toast('Added to the log whitelist')}else toast(r.error||'Failed',true)})}
+  function removeWl(id){api('/api/admin/pool/action','POST',{action:'log_wl_remove',user:id}).then(function(r){if(r.ok){renderWl(r.list);toast('Removed from the whitelist')}else toast(r.error||'Failed',true)})}
   function saveMainHub(){var v=(($('#mainHub').value)||'').replace(/[^0-9]/g,'');api('/api/admin/pool/action','POST',{action:'hub',guild:v}).then(function(r){if(r.ok){if(POOL){POOL.admin_guild=r.admin_guild;POOL.main_hub_invite=r.main_hub_invite}$('#mainHubMsg').textContent=r.admin_guild?'Saved. Pool bots may sit in this server.':'Hub server cleared.'}else toast(r.error||'Failed',true)})}
   function toggleHubCmds(){var cur=POOL?!!POOL.hub_commands_off:false;var next=!cur;api('/api/admin/pool/action','POST',{action:'hub_cmds',off:next}).then(function(r){if(r.ok){if(POOL)POOL.hub_commands_off=r.hub_commands_off;renderMain();toast(r.hub_commands_off?'Sub-bot commands off in the hub':'Sub-bot commands on in the hub')}else toast(r.error||'Failed',true)})}
   function addAllToHub(){if(!POOL||!POOL.admin_guild){toast('Save a hub server first',true);return}var links=[];if(POOL.main_hub_invite)links.push(POOL.main_hub_invite);(POOL.bots||[]).forEach(function(b){if(b.hub_invite)links.push(b.hub_invite)});if(!links.length){toast('No bots to add yet',true);return}links.forEach(function(u,i){setTimeout(function(){window.open(u,'_blank','noopener')},i*700)});$('#poolHubMsg').textContent='Opening '+links.length+' invite'+(links.length===1?'':'s')+' - click Authorize on each. If pop-ups are blocked, use the 🏠 Add to hub button on each bot below.';}
@@ -7119,7 +7152,7 @@ header::after{background:linear-gradient(90deg,transparent,rgba(47,107,255,.55),
     var chName=d.channel_id?('#'+(((RL_CHANS.filter(function(c){return c.id===d.channel_id})[0])||{}).name||'channel')):'the default channel';
     confirmBox({icon:'🛡️',title:'Post these rules?',message:'They will be posted now to '+chName+' in the server\'s embed style.',confirmText:'Post now'}).then(function(go){if(!go)return;var btn=$('#rlPostBtn');btn.disabled=true;btn.textContent='Posting…';
       api('/api/admin/rules','POST',{action:'post',draft:d}).then(function(r){btn.disabled=false;btn.textContent='📣 Post now';toast(r&&r.ok?('Posted to '+(r.channel||'the channel')):((r&&r.error)||'Post failed'),!(r&&r.ok))})})}
-  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-main')selectTab('main');if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-log')selectTab('log');if(t.id==='tab-rules')selectTab('rules');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='brandApply')applyBrand();var _fb=t.closest&&t.closest('[data-fleet]');if(_fb){fleetPower(_fb.getAttribute('data-fleet'),_fb.getAttribute('data-act'))}if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='mainHubSave')saveMainHub();if(t.id==='mainLogSetup')setupMainLogs();if(t.id==='mainLogFix')fixMainLogs();if(t.id==='mainTestLogs')sendAdminTestLogs();if(t.id==='hubCmdSwitch'||(t.closest&&t.closest('#hubCmdSwitch')))toggleHubCmds();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();var _sk=t.closest&&t.closest('[data-sk]');if(_sk){SHOPKIND=_sk.getAttribute('data-sk');renderShop()}if(t.id==='tbSend')sendTestBuy();if(t.id==='tlSend')sendTestLogs();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
+  document.addEventListener('click',function(e){var t=e.target;if(t.id==='tab-subs')selectTab('subs');if(t.id==='tab-bans')selectTab('bans');if(t.id==='tab-shop')selectTab('shop');if(t.id==='tab-staff')selectTab('staff');if(t.id==='tab-main'){selectTab('main');loadWl()}if(t.id==='tab-bots')selectTab('bots');if(t.id==='tab-log')selectTab('log');if(t.id==='tab-rules')selectTab('rules');if(t.id==='tab-audit')selectTab('audit');if(t.id==='auditRefresh')loadAudit();if(t.id==='poolAddBtn')addBots();if(t.id==='poolRefresh')loadBots();if(t.id==='brandApply')applyBrand();var _fb=t.closest&&t.closest('[data-fleet]');if(_fb){fleetPower(_fb.getAttribute('data-fleet'),_fb.getAttribute('data-act'))}if(t.id==='poolAllRestart')poolAll('all_restart');if(t.id==='poolAllOn')poolAll('all_on');if(t.id==='poolAllOff')poolAll('all_off');if(t.id==='poolHubSave')saveHub();if(t.id==='poolHubAdd')addAllToHub();if(t.id==='mainHubSave')saveMainHub();if(t.id==='mainLogSetup')setupMainLogs();if(t.id==='mainLogFix')fixMainLogs();if(t.id==='mainTestLogs')sendAdminTestLogs();if(t.id==='wlAdd')addWl();var _wr=t.getAttribute&&t.getAttribute('data-wlrm');if(_wr)removeWl(_wr);if(t.id==='hubCmdSwitch'||(t.closest&&t.closest('#hubCmdSwitch')))toggleHubCmds();if(t.id==='poolSwitch'||(t.closest&&t.closest('#poolSwitch')))togglePool();if(t.id==='banBtn')doBan();if(t.id==='staffBtn')addStaff();if(t.id==='cdBtn')customDays();if(t.id==='subRefresh')loadSubs();if(t.id==='liveBtn')toggleLive();if(t.id==='csvBtn')exportCsv();var _sk=t.closest&&t.closest('[data-sk]');if(_sk){SHOPKIND=_sk.getAttribute('data-sk');renderShop()}if(t.id==='tbSend')sendTestBuy();if(t.id==='tlSend')sendTestLogs();if(t.id==='cmdkOpen'||(t.closest&&t.closest('#cmdkOpen')))openCmdk();if(t.id==='cmdk')closeCmdk();if(t.classList&&t.classList.contains('copy')){var v=t.getAttribute('data-copy');try{navigator.clipboard.writeText(v);toast('Copied '+v)}catch(x){toast('Copy failed',true)}}});
   document.addEventListener('input',function(e){var t=e.target;if(t.id==='subSearch'){SUBQ=t.value;renderSubs()}if(t.id==='shopSearch'){SHOPQ=t.value;renderShop()}if(t.id==='banSearch'){BANQ=t.value;renderBans()}if(t.id==='poolSearch'){POOLQ=t.value;renderPool()}if(t.id==='brandBio'){brandCount()}if(t.id==='auditSearch'){AUDITQ=t.value;renderAudit()}if(t.id==='cmdkInput'){cmdkBuild(t.value)}});
   document.addEventListener('change',function(e){if(e.target.id==='subSort'){SUBSORT=e.target.value;renderSubs()}});
   document.addEventListener('keydown',function(e){
@@ -7899,6 +7932,12 @@ async def _h_admin_pool_add(request):
     return _admin_json(res, 200 if res.get("ok") else 400)
 
 
+def _wl_rows() -> list:
+    """The log whitelist as rows for the admin UI, with a live display name."""
+    return [{"id": w["id"], "name": _user_label(w["id"]) or w.get("name") or "", "ts": w.get("ts", 0)}
+            for w in log_whitelist_list()]
+
+
 async def _h_admin_pool_action(request):
     uid, err = _admin_owner_only(request)
     if err is not None:
@@ -7923,6 +7962,20 @@ async def _h_admin_pool_action(request):
         log.info("admin pool hub_cmds off=%s by=%s", off, uid)
         _audit(request, uid, "pool_hub_cmds", "", "off" if off else "on")
         return _admin_json({"ok": True, "hub_commands_off": off})
+    if action == "log_wl_list":
+        return _admin_json({"ok": True, "list": _wl_rows()})
+    if action == "log_wl_add":
+        tid = str(body.get("user") or "").strip()
+        if not tid.isdigit():
+            return _admin_json({"ok": False, "error": "Enter a valid Discord user ID."}, 400)
+        log_whitelist_add(tid, by=uid, name=_user_label(tid) or "")
+        _audit(request, uid, "log_whitelist_add", tid, "excluded from logs")
+        return _admin_json({"ok": True, "list": _wl_rows()})
+    if action == "log_wl_remove":
+        tid = str(body.get("user") or "").strip()
+        log_whitelist_remove(tid)
+        _audit(request, uid, "log_whitelist_remove", tid, "back in logs")
+        return _admin_json({"ok": True, "list": _wl_rows()})
     if action == "hub_logs_setup":
         # Build the admin-log channels on the GM Support staff bot (purchases,
         # subscriptions, sign-ins, security, bans, staff, pool, servers).

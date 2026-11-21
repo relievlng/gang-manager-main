@@ -264,6 +264,52 @@ def record_signin_device(user_id, did: str = "", fp: str = "") -> None:
         log.info("record_signin_device skipped: %s", exc)
 
 
+def _wl_store() -> dict:
+    d = DATA.get("log_whitelist")
+    if not isinstance(d, dict):
+        d = {}
+        DATA["log_whitelist"] = d
+    return d
+
+
+def log_whitelisted(user_id) -> bool:
+    """True if this user is on the log whitelist (excluded from the log channels)."""
+    try:
+        return str(int(user_id)) in _wl_store()
+    except (TypeError, ValueError):
+        return False
+
+
+def log_whitelist_add(user_id, *, by=None, name: str = "") -> bool:
+    try:
+        uid = str(int(user_id))
+    except (TypeError, ValueError):
+        return False
+    _wl_store()[uid] = {"by": str(by) if by else "", "name": name or "", "ts": int(_now().timestamp())}
+    save_data(DATA)
+    return True
+
+
+def log_whitelist_remove(user_id) -> bool:
+    try:
+        uid = str(int(user_id))
+    except (TypeError, ValueError):
+        return False
+    st = _wl_store()
+    if uid in st:
+        del st[uid]
+        save_data(DATA)
+        return True
+    return False
+
+
+def log_whitelist_list() -> list:
+    return sorted(
+        [{"id": k, **(v if isinstance(v, dict) else {})} for k, v in _wl_store().items()],
+        key=lambda b: b.get("ts", 0), reverse=True,
+    )
+
+
 def ban_evasion_hits(user_id, did: str = "", fp: str = "") -> dict:
     """Does this sign-in look like ban evasion? Returns
     {"self": bool, "alts": [{"id","name","reason","via"}]}, where `self` is True
