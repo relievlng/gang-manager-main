@@ -1255,21 +1255,6 @@ def _audit(request, actor, action: str, target: str = "", detail: str = "") -> N
         log.info("gmlog audit forward skipped: %s", exc)
 
 
-async def _alert_owners(text: str) -> None:
-    """DM every bot operator a short security alert via the main bot. Best-effort."""
-    try:
-        emb = discord.Embed(description=text[:3500], colour=0xB33A3A)
-        emb.set_author(name="Gang Manager · security")
-    except Exception:  # noqa: BLE001
-        emb = None
-    for oid in owner_ids():
-        try:
-            u = bot.get_user(int(oid)) or await bot.fetch_user(int(oid))
-            await (u.send(embed=emb) if emb is not None else u.send(text[:1900]))
-        except Exception as exc:  # noqa: BLE001
-            log.info("owner alert to %s skipped: %s", oid, exc)
-
-
 def _fire(coro) -> None:
     """Schedule a fire-and-forget coroutine from inside a request handler."""
     try:
@@ -7219,18 +7204,13 @@ async def _h_admin_mfa_verify(request):
     ok, err = _mfa_verify(uid, str(body.get("code") or ""))
     if not ok:
         if err.startswith("Too many"):
+            # Logged to the security channel by _audit; no owner DM.
             _audit(request, uid, "mfa_lockout", str(uid), "too many bad codes")
-            _fire(_alert_owners(
-                f"⚠️ **Multiple failed sign-in codes** for {_user_label(uid) or 'an admin'} "
-                f"(`{uid}`) from `{_client_ip(request)}`. If that wasn't them, review admin access."))
         return _admin_json({"ok": False, "error": err}, 400)
     resp = _admin_json({"ok": True})
     resp.set_cookie(_MFA_COOKIE, _sign_mfa(uid), max_age=43200, httponly=True, secure=True, samesite="Lax")
     role = "owner" if is_owner(uid) else "staff"
-    _audit(request, uid, "admin_signin", str(uid), role)
-    _fire(_alert_owners(
-        f"✅ **Admin sign-in** - {_user_label(uid) or 'an admin'} (`{uid}`, {role}) "
-        f"signed in to the panel from `{_client_ip(request)}`."))
+    _audit(request, uid, "admin_signin", str(uid), role)  # logs to the sign-ins channel; no owner DM
     return resp
 
 
