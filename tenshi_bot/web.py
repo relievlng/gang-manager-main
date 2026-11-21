@@ -6389,10 +6389,10 @@ header::after{background:linear-gradient(90deg,transparent,rgba(47,107,255,.55),
     <div class=stat data-k=staff><div class=ic>🛡️</div><div class=n id=statStaff>0</div><div class=l>Staff</div></div>
   </div>
   <div class=tabs>
-    <div class="tab active" id=tab-subs>Subscriptions</div>
-    <div class=tab id=tab-bans>Bans</div>
-    <div class=tab id=tab-shop>Shop log</div>
-    <div class=tab id=tab-staff>Staff access</div>
+    <div class="tab active" id=tab-subs>💳 Subscriptions</div>
+    <div class=tab id=tab-bans>⛔ Bans</div>
+    <div class=tab id=tab-shop>🧾 Shop log</div>
+    <div class=tab id=tab-staff>🔑 Staff access</div>
     <div class=tab id=tab-main style=display:none>🏠 Main Discord</div>
     <div class=tab id=tab-bots style=display:none>🤖 Bots</div>
     <div class=tab id=tab-log style=display:none>📋 Changelog</div>
@@ -7109,7 +7109,7 @@ header::after{background:linear-gradient(90deg,transparent,rgba(47,107,255,.55),
   var cmdkItems=[],cmdkSel=0;
   function openCmdk(){var o=$('#cmdk');o.classList.add('show');$('#cmdkInput').value='';cmdkBuild('');setTimeout(function(){$('#cmdkInput').focus()},30)}
   function closeCmdk(){$('#cmdk').classList.remove('show')}
-  function cmdkBuild(q){q=(q||'').toLowerCase();var items=[];var nav=[['subs','📂','Subscriptions'],['bans','⛔','Bans'],['shop','🧾','Shop log'],['staff','🛡️','Staff access']];if(STATE.owner){nav.push(['bots','🤖','Bots']);nav.push(['audit','📜','Audit log'])}nav.forEach(function(n){if(!q||n[2].toLowerCase().indexOf(q)>=0)items.push({t:'tab',id:n[0],ic:n[1],label:n[2],sub:'Section'})});SERVERS.forEach(function(s){if(!q||(s.name||'').toLowerCase().indexOf(q)>=0||String(s.id).indexOf(q)>=0)items.push({t:'srv',id:s.id,ic:'🌐',label:s.name,sub:bucket(s)})});cmdkItems=items.slice(0,40);cmdkSel=0;cmdkRender()}
+  function cmdkBuild(q){q=(q||'').toLowerCase();var items=[];var nav=[['subs','💳','Subscriptions'],['bans','⛔','Bans'],['shop','🧾','Shop log'],['staff','🔑','Staff access']];if(STATE.owner){nav.push(['bots','🤖','Bots']);nav.push(['audit','📜','Audit log'])}nav.forEach(function(n){if(!q||n[2].toLowerCase().indexOf(q)>=0)items.push({t:'tab',id:n[0],ic:n[1],label:n[2],sub:'Section'})});SERVERS.forEach(function(s){if(!q||(s.name||'').toLowerCase().indexOf(q)>=0||String(s.id).indexOf(q)>=0)items.push({t:'srv',id:s.id,ic:'🌐',label:s.name,sub:bucket(s)})});cmdkItems=items.slice(0,40);cmdkSel=0;cmdkRender()}
   function cmdkRender(){$('#cmdkList').innerHTML=cmdkItems.length?cmdkItems.map(function(it,i){return '<div class="ci'+(i===cmdkSel?' sel':'')+'" data-i="'+i+'"><span class=cig>'+it.ic+'</span><span>'+esc(it.label)+'</span><span class=cis>'+esc(it.sub)+'</span></div>'}).join(''):'<div class=pad>No matches</div>';$('#cmdkList').querySelectorAll('.ci').forEach(function(el){el.onclick=function(){cmdkSel=parseInt(el.getAttribute('data-i'),10);cmdkGo()}})}
   function cmdkGo(){var it=cmdkItems[cmdkSel];if(!it){return}closeCmdk();if(it.t==='tab'){selectTab(it.id)}else{selectTab('subs');SUBFILTER='all';SUBQ='';$('#subSearch').value=String(it.id);SUBQ=String(it.id);renderFilters();renderSubs();toast('Jumped to '+it.label)}}
   var RL_CHANS=[],RL_BOUND=false;
