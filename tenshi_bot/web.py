@@ -6351,6 +6351,20 @@ a.link,.link{color:var(--brand2)}
 #gate.gate,#gate{background:#09090a!important}
 #gate.gate::before,#gate.gate::after,.gatecard::before,.gatecard::after{display:none!important}
 .gatecard{border-radius:4px!important;border:1px solid rgba(255,255,255,.1)!important}
+/* ===== polish pass: richer metric cards + coherent blue (keeps the tactical sharp look) ===== */
+header::after{background:linear-gradient(90deg,transparent,rgba(47,107,255,.55),transparent)!important}
+.card:hover{border-color:rgba(47,107,255,.26)!important}
+#subsList .card:hover{border-color:rgba(47,107,255,.3)!important;box-shadow:0 20px 50px -26px rgba(47,107,255,.5),0 0 0 1px rgba(47,107,255,.06)!important}
+.stats{gap:11px;margin:2px 0 18px}
+.stat{padding:16px 16px 14px;background:radial-gradient(130% 95% at 0 -12%,var(--sc,rgba(47,107,255,.14)),transparent 56%),linear-gradient(180deg,rgba(24,24,32,.82),rgba(13,13,19,.62))}
+.stat[data-k=servers]{--sc:rgba(91,147,255,.17)}.stat[data-k=active]{--sc:rgba(34,197,94,.15)}.stat[data-k=life]{--sc:rgba(167,139,250,.16)}.stat[data-k=members]{--sc:rgba(96,165,250,.15)}.stat[data-k=bans]{--sc:rgba(239,68,68,.14)}.stat[data-k=staff]{--sc:rgba(245,158,11,.14)}
+.stat::before{opacity:1}
+.stat .n{font-size:26px;letter-spacing:-.6px}
+.stat .l{font-size:10px;letter-spacing:.9px;margin-top:5px;opacity:.82}
+.stat:hover{border-color:rgba(255,255,255,.2)}
+.pst{background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.013))}
+.pst b{letter-spacing:-.5px}
+.bcard{background:rgba(255,255,255,.022)}
 
 </style></head><body>
 <div class="aura"><i></i><i></i><i></i></div>
